@@ -30,6 +30,7 @@ from schemas import (
     UserUpdate
 )
 from stockfish_service import get_stockfish_service
+from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
 
 # FastAPI app
@@ -271,6 +272,12 @@ class AnalyzePositionRequest(BaseModel):
     fen: str
     depth: Optional[int] = 15
 
+
+class HintRequest(BaseModel):
+    fen: str
+    hint_level: int  # 1, 2, or 3
+    puzzle_id: int
+
 class ValidatePuzzleRequest(BaseModel):
     fen: str
     solution_moves: List[str]  # UCI format: ['e2e4', 'e7e5']
@@ -296,6 +303,56 @@ def analyze_position(request: AnalyzePositionRequest):
         raise HTTPException(status_code=400, detail=result.get("error"))
     
     return result
+
+
+@app.post("/api/puzzles/{puzzle_id}/hint")
+def get_hint(
+    puzzle_id: int,
+    request: HintRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a hint for a puzzle - deducts XP from student
+    Level 1: Vague (costs 2 XP)
+    Level 2: Moderate (costs 4 XP)  
+    Level 3: Specific (costs 8 XP)
+    """
+    # Get the user
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get hint from Stockfish
+    hint_svc = get_hint_service()
+    result = hint_svc.get_hint(request.fen, request.hint_level)
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Failed to generate hint")
+        )
+
+    xp_cost = result["xp_cost"]
+
+    # Check if user has enough XP
+    if user.xp < xp_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough XP! You need {xp_cost} XP but only have {user.xp}."
+        )
+
+    # Deduct XP
+    user.xp -= xp_cost
+    db.commit()
+
+    return {
+        "success": True,
+        "hint_level": result["hint_level"],
+        "hint_text": result["hint_text"],
+        "xp_cost": xp_cost,
+        "remaining_xp": user.xp,
+    }
 
 @app.post("/api/puzzles/validate")
 def validate_puzzle(request: ValidatePuzzleRequest):

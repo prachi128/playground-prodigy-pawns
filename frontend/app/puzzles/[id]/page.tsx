@@ -12,6 +12,7 @@ import { Chess } from 'chess.js';
 import { ArrowLeft, Lightbulb, RotateCcw, Check, X, Star, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import HintSystem from '@/components/HintSystem';
 
 export default function PuzzleSolvePage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function PuzzleSolvePage() {
   const [startTime, setStartTime] = useState<number>(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [userXP, setUserXP] = useState(user?.xp || 0);
 
   useEffect(() => {
     loadPuzzle();
@@ -189,7 +191,7 @@ export default function PuzzleSolvePage() {
                     options={{
                       position: game.fen(),
                       onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                      sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
+                        sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
                       boardStyle: {
                         borderRadius: '8px',
                         boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
@@ -205,13 +207,20 @@ export default function PuzzleSolvePage() {
 
           {/* Info Panel - Takes 1 column */}
           <div className="space-y-2">
+            <HintSystem
+              puzzleId={puzzleId}
+              fen={puzzle.fen}
+              userXP={userXP}
+              onXPDeducted={(newXP) => setUserXP(newXP)}
+            />
+
             {/* Status Card */}
             {isCorrect !== null && (
-              <div className={`p-3 rounded-xl border-3 ${
-                isCorrect
-                  ? 'bg-green-50 border-green-300'
-                  : 'bg-red-50 border-red-300'
-              }`}>
+              <div
+                className={`p-3 rounded-xl border-3 ${
+                  isCorrect ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'
+                }`}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   {isCorrect ? (
                     <>
@@ -255,7 +264,11 @@ export default function PuzzleSolvePage() {
               <div className="space-y-1.5">
                 <div>
                   <p className="text-xs text-gray-600 mb-0.5">Difficulty</p>
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border-2 ${getDifficultyColor(puzzle.difficulty)}`}>
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold border-2 ${getDifficultyColor(
+                      puzzle.difficulty
+                    )}`}
+                  >
                     {puzzle.difficulty}
                   </span>
                 </div>
@@ -277,9 +290,10 @@ export default function PuzzleSolvePage() {
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-gray-600">Success:</span>
                   <span className="font-bold text-gray-800 text-xs">
-                    {puzzle.attempts_count > 0 
+                    {puzzle.attempts_count > 0
                       ? Math.round((puzzle.success_count / puzzle.attempts_count) * 100)
-                      : 0}%
+                      : 0}
+                    %
                   </span>
                 </div>
               </div>
@@ -332,3 +346,4 @@ export default function PuzzleSolvePage() {
     </div>
   );
 }
+
