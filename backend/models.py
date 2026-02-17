@@ -1,0 +1,273 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, TypeDecorator
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
+import enum
+
+Base = declarative_base()
+
+class UserRole(str, enum.Enum):
+    student = "student"
+    coach = "coach"
+    admin = "admin"
+
+class CaseInsensitiveEnum(TypeDecorator):
+    """A TypeDecorator that handles case-insensitive enum conversion.
+    Stores as VARCHAR in database to allow case-insensitive matching."""
+    impl = Enum
+    cache_ok = True
+    
+    def __init__(self, enum_class, *args, **kwargs):
+        self.enum_class = enum_class
+        # Force VARCHAR storage instead of native enum
+        kwargs['native_enum'] = False
+        kwargs['create_constraint'] = False
+        # Pass enum values to parent Enum
+        super().__init__(enum_class, *args, **kwargs)
+    
+    def process_bind_param(self, value, dialect):
+        """Convert enum to lowercase string when writing to database"""
+        if value is None:
+            return None
+        if isinstance(value, self.enum_class):
+            return value.value.lower()
+        return str(value).lower()
+    
+    def process_result_value(self, value, dialect):
+        """Convert string from database to enum (case-insensitive)"""
+        if value is None:
+            return None
+        if isinstance(value, self.enum_class):
+            return value
+        # Try to find enum value case-insensitively
+        value_str = str(value)
+        value_lower = value_str.lower()
+        for enum_member in self.enum_class:
+            if enum_member.value.lower() == value_lower:
+                return enum_member
+        # If not found, raise an error
+        raise ValueError(f"'{value}' is not a valid {self.enum_class.__name__}. Expected one of: {[e.value for e in self.enum_class]}")
+
+class DifficultyLevel(enum.Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    EXPERT = "expert"
+
+class GameResult(enum.Enum):
+    WIN = "win"
+    LOSS = "loss"
+    DRAW = "draw"
+
+# User/Student Model
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=False)
+    role = Column(CaseInsensitiveEnum(UserRole), default=UserRole.student)
+    
+    # Student specific fields
+    age = Column(Integer)
+    avatar_url = Column(String, default="/avatars/default.png")
+    total_xp = Column(Integer, default=0)
+    level = Column(Integer, default=1)
+    rating = Column(Integer, default=400)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    # Relationships
+    games_as_white = relationship("Game", back_populates="white_player", foreign_keys="Game.white_player_id")
+    games_as_black = relationship("Game", back_populates="black_player", foreign_keys="Game.black_player_id")
+    puzzle_attempts = relationship("PuzzleAttempt", back_populates="user")
+    achievements = relationship("UserAchievement", back_populates="user")
+    daily_challenges = relationship("DailyChallengeAttempt", back_populates="user")
+
+# Game Model
+class Game(Base):
+    __tablename__ = "games"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    white_player_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    black_player_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Game details
+    pgn = Column(Text)
+    result = Column(Enum(GameResult))
+    winner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Game metadata
+    time_control = Column(String)
+    starting_fen = Column(String, default="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    final_fen = Column(String)
+    total_moves = Column(Integer, default=0)
+    
+    # XP rewards
+    xp_awarded_white = Column(Integer, default=0)
+    xp_awarded_black = Column(Integer, default=0)
+    
+    # Timestamps
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime)
+    
+    # Relationships
+    white_player = relationship("User", back_populates="games_as_white", foreign_keys=[white_player_id])
+    black_player = relationship("User", back_populates="games_as_black", foreign_keys=[black_player_id])
+
+# Puzzle Model
+class Puzzle(Base):
+    __tablename__ = "puzzles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    
+    # Puzzle data
+    fen = Column(String, nullable=False)
+    moves = Column(Text, nullable=False)
+    difficulty = Column(Enum(DifficultyLevel), default=DifficultyLevel.BEGINNER)
+    rating = Column(Integer, default=400)
+    
+    # Metadata
+    theme = Column(String)
+    xp_reward = Column(Integer, default=10)
+    hints = Column(Text)
+    
+    # Stats
+    attempts_count = Column(Integer, default=0)
+    success_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    # Relationships
+    attempts = relationship("PuzzleAttempt", back_populates="puzzle")
+
+# Puzzle Attempt Model
+class PuzzleAttempt(Base):
+    __tablename__ = "puzzle_attempts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    puzzle_id = Column(Integer, ForeignKey("puzzles.id"), nullable=False)
+    
+    is_solved = Column(Boolean, default=False)
+    moves_made = Column(Text)
+    time_taken = Column(Integer)
+    hints_used = Column(Integer, default=0)
+    xp_earned = Column(Integer, default=0)
+    
+    attempted_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="puzzle_attempts")
+    puzzle = relationship("Puzzle", back_populates="attempts")
+
+# Daily Challenge Model
+class DailyChallenge(Base):
+    __tablename__ = "daily_challenges"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime, nullable=False, unique=True)
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    challenge_type = Column(String, nullable=False)
+    challenge_data = Column(Text, nullable=False)
+    xp_reward = Column(Integer, default=50)
+    bonus_xp = Column(Integer, default=20)
+    difficulty = Column(Enum(DifficultyLevel), default=DifficultyLevel.INTERMEDIATE)
+    time_limit = Column(Integer)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    attempts = relationship("DailyChallengeAttempt", back_populates="challenge")
+
+# Daily Challenge Attempt Model
+class DailyChallengeAttempt(Base):
+    __tablename__ = "daily_challenge_attempts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    challenge_id = Column(Integer, ForeignKey("daily_challenges.id"), nullable=False)
+    is_completed = Column(Boolean, default=False)
+    time_taken = Column(Integer)
+    xp_earned = Column(Integer, default=0)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="daily_challenges")
+    challenge = relationship("DailyChallenge", back_populates="attempts")
+
+# Achievement Model
+class Achievement(Base):
+    __tablename__ = "achievements"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    description = Column(Text, nullable=False)
+    icon_url = Column(String)
+    criteria_type = Column(String)
+    criteria_value = Column(Integer)
+    xp_reward = Column(Integer, default=100)
+    badge_color = Column(String, default="#FFD700")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user_achievements = relationship("UserAchievement", back_populates="achievement")
+
+# User Achievement
+class UserAchievement(Base):
+    __tablename__ = "user_achievements"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    achievement_id = Column(Integer, ForeignKey("achievements.id"), nullable=False)
+    earned_at = Column(DateTime, default=datetime.utcnow)
+    is_displayed = Column(Boolean, default=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="achievements")
+    achievement = relationship("Achievement", back_populates="user_achievements")
+
+# Puzzle Race Model
+class PuzzleRace(Base):
+    __tablename__ = "puzzle_races"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    puzzle_count = Column(Integer, default=5)
+    time_limit = Column(Integer, default=300)
+    difficulty = Column(Enum(DifficultyLevel))
+    puzzle_ids = Column(Text)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    race_attempts = relationship("PuzzleRaceAttempt", back_populates="race")
+
+# Puzzle Race Attempt Model
+class PuzzleRaceAttempt(Base):
+    __tablename__ = "puzzle_race_attempts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    race_id = Column(Integer, ForeignKey("puzzle_races.id"), nullable=False)
+    puzzles_solved = Column(Integer, default=0)
+    time_taken = Column(Integer)
+    score = Column(Integer, default=0)
+    xp_earned = Column(Integer, default=0)
+    puzzle_results = Column(Text)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    race = relationship("PuzzleRace", back_populates="race_attempts")
