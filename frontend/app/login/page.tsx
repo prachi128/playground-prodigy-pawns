@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Loader2, Zap } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,19 +30,64 @@ export default function LoginPage() {
 
     try {
       const response = await authAPI.login(email, password);
-      login(response.user, response.access_token);
-      toast.success(`Welcome back, ${response.user.full_name}! 🎉`);
-      router.push('/dashboard');
+      login(response.user);
+      // Delay toast until after navigation starts
+      setTimeout(() => {
+        toast.success(`Welcome back, ${response.user.full_name}! 🎉`);
+      }, 100);
+      // Redirect based on role: coach/admin → /coach, student → /dashboard
+      const redirectPath = response.user.role === 'coach' || response.user.role === 'admin' 
+        ? '/coach' 
+        : '/dashboard';
+      router.push(redirectPath);
     } catch (error: any) {
       console.error('Login error:', error);
+      setIsLoading(false); // Only stop loading on error
       toast.error(error.response?.data?.detail || 'Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-100 via-purple-50 to-blue-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-100 via-purple-50 to-blue-100 flex items-center justify-center p-4 relative">
+      {/* Full-page loader overlay - Kid-friendly! */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="text-center space-y-6">
+            {/* Animated chess piece and sparkles */}
+            <div className="relative">
+              <div className="text-8xl animate-bounce" style={{ animationDuration: '1s' }}>
+                ♟️
+              </div>
+              {/* Floating sparkles around the pawn */}
+              <Sparkles className="absolute -top-4 -left-4 w-8 h-8 text-yellow-400 animate-pulse" style={{ animationDelay: '0s' }} />
+              <Sparkles className="absolute -top-2 -right-6 w-6 h-6 text-purple-400 animate-pulse" style={{ animationDelay: '0.3s' }} />
+              <Sparkles className="absolute -bottom-2 -left-6 w-7 h-7 text-blue-400 animate-pulse" style={{ animationDelay: '0.6s' }} />
+              <Sparkles className="absolute -bottom-4 -right-4 w-8 h-8 text-pink-400 animate-pulse" style={{ animationDelay: '0.9s' }} />
+            </div>
+            
+            {/* Spinning loader */}
+            <div className="flex items-center justify-center gap-3">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+              <Zap className="w-6 h-6 text-yellow-500 animate-pulse" />
+            </div>
+            
+            {/* Fun text */}
+            <div className="space-y-2">
+              <p className="text-2xl font-bold bg-gradient-to-r from-primary-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
+                Logging you in...
+              </p>
+              <p className="text-lg text-gray-600 font-semibold animate-pulse">
+                Get ready to play! 🎮
+              </p>
+              <div className="flex items-center justify-center gap-2 mt-4">
+                <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="w-full max-w-md">
         {/* Logo/Title */}
         <div className="text-center mb-8">
@@ -75,7 +120,8 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                disabled={isLoading}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="your@email.com"
                 required
               />
@@ -91,7 +137,8 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                disabled={isLoading}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="••••••••"
                 required
               />
@@ -122,7 +169,8 @@ export default function LoginPage() {
                 setEmail('alice@prodigypawns.com');
                 setPassword('password123');
               }}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              disabled={isLoading}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Use Alice's Account →
             </button>

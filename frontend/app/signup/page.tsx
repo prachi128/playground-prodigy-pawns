@@ -44,9 +44,14 @@ export default function SignupPage() {
         age: formData.age ? parseInt(formData.age) : undefined,
       });
       
-      login(response.user, response.access_token);
+      login(response.user);
       toast.success(`Welcome to Prodigy Pawns, ${response.user.full_name}! 🎉`);
-      router.push('/dashboard');
+      // Redirect based on role: coach/admin → /coach, student → /dashboard
+      // Note: Signup always creates students, but keeping logic consistent
+      const redirectPath = response.user.role === 'coach' || response.user.role === 'admin' 
+        ? '/coach' 
+        : '/dashboard';
+      router.push(redirectPath);
     } catch (error: any) {
       console.error('Signup error:', error);
       toast.error(error.response?.data?.detail || 'Signup failed. Please try again.');

@@ -19,7 +19,7 @@ export default function PuzzlesPage() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
 
   useEffect(() => {
-    useAuthStore.getState().loadFromStorage();
+    useAuthStore.getState().loadSession();
   }, []);
 
   useEffect(() => {

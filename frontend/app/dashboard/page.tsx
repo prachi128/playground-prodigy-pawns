@@ -14,7 +14,7 @@ export default function DashboardPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
 
   useEffect(() => {
-    useAuthStore.getState().loadFromStorage();
+    useAuthStore.getState().loadSession();
   }, []);
 
   useEffect(() => {

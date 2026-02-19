@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -10,17 +11,20 @@ from typing import List, Optional
 from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole
 from database import get_db
 from auth import (
-    get_password_hash, 
-    verify_password, 
-    create_access_token, 
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
     get_current_user,
-    authenticate_user
+    authenticate_user,
+    COOKIE_ACCESS_TOKEN,
+    COOKIE_REFRESH_TOKEN,
 )
 from schemas import (
-    UserCreate, 
-    UserResponse, 
-    UserLogin, 
-    Token,
+    UserCreate,
+    UserResponse,
+    UserLogin,
     PuzzleResponse,
     GameResponse,
     AchievementResponse,
@@ -52,6 +56,14 @@ app.add_middleware(
 # Include routers
 app.include_router(coach_router)
 
+# Cookie settings for auth (Cookie-Based Session Auth)
+def _cookie_attrs():
+    return {
+        "httponly": True,
+        "samesite": "lax",
+        "path": "/",
+    }
+
 # Health check endpoints
 @app.get("/")
 def read_root():
@@ -68,26 +80,21 @@ def health_check():
 
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
-@app.post("/api/auth/signup", response_model=Token)
+@app.post("/api/auth/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
-    # Check if email already exists
+    """Register a new user. Sets HttpOnly access + refresh cookies and returns user."""
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
-    # Check if username already exists
     db_user = db.query(User).filter(User.username == user.username).first()
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already taken"
         )
-    
-    # Create new user
     hashed_password = get_password_hash(user.password)
     new_user = User(
         email=user.email,
@@ -97,56 +104,115 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         age=user.age,
         role=UserRole.student
     )
-    
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
-    # Create access token
     access_token = create_access_token(data={"sub": new_user.id})
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": new_user
-    }
+    refresh_token = create_refresh_token(data={"sub": new_user.id})
+    user_payload = UserResponse.model_validate(new_user).model_dump(mode="json")
+    response = JSONResponse(content={"user": user_payload})
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        value=access_token,
+        max_age=15 * 60,
+        **_cookie_attrs(),
+    )
+    response.set_cookie(
+        key=COOKIE_REFRESH_TOKEN,
+        value=refresh_token,
+        max_age=7 * 24 * 3600,
+        **_cookie_attrs(),
+    )
+    return response
 
-@app.post("/api/auth/login", response_model=Token)
+@app.post("/api/auth/login")
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Login user and return JWT token - supports OAuth2 form"""
-    # OAuth2PasswordRequestForm uses 'username' field, but we store 'email'
-    # So we treat username as email
+    """Login user. Sets HttpOnly access + refresh cookies and returns user."""
     user = authenticate_user(db, form_data.username, form_data.password)
-    
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Update last login
     user.last_login = datetime.utcnow()
     db.commit()
-    
-    # Create access token
+    db.refresh(user)
     access_token = create_access_token(data={"sub": user.id})
+    refresh_token = create_refresh_token(data={"sub": user.id})
+    user_payload = UserResponse.model_validate(user).model_dump(mode="json")
+    response = JSONResponse(content={"user": user_payload})
     
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user
-    }
+    # Debug: log origin
+    origin = request.headers.get("origin", "unknown")
+    print(f"🔐 Login successful for user {user.id}. Origin: {origin}")
+    
+    cookie_attrs = _cookie_attrs()
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        value=access_token,
+        max_age=15 * 60,
+        **cookie_attrs,
+    )
+    response.set_cookie(
+        key=COOKIE_REFRESH_TOKEN,
+        value=refresh_token,
+        max_age=7 * 24 * 3600,
+        **cookie_attrs,
+    )
+    print(f"🍪 Cookies set: access_token={bool(access_token)}, refresh_token={bool(refresh_token)}")
+    print(f"🍪 Cookie attrs: {cookie_attrs}")
+    return response
+
+@app.post("/api/auth/refresh")
+def refresh_token(request: Request, db: Session = Depends(get_db)):
+    """Issue a new access token from refresh token (in HttpOnly cookie). Returns user."""
+    refresh = request.cookies.get(COOKIE_REFRESH_TOKEN)
+    if not refresh:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token missing",
+        )
+    user_id = decode_refresh_token(refresh)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    access_token = create_access_token(data={"sub": user.id})
+    user_payload = UserResponse.model_validate(user).model_dump(mode="json")
+    response = JSONResponse(content={"user": user_payload})
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        value=access_token,
+        max_age=15 * 60,
+        **_cookie_attrs(),
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+def logout():
+    """Clear auth cookies (access + refresh)."""
+    response = JSONResponse(content={"message": "Logged out"})
+    response.delete_cookie(key=COOKIE_ACCESS_TOKEN, path="/")
+    response.delete_cookie(key=COOKIE_REFRESH_TOKEN, path="/")
+    return response
+
 
 @app.get("/api/auth/me", response_model=UserResponse)
 def get_current_user_info(
     user_id: int = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Get current logged-in user information"""
+    """Get current logged-in user information (token from cookie or Authorization header)."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

@@ -77,10 +77,10 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
     router.push("/puzzles")
   }, [router])
 
-  const handleLogout = useCallback(() => {
-    logout()
-    router.push("/login")
+  const handleLogout = useCallback(async () => {
+    await logout()
     onClose()
+    router.push("/login")
   }, [logout, onClose, router])
 
   // Keyboard shortcuts: Escape closes, "Q" triggers Quick Play (from v1)

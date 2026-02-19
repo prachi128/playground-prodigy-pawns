@@ -26,7 +26,7 @@ export default function ManagePuzzlesPage() {
   });
 
   useEffect(() => {
-    useAuthStore.getState().loadFromStorage();
+    useAuthStore.getState().loadSession();
   }, []);
 
   useEffect(() => {

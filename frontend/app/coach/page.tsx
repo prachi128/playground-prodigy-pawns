@@ -30,7 +30,7 @@ export default function CoachDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    useAuthStore.getState().loadFromStorage();
+    useAuthStore.getState().loadSession();
   }, []);
 
   useEffect(() => {

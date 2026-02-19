@@ -2,40 +2,63 @@
 
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Use localhost (not 127.0.0.1) to match frontend origin for cookie-based auth
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Create axios instance
+// Create axios instance (Cookie-Based Session Auth: cookies sent via withCredentials)
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add token to requests if available
-api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
+// 401 handling: try refresh once, then redirect to login
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (v?: unknown) => void; reject: (e: unknown) => void }> = [];
 
-// Response interceptor for handling errors
+const processQueue = (err: unknown, token: string | null = null) => {
+  failedQueue.forEach((p) => (err ? p.reject(err) : p.resolve(token)));
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+  async (error) => {
+    const originalRequest = error.config;
+    const isSessionCheck = originalRequest?.url?.includes('/api/auth/me') && originalRequest?.method === 'get';
+    if (isSessionCheck) {
+      return Promise.reject(error);
+    }
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
         window.location.href = '/login';
       }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then(() => api(originalRequest))
+        .catch((e) => Promise.reject(e));
+    }
+    originalRequest._retry = true;
+    isRefreshing = true;
+    try {
+      await api.post('/api/auth/refresh');
+      processQueue(null, null);
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
@@ -56,8 +79,6 @@ export interface User {
 }
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: string;
   user: User;
 }
 
@@ -129,6 +150,15 @@ export const authAPI = {
   getCurrentUser: async (): Promise<User> => {
     const response = await api.get('/api/auth/me');
     return response.data;
+  },
+
+  refresh: async (): Promise<{ user: User }> => {
+    const response = await api.post('/api/auth/refresh');
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/api/auth/logout');
   },
 };
 
