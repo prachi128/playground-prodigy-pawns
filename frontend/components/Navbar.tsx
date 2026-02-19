@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { Trophy, Sparkles, LogOut, User, Puzzle, Home } from 'lucide-react';
+import { Trophy, Sparkles, LogOut, User, Puzzle, Home, LogIn, UserPlus } from 'lucide-react';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -75,8 +75,8 @@ export default function Navbar() {
             ) : null}
           </div>
 
-          {/* User Menu */}
-          {isAuthenticated && user && (
+          {/* User Menu / Auth Links */}
+          {isAuthenticated && user ? (
             <div className="flex items-center gap-4">
               {/* XP and Level Badge */}
               <div className="hidden sm:flex items-center gap-3 bg-white/20 px-4 py-2 rounded-full">
@@ -103,6 +103,23 @@ export default function Navbar() {
                   <span className="hidden sm:inline">Logout</span>
                 </button>
               </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/login"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white hover:bg-white/20 transition-all"
+              >
+                <LogIn className="w-5 h-5" />
+                <span className="hidden sm:inline">Login</span>
+              </Link>
+              <Link
+                href="/signup"
+                className="flex items-center gap-2 bg-white text-primary-700 px-4 py-2 rounded-lg font-semibold shadow-lg hover:bg-white/90 transition-all"
+              >
+                <UserPlus className="w-5 h-5" />
+                <span className="hidden sm:inline">Sign up</span>
+              </Link>
             </div>
           )}
         </div>
@@ -140,6 +157,24 @@ export default function Navbar() {
               👨‍🏫 Coach
             </Link>
           ) : null}
+          {!isAuthenticated && (
+            <>
+              <Link
+                href="/login"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-white bg-white/10"
+              >
+                <LogIn className="w-4 h-4" />
+                Login
+              </Link>
+              <Link
+                href="/signup"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap bg-white text-primary-700 shadow-lg"
+              >
+                <UserPlus className="w-4 h-4" />
+                Sign up
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </nav>
