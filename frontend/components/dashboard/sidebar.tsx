@@ -67,10 +67,6 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
     }
   }, [collapsed, onCollapsedChange])
 
-  const handleQuickPlay = useCallback(() => {
-    // Keep student behavior of sending to puzzles, but retain v1 layout
-    router.push("/puzzles")
-  }, [router])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -78,28 +74,16 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
     router.push("/login")
   }, [logout, onClose, router])
 
-  // Keyboard shortcuts: Escape closes, "Q" triggers Quick Play (from v1)
+  // Keyboard shortcuts: Escape closes sidebar
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose()
     }
-    const handleQuickPlayKey = (e: KeyboardEvent) => {
-      if ((e.key === "q" || e.key === "Q") && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Only trigger if not typing in an input
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-          return
-        }
-        e.preventDefault()
-        handleQuickPlay()
-      }
-    }
     document.addEventListener("keydown", handleEscape)
-    document.addEventListener("keydown", handleQuickPlayKey)
     return () => {
       document.removeEventListener("keydown", handleEscape)
-      document.removeEventListener("keydown", handleQuickPlayKey)
     }
-  }, [onClose, handleQuickPlay])
+  }, [onClose])
 
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
   const rating = user?.rating ?? 0
@@ -228,38 +212,6 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                 className="h-full w-full object-cover"
               />
             </div>
-          </div>
-        )}
-
-        {/* Quick Play button (matches v1 layout, keeps puzzles route) */}
-        {!collapsed && (
-          <div className="px-3 pb-3">
-            <button
-              onClick={handleQuickPlay}
-              className="group relative flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 px-3 py-4 font-heading text-lg font-bold text-white shadow-xl transition-all duration-150 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/70 active:scale-95 animate-quick-play-pulse"
-              aria-label="Quick Play (Press Q)"
-            >
-              <span className="flex items-center gap-2">
-                Quick Play
-                <span className="inline-flex items-center justify-center rounded-md bg-white/20 px-1.5 py-0.5 text-xs font-semibold backdrop-blur-sm">
-                  Q
-                </span>
-              </span>
-            </button>
-          </div>
-        )}
-
-        {/* Collapsed Quick Play icon with tooltip */}
-        {collapsed && (
-          <div className="flex justify-center px-2 pb-3">
-            <button
-              onClick={handleQuickPlay}
-              className="group relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 shadow-xl transition-all duration-150 hover:scale-105 hover:shadow-2xl hover:shadow-orange-500/70 active:scale-95 animate-quick-play-pulse"
-              aria-label="Quick Play (Press Q)"
-              title="Quick Play (Press Q)"
-            >
-              <Swords className="h-7 w-7 text-white" />
-            </button>
           </div>
         )}
 
