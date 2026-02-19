@@ -1,21 +1,18 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import {
   Gamepad2,
   Puzzle,
   GraduationCap,
   Swords,
   TrendingUp,
-  Settings,
   Flame,
   Star,
   X,
   Map,
   Zap,
-  Users,
-  Users2,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -23,15 +20,12 @@ import {
 import { useAuthStore } from "@/lib/store"
 
 const navItems = [
-  { label: "Home", icon: Gamepad2, href: "/dashboard", active: true, color: "text-yellow-400", badge: null, progress: null },
-  { label: "Adventure", icon: Map, href: "/adventure", active: false, color: "text-amber-400", badge: null, progress: null },
-  { label: "Play", icon: Swords, href: "/play", active: false, color: "text-orange-400", badge: null, progress: null },
-  { label: "Puzzles", icon: Puzzle, href: "/puzzles", active: false, color: "text-cyan-400", badge: "3 new", progress: 64 },
-  { label: "Learn", icon: GraduationCap, href: "/learn", active: false, color: "text-pink-400", badge: "1 new", progress: 45 },
-  { label: "Progress", icon: TrendingUp, href: "/progress", active: false, color: "text-emerald-300", badge: null, progress: 87 },
-  { label: "Friends", icon: Users, href: "/friends", active: false, color: "text-blue-400", badge: "2 online", progress: null },
-  { label: "Class", icon: Users2, href: "/class", active: false, color: "text-purple-400", badge: null, progress: null },
-  { label: "Settings", icon: Settings, href: "/settings", active: false, color: "text-slate-400", badge: null, progress: null },
+  { label: "Home", icon: Gamepad2, href: "/dashboard", color: "text-yellow-400", badge: null, progress: null },
+  { label: "Adventure", icon: Map, href: "/adventure", color: "text-amber-400", badge: null, progress: null },
+  { label: "Play", icon: Swords, href: "/play", color: "text-orange-400", badge: null, progress: null },
+  { label: "Puzzles", icon: Puzzle, href: "/puzzles", color: "text-cyan-400", badge: "3 new", progress: 64 },
+  { label: "Learn", icon: GraduationCap, href: "/learn", color: "text-pink-400", badge: "1 new", progress: 45 },
+  { label: "Progress", icon: TrendingUp, href: "/progress", color: "text-emerald-300", badge: null, progress: 87 },
 ]
 
 interface SidebarProps {
@@ -43,6 +37,7 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onCollapsedChange }: SidebarProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { user, logout } = useAuthStore()
 
   // Internal collapsed state (mirrors v1 sidebar)
@@ -273,6 +268,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
           <ul className="flex flex-col gap-2" role="list">
             {navItems.map((item) => {
               const Icon = item.icon
+              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href))
 
               const menuItem = (
                 <a
@@ -284,21 +280,21 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                   className={`group relative flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-base transition-all duration-150 ${
                     collapsed ? "justify-center px-3" : ""
                   } ${
-                    item.active
+                    isActive
                       ? "scale-[1.02] bg-white/15 font-semibold text-white shadow-md"
                       : "text-sidebar-foreground/70 hover:translate-x-1 hover:bg-white/8 hover:text-sidebar-foreground/90"
                   }`}
-                  aria-current={item.active ? "page" : undefined}
+                  aria-current={isActive ? "page" : undefined}
                 >
                   {/* Active left border */}
-                  {item.active && (
+                  {isActive && (
                     <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]" />
                   )}
 
                   <Icon
                     className={`h-7 w-7 shrink-0 transition-all duration-150 ${
-                      item.active ? "text-yellow-400" : item.color
-                    } ${!item.active ? "group-hover:opacity-90" : ""}`}
+                      isActive ? "text-yellow-400" : item.color
+                    } ${!isActive ? "group-hover:opacity-90" : ""}`}
                   />
 
                   {!collapsed && (

@@ -13,8 +13,10 @@ import {
   X,
   Info,
   CheckCheck,
+  Settings,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
+import { useRouter } from "next/navigation"
 
 type NotificationCategory = "coach" | "achievement" | "system"
 
@@ -56,6 +58,7 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const router = useRouter()
   const { user } = useAuthStore()
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
   const [isOpen, setIsOpen] = useState(false)
@@ -160,6 +163,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
           <span className="hidden font-heading text-sm font-bold text-white sm:inline">0</span>
         </div>
+
+        <button
+          onClick={() => router.push("/settings")}
+          className="rounded-xl p-2.5 text-white/80 transition-all hover:scale-110 hover:bg-white/10 hover:text-white"
+          aria-label="Settings"
+        >
+          <Settings className="h-6 w-6" />
+        </button>
 
         <div className="relative" ref={dropdownRef}>
           <button onClick={handleBellClick} className="relative rounded-xl p-2.5 text-white/80 transition-all hover:scale-110 hover:bg-white/10 hover:text-white" aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`} aria-expanded={isOpen} aria-haspopup="true">

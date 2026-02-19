@@ -4,11 +4,19 @@ import { usePathname } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 
 /**
- * Shows the main Navbar only when not on the student dashboard.
- * The dashboard has its own sidebar + header, so we hide the top Navbar there.
+ * Shows the main Navbar only when not on student app routes.
+ * Student app routes (dashboard, play, leaderboard) have their own sidebar + header,
+ * so we hide the top Navbar there.
  */
 export default function ConditionalNavbar() {
   const pathname = usePathname();
-  if (pathname?.startsWith('/dashboard')) return null;
+  
+  // Routes that use the dashboard theme (sidebar + header)
+  const studentAppRoutes = ['/dashboard', '/play', '/leaderboard', '/adventure', '/learn', '/progress', '/settings'];
+  
+  if (studentAppRoutes.some(route => pathname?.startsWith(route))) {
+    return null;
+  }
+  
   return <Navbar />;
 }
