@@ -1,4 +1,4 @@
-// app/puzzles/page.tsx - Puzzles List (Updated to navigate to full page)
+// app/puzzles-legacy/page.tsx - Original Puzzles List (kept for reference, not in use)
 
 'use client';
 
@@ -10,7 +10,7 @@ import { getDifficultyColor, getThemeEmoji } from '@/lib/utils';
 import { Puzzle as PuzzleIcon, Loader2, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function PuzzlesPage() {
+export default function PuzzlesLegacyPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   
@@ -102,7 +102,7 @@ export default function PuzzlesPage() {
           {puzzles.map((puzzle) => (
             <div
               key={puzzle.id}
-              onClick={() => router.push(`/puzzles/${puzzle.id}`)}
+              onClick={() => router.push(`/puzzles-legacy/${puzzle.id}`)}
               className="bg-white rounded-xl p-4 shadow-lg border-3 border-gray-200 hover:border-primary-400 transition-all hover:shadow-xl cursor-pointer transform hover:scale-105"
             >
               <div className="flex items-start justify-between mb-2">

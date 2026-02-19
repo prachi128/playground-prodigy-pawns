@@ -1,4 +1,4 @@
-// app/puzzles/[id]/page.tsx - Full Page Puzzle Solver
+// app/puzzles-legacy/[id]/page.tsx - Original Full Page Puzzle Solver (kept for reference, not in use)
 
 'use client';
 
@@ -14,7 +14,7 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
 
-export default function PuzzleSolvePage() {
+export default function PuzzleSolveLegacyPage() {
   const router = useRouter();
   const params = useParams();
   const puzzleId = parseInt(params.id as string);
@@ -37,17 +37,14 @@ export default function PuzzleSolvePage() {
   const loadPuzzle = async () => {
     try {
       const data = await puzzleAPI.getById(puzzleId);
-      console.log('Puzzle loaded:', data);
-      console.log('FEN position:', data.fen);
       setPuzzle(data);
       const chess = new Chess(data.fen);
-      console.log('Chess position loaded:', chess.fen());
       setGame(chess);
       setStartTime(Date.now());
     } catch (error) {
       console.error('Failed to load puzzle:', error);
       toast.error('Failed to load puzzle');
-      router.push('/puzzles');
+      router.push('/puzzles-legacy');
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +66,6 @@ export default function PuzzleSolvePage() {
       setMovesMade(newMoves);
       setGame(new Chess(game.fen()));
 
-      // Check if solution is correct
       const solutionMoves = puzzle.moves.split(' ');
       const isComplete = newMoves.length >= solutionMoves.length;
       const isSolutionCorrect = newMoves.every((m, i) => {
@@ -101,7 +97,6 @@ export default function PuzzleSolvePage() {
 
       if (solved) {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
-        // Update user XP in store
         if (user) {
           const newXP = user.total_xp + result.xp_earned;
           const newLevel = Math.floor(newXP / 100) + 1;
@@ -118,7 +113,6 @@ export default function PuzzleSolvePage() {
 
   const showHint = () => {
     if (!puzzle) return;
-    
     const solutionMoves = puzzle.moves.split(' ');
     if (movesMade.length < solutionMoves.length) {
       const nextMove = solutionMoves[movesMade.length];
@@ -155,10 +149,9 @@ export default function PuzzleSolvePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50">
       <div className="max-w-6xl mx-auto px-4 py-2">
-        {/* Header */}
         <div className="mb-2">
           <Link
-            href="/puzzles"
+            href="/puzzles-legacy"
             className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 font-semibold text-xs mb-2"
           >
             <ArrowLeft className="w-3 h-3" />
@@ -179,9 +172,7 @@ export default function PuzzleSolvePage() {
           </div>
         </div>
 
-        {/* Main Content Grid */}
         <div className="grid lg:grid-cols-3 gap-3">
-          {/* Chess Board - Takes 2 columns */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl p-2 shadow-xl border-3 border-gray-200">
               <div className="w-full max-w-[350px] mx-auto">
@@ -205,7 +196,6 @@ export default function PuzzleSolvePage() {
             </div>
           </div>
 
-          {/* Info Panel - Takes 1 column */}
           <div className="space-y-2">
             <HintSystem
               puzzleId={puzzleId}
@@ -214,7 +204,6 @@ export default function PuzzleSolvePage() {
               onXPDeducted={(newXP) => setUserXP(newXP)}
             />
 
-            {/* Status Card */}
             {isCorrect !== null && (
               <div
                 className={`p-3 rounded-xl border-3 ${
@@ -247,7 +236,7 @@ export default function PuzzleSolvePage() {
                 
                 {isCorrect && (
                   <Link
-                    href="/puzzles"
+                    href="/puzzles-legacy"
                     className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
                   >
                     <Trophy className="w-3 h-3" />
@@ -257,10 +246,8 @@ export default function PuzzleSolvePage() {
               </div>
             )}
 
-            {/* Puzzle Info */}
             <div className="bg-white rounded-xl p-3 shadow-lg border-3 border-gray-200">
               <h3 className="font-bold text-gray-800 mb-2 text-sm">Puzzle Info</h3>
-              
               <div className="space-y-1.5">
                 <div>
                   <p className="text-xs text-gray-600 mb-0.5">Difficulty</p>
@@ -272,7 +259,6 @@ export default function PuzzleSolvePage() {
                     {puzzle.difficulty}
                   </span>
                 </div>
-
                 {puzzle.theme && (
                   <div>
                     <p className="text-xs text-gray-600 mb-0.5">Theme</p>
@@ -281,12 +267,10 @@ export default function PuzzleSolvePage() {
                     </span>
                   </div>
                 )}
-
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-gray-600">Rating:</span>
                   <span className="font-bold text-gray-800 text-xs">{puzzle.rating}</span>
                 </div>
-
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-gray-600">Success:</span>
                   <span className="font-bold text-gray-800 text-xs">
@@ -299,7 +283,6 @@ export default function PuzzleSolvePage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="space-y-2">
               <button
                 onClick={showHint}
@@ -309,7 +292,6 @@ export default function PuzzleSolvePage() {
                 <Lightbulb className="w-3 h-3" />
                 Hint (-2 XP)
               </button>
-
               <button
                 onClick={resetPuzzle}
                 disabled={isCorrect !== null}
@@ -320,7 +302,6 @@ export default function PuzzleSolvePage() {
               </button>
             </div>
 
-            {/* Stats */}
             <div className="bg-white rounded-xl p-3 shadow-lg border-3 border-gray-200">
               <h3 className="font-bold text-gray-800 mb-1.5 text-sm">Progress</h3>
               <div className="space-y-1 text-xs">
@@ -346,4 +327,3 @@ export default function PuzzleSolvePage() {
     </div>
   );
 }
-
