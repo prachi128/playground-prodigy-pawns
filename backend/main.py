@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 # Import models and utilities
-from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole
+from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite
 from database import get_db
 from auth import (
     get_password_hash,
@@ -31,7 +31,12 @@ from schemas import (
     DailyChallengeResponse,
     PuzzleAttemptCreate,
     PuzzleAttemptResponse,
-    UserUpdate
+    UserUpdate,
+    GameInviteCreate,
+    GameInviteResponse,
+    GameInviteAccept,
+    GameCreate,
+    GameMoveCreate
 )
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
@@ -55,6 +60,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(coach_router)
+
 
 # Cookie settings for auth (Cookie-Based Session Auth)
 def _cookie_attrs():
@@ -219,6 +225,52 @@ def get_current_user_info(
     return user
 
 # ==================== USER ENDPOINTS ====================
+
+# IMPORTANT: /api/users/search must come BEFORE /api/users/{user_id} to avoid route conflicts
+@app.get("/api/users/search")
+def search_users(
+    query: str = Query("", description="Search query (username or full name)"),
+    limit: int = 20,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Search for users/students by username or full name"""
+    # Return empty list if query is None, empty, or too short
+    if not query or not query.strip() or len(query.strip()) < 2:
+        return []
+    
+    # Handle empty string case
+    query = query.strip()
+    
+    # Ensure limit is within reasonable bounds
+    if limit < 1:
+        limit = 1
+    if limit > 100:
+        limit = 100
+    
+    search_term = f"%{query.lower()}%"
+    users = db.query(User).filter(
+        User.role == UserRole.student,
+        User.is_active == True,
+        User.id != current_user_id,
+        (
+            User.username.ilike(search_term) |
+            User.full_name.ilike(search_term)
+        )
+    ).limit(limit).all()
+    
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
+            "level": user.level,
+            "rating": user.rating,
+            "total_xp": user.total_xp
+        }
+        for user in users
+    ]
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int, db: Session = Depends(get_db)):
@@ -493,6 +545,301 @@ def get_games(
     
     games = query.order_by(Game.started_at.desc()).offset(skip).limit(limit).all()
     return games
+
+@app.get("/api/games/{game_id}", response_model=GameResponse)
+def get_game(
+    game_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a specific game by ID"""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Check if user is part of this game
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+    
+    return game
+
+@app.post("/api/games", response_model=GameResponse)
+def create_game(
+    game_data: GameCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new game"""
+    # Verify both players exist
+    white_player = db.query(User).filter(User.id == game_data.white_player_id).first()
+    black_player = db.query(User).filter(User.id == game_data.black_player_id).first()
+    
+    if not white_player or not black_player:
+        raise HTTPException(status_code=404, detail="One or both players not found")
+    
+    # Verify current user is one of the players
+    if current_user_id != game_data.white_player_id and current_user_id != game_data.black_player_id:
+        raise HTTPException(status_code=403, detail="You can only create games you are part of")
+    
+    new_game = Game(
+        white_player_id=game_data.white_player_id,
+        black_player_id=game_data.black_player_id,
+        time_control=game_data.time_control
+    )
+    db.add(new_game)
+    db.commit()
+    db.refresh(new_game)
+    return new_game
+
+@app.post("/api/games/{game_id}/move", response_model=GameResponse)
+def make_move(
+    game_id: int,
+    move_data: GameMoveCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Make a move in a chess game"""
+    import chess
+    import chess.pgn
+    
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Check if user is part of this game
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+    
+    # Check if game has ended
+    if game.result:
+        raise HTTPException(status_code=400, detail="Game has already ended")
+    
+    # Initialize chess board
+    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    
+    # Replay existing moves from PGN if available
+    if game.pgn:
+        try:
+            pgn_io = chess.pgn.StringIO(game.pgn)
+            game_node = chess.pgn.read_game(pgn_io)
+            if game_node:
+                board = game_node.board()
+        except:
+            # If PGN parsing fails, start fresh
+            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    
+    # Determine whose turn it is
+    is_white_turn = board.turn == chess.WHITE
+    is_current_user_white = game.white_player_id == current_user_id
+    
+    if is_white_turn != is_current_user_white:
+        raise HTTPException(status_code=400, detail="It's not your turn")
+    
+    # Create move in UCI format (e.g., "e2e4" or "e7e8q" for promotion)
+    # Only add promotion if the move actually requires it (pawn reaching 8th/1st rank)
+    from_square = chess.parse_square(move_data.from_square)
+    to_square = chess.parse_square(move_data.to_square)
+    
+    # Check if this is a promotion move
+    is_promotion_square = chess.square_rank(to_square) in [0, 7]  # 1st or 8th rank
+    piece = board.piece_at(from_square)
+    is_pawn = piece and piece.piece_type == chess.PAWN
+    
+    move_uci = f"{move_data.from_square}{move_data.to_square}"
+    # Only add promotion suffix if it's actually a promotion move
+    if is_pawn and is_promotion_square and move_data.promotion:
+        move_uci += move_data.promotion.lower()
+    
+    try:
+        move = board.push(chess.Move.from_uci(move_uci))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid move: {move_uci} - {str(e)}")
+    
+    # Update game state
+    game.total_moves += 1
+    game.final_fen = board.fen()
+    
+    # Update PGN - rebuild from scratch by replaying all moves
+    # Create a fresh board and replay all moves to build PGN correctly
+    pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    pgn_game = chess.pgn.Game()
+    pgn_game.setup(pgn_board)
+    node = pgn_game
+    
+    # Replay all moves from the move stack
+    for move_in_stack in board.move_stack:
+        # Add the move to the PGN node
+        # The add_variation method automatically applies the move to the board
+        node = node.add_variation(move_in_stack)
+        # Also apply to our tracking board
+        pgn_board.push(move_in_stack)
+    
+    # Export PGN
+    exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
+    game.pgn = str(pgn_game.accept(exporter)).strip()
+    
+    # Check for game end conditions
+    if board.is_checkmate():
+        game.result = "1-0" if is_current_user_white else "0-1"
+        game.winner_id = current_user_id
+        game.ended_at = datetime.utcnow()
+    elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
+        game.result = "1/2-1/2"
+        game.ended_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(game)
+    return game
+
+# ==================== USER SEARCH ENDPOINTS ====================
+# Note: search endpoint is defined above in USER ENDPOINTS section to avoid route conflicts
+
+# ==================== GAME INVITE ENDPOINTS ====================
+
+@app.post("/api/game-invites", response_model=GameInviteResponse)
+def create_game_invite(
+    invite_data: GameInviteCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a game invite"""
+    # Verify invitee exists and is a student
+    invitee = db.query(User).filter(User.id == invite_data.invitee_id).first()
+    if not invitee:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if invitee.role != UserRole.student:
+        raise HTTPException(status_code=400, detail="Can only invite students")
+    
+    if invite_data.invitee_id == current_user_id:
+        raise HTTPException(status_code=400, detail="Cannot invite yourself")
+    
+    # Check for existing pending invite
+    existing_invite = db.query(GameInvite).filter(
+        GameInvite.inviter_id == current_user_id,
+        GameInvite.invitee_id == invite_data.invitee_id,
+        GameInvite.status == "pending"
+    ).first()
+    
+    if existing_invite:
+        raise HTTPException(status_code=400, detail="You already have a pending invite with this user")
+    
+    # Create new invite
+    new_invite = GameInvite(
+        inviter_id=current_user_id,
+        invitee_id=invite_data.invitee_id,
+        expires_at=datetime.utcnow() + timedelta(hours=24)
+    )
+    db.add(new_invite)
+    db.commit()
+    db.refresh(new_invite)
+    
+    # Load relationships for response
+    db.refresh(new_invite)
+    inviter = db.query(User).filter(User.id == current_user_id).first()
+    invitee_user = db.query(User).filter(User.id == invite_data.invitee_id).first()
+    
+    response_data = GameInviteResponse.model_validate(new_invite).model_dump(mode="json")
+    response_data["inviter"] = UserResponse.model_validate(inviter).model_dump(mode="json")
+    response_data["invitee"] = UserResponse.model_validate(invitee_user).model_dump(mode="json")
+    
+    return response_data
+
+@app.get("/api/game-invites", response_model=List[GameInviteResponse])
+def get_game_invites(
+    status: Optional[str] = None,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get game invites for current user (sent or received)"""
+    query = db.query(GameInvite).filter(
+        (GameInvite.inviter_id == current_user_id) | (GameInvite.invitee_id == current_user_id)
+    )
+    
+    if status:
+        query = query.filter(GameInvite.status == status)
+    
+    invites = query.order_by(GameInvite.created_at.desc()).all()
+    
+    result = []
+    for invite in invites:
+        inviter = db.query(User).filter(User.id == invite.inviter_id).first()
+        invitee = db.query(User).filter(User.id == invite.invitee_id).first()
+        
+        invite_data = GameInviteResponse.model_validate(invite).model_dump(mode="json")
+        invite_data["inviter"] = UserResponse.model_validate(inviter).model_dump(mode="json")
+        invite_data["invitee"] = UserResponse.model_validate(invitee).model_dump(mode="json")
+        result.append(invite_data)
+    
+    return result
+
+@app.post("/api/game-invites/{invite_id}/accept", response_model=GameResponse)
+def accept_game_invite(
+    invite_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Accept a game invite and create the game"""
+    invite = db.query(GameInvite).filter(GameInvite.id == invite_id).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    
+    # Verify current user is the invitee
+    if invite.invitee_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only accept invites sent to you")
+    
+    # Verify invite is still pending
+    if invite.status != "pending":
+        raise HTTPException(status_code=400, detail="Invite has already been responded to")
+    
+    # Check if invite expired
+    if invite.expires_at and invite.expires_at < datetime.utcnow():
+        invite.status = "expired"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invite has expired")
+    
+    # Create the game
+    new_game = Game(
+        white_player_id=invite.inviter_id,
+        black_player_id=invite.invitee_id,
+        time_control="unlimited"
+    )
+    db.add(new_game)
+    db.commit()
+    db.refresh(new_game)
+    
+    # Update invite status
+    invite.status = "accepted"
+    invite.game_id = new_game.id
+    invite.responded_at = datetime.utcnow()
+    db.commit()
+    
+    return new_game
+
+@app.post("/api/game-invites/{invite_id}/reject")
+def reject_game_invite(
+    invite_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reject a game invite"""
+    invite = db.query(GameInvite).filter(GameInvite.id == invite_id).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    
+    # Verify current user is the invitee
+    if invite.invitee_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You can only reject invites sent to you")
+    
+    # Verify invite is still pending
+    if invite.status != "pending":
+        raise HTTPException(status_code=400, detail="Invite has already been responded to")
+    
+    invite.status = "rejected"
+    invite.responded_at = datetime.utcnow()
+    db.commit()
+    
+    return {"message": "Invite rejected"}
 
 # ==================== ACHIEVEMENT ENDPOINTS ====================
 

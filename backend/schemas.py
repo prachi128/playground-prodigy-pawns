@@ -103,9 +103,17 @@ class GameResponse(BaseModel):
     total_moves: int
     started_at: datetime
     ended_at: Optional[datetime]
+    pgn: Optional[str] = None
+    starting_fen: Optional[str] = None
+    final_fen: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+class GameMoveCreate(BaseModel):
+    from_square: str
+    to_square: str
+    promotion: Optional[str] = None
 
 # Achievement Schema
 class AchievementResponse(BaseModel):
@@ -152,3 +160,24 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
     age: Optional[int] = None
+
+# Game Invite Schemas
+class GameInviteCreate(BaseModel):
+    invitee_id: int
+
+class GameInviteResponse(BaseModel):
+    id: int
+    inviter_id: int
+    invitee_id: int
+    status: str
+    game_id: Optional[int]
+    created_at: datetime
+    responded_at: Optional[datetime]
+    inviter: Optional[UserResponse] = None
+    invitee: Optional[UserResponse] = None
+    
+    class Config:
+        from_attributes = True
+
+class GameInviteAccept(BaseModel):
+    invite_id: int

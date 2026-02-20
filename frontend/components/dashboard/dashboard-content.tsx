@@ -33,7 +33,7 @@ const actionCards = [
     gradient: "from-orange-400 to-pink-500",
     borderColor: "border-orange-300",
     emoji: "\u2694\uFE0F",
-    href: "/puzzles",
+    href: "/chess-game",
   },
   {
     title: "Solve This!",

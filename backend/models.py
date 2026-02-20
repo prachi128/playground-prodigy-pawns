@@ -271,3 +271,27 @@ class PuzzleRaceAttempt(Base):
     
     # Relationships
     race = relationship("PuzzleRace", back_populates="race_attempts")
+
+# Game Invite Model
+class GameInvite(Base):
+    __tablename__ = "game_invites"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    invitee_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Invite status: pending, accepted, rejected, expired
+    status = Column(String, default="pending")
+    
+    # Game details (set when invite is accepted)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    responded_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    inviter = relationship("User", foreign_keys=[inviter_id])
+    invitee = relationship("User", foreign_keys=[invitee_id])
+    game = relationship("Game", foreign_keys=[game_id])

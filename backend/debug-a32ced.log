@@ -1,0 +1,1 @@
+{"sessionId": "a32ced", "location": "main.py:555", "message": "Backend: search_users endpoint reached", "data": {"query": "diana", "query_type": "str", "limit": 20, "limit_type": "int", "current_user_id": 1}, "timestamp": 1771592885210, "runId": "run1", "hypothesisId": "D"}

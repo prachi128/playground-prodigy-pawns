@@ -235,6 +235,121 @@ export const dailyChallengeAPI = {
   },
 };
 
+// Game API
+export interface GameInvite {
+  id: number;
+  inviter_id: number;
+  invitee_id: number;
+  status: string;
+  game_id?: number;
+  created_at: string;
+  responded_at?: string;
+  inviter?: User;
+  invitee?: User;
+}
+
+export interface GameInviteCreate {
+  invitee_id: number;
+}
+
+export interface Game {
+  id: number;
+  white_player_id: number;
+  black_player_id: number;
+  result?: string;
+  time_control: string;
+  total_moves: number;
+  started_at: string;
+  ended_at?: string;
+  pgn?: string;
+  starting_fen?: string;
+  final_fen?: string;
+  winner_id?: number;
+}
+
+export const gameAPI = {
+  getGames: async (): Promise<Game[]> => {
+    const response = await api.get('/api/games');
+    return response.data;
+  },
+
+  getGame: async (gameId: number): Promise<Game> => {
+    const response = await api.get(`/api/games/${gameId}`);
+    return response.data;
+  },
+
+  createGame: async (data: { white_player_id: number; black_player_id: number; time_control: string }): Promise<Game> => {
+    const response = await api.post('/api/games', data);
+    return response.data;
+  },
+
+  searchUsers: async (query: string, limit: number = 20): Promise<User[]> => {
+    // Don't make API call if query is too short
+    if (!query || query.trim().length < 2) {
+      return [];
+    }
+    
+    // Ensure limit is a valid number
+    const validLimit = Math.max(1, Math.min(100, limit || 20));
+    const trimmedQuery = query.trim();
+    
+    try {
+      const response = await api.get(`/api/users/search`, {
+        params: {
+          query: trimmedQuery,
+          limit: validLimit
+        }
+      });
+      return response.data;
+    } catch (error: any) {
+      // Log detailed error for debugging
+      const errorDetails = {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        query: trimmedQuery,
+        limit: validLimit,
+        url: error.config?.url,
+        params: error.config?.params
+      };
+      console.error('Search users API error:', errorDetails);
+      // Log the full error object
+      console.error('Full error object:', error);
+      throw error;
+    }
+  },
+
+  createInvite: async (inviteeId: number): Promise<GameInvite> => {
+    const response = await api.post('/api/game-invites', { invitee_id: inviteeId });
+    return response.data;
+  },
+
+  getInvites: async (status?: string): Promise<GameInvite[]> => {
+    const params = status ? `?status=${status}` : '';
+    const response = await api.get(`/api/game-invites${params}`);
+    return response.data;
+  },
+
+  acceptInvite: async (inviteId: number): Promise<Game> => {
+    const response = await api.post(`/api/game-invites/${inviteId}/accept`);
+    return response.data;
+  },
+
+  rejectInvite: async (inviteId: number): Promise<void> => {
+    await api.post(`/api/game-invites/${inviteId}/reject`);
+  },
+
+  makeMove: async (gameId: number, move: { from: string; to: string; promotion?: string }): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/move`, {
+      from_square: move.from,
+      to_square: move.to,
+      promotion: move.promotion || undefined,
+    });
+    return response.data;
+  },
+};
+
 // Coach API
 export const coachAPI = {
   // Get coach statistics
