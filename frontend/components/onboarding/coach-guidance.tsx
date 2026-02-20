@@ -17,7 +17,8 @@ export function CoachGuidance({ trigger }: CoachPromptProps) {
   const [isVisible, setIsVisible] = useState(true)
   const prompt = prompts[trigger]
 
-  if (!isVisible) return null
+  // Hide idle trigger (Quick Play bouncing option) for now
+  if (trigger === 'idle' || !isVisible) return null
 
   return (
     <div className="fixed bottom-8 right-8 z-40 max-w-sm animate-bounce">
