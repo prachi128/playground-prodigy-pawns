@@ -51,7 +51,7 @@ const actionCards = [
     gradient: "from-purple-400 to-indigo-500",
     borderColor: "border-purple-300",
     emoji: "\uD83E\uDD16",
-    href: "/puzzles",
+    href: "/beat-the-bot",
   },
 ]
 

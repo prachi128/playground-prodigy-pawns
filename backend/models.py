@@ -108,6 +108,10 @@ class Game(Base):
     final_fen = Column(String)
     total_moves = Column(Integer, default=0)
     
+    # Bot game metadata (optional, only for bot games)
+    bot_difficulty = Column(String, nullable=True)
+    bot_depth = Column(Integer, nullable=True)
+    
     # XP rewards
     xp_awarded_white = Column(Integer, default=0)
     xp_awarded_black = Column(Integer, default=0)

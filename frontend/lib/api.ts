@@ -265,6 +265,8 @@ export interface Game {
   starting_fen?: string;
   final_fen?: string;
   winner_id?: number;
+  bot_difficulty?: string;
+  bot_depth?: number;
 }
 
 export const gameAPI = {
@@ -346,6 +348,16 @@ export const gameAPI = {
       to_square: move.to,
       promotion: move.promotion || undefined,
     });
+    return response.data;
+  },
+
+  createBotGame: async (data: { bot_difficulty: string; bot_depth: number; player_color: 'white' | 'black' }): Promise<Game> => {
+    const response = await api.post('/api/games/bot', data);
+    return response.data;
+  },
+
+  getBotMove: async (gameId: number): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/bot-move`);
     return response.data;
   },
 };

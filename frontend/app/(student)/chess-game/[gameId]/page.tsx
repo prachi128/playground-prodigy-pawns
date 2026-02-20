@@ -28,6 +28,20 @@ export default function ChessGamePage() {
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [gameStatus, setGameStatus] = useState<string>('');
   const [isMakingMove, setIsMakingMove] = useState(false);
+  const [isBotGame, setIsBotGame] = useState(false);
+  const [botName, setBotName] = useState<string>('Pawny');
+  const [botAvatar, setBotAvatar] = useState<string>('♟️');
+  
+  // Map bot difficulty to friendly name and avatar
+  const getBotInfo = (difficulty: string | null | undefined): { name: string; avatar: string } => {
+    if (!difficulty) return { name: 'Pawny', avatar: '♟️' };
+    const difficultyLower = difficulty.toLowerCase();
+    if (difficultyLower === 'beginner') return { name: 'Pawny', avatar: '♟️' };
+    if (difficultyLower === 'intermediate') return { name: 'Knighty', avatar: '♞' };
+    if (difficultyLower === 'advanced') return { name: 'Rookie', avatar: '♜' };
+    if (difficultyLower === 'expert') return { name: 'Queen Chess', avatar: '♛' };
+    return { name: 'Pawny', avatar: '♟️' };
+  };
   const lastMoveCountRef = useRef<number>(0);
 
   useEffect(() => {
@@ -48,15 +62,46 @@ export default function ChessGamePage() {
       setChess(chessInstance);
       setChessFen(chessInstance.fen());
       
+      // Check if this is a bot game - we'll check by loading player info
+      // For now, assume it's a bot game if we can't find player info
+      // We'll check this properly after loading player data
+      let isBotGameCheck = false;
+      
       // Determine if it's user's turn
       const isWhite = gameData.white_player_id === user?.id;
+      const isBlack = gameData.black_player_id === user?.id;
       const isWhiteTurn = chessInstance.turn() === 'w';
-      setIsMyTurn(isWhite === isWhiteTurn);
+      setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
       
-      // Load player info (you might want to add an endpoint for this)
-      // For now, we'll just use the IDs
-      setWhitePlayer({ id: gameData.white_player_id });
-      setBlackPlayer({ id: gameData.black_player_id });
+      // Check if this is a bot game by checking if bot_difficulty is set
+      isBotGameCheck = !!gameData.bot_difficulty;
+      setIsBotGame(isBotGameCheck);
+      
+      // Set bot name and avatar if bot game based on difficulty
+      if (isBotGameCheck) {
+        const botInfo = getBotInfo(gameData.bot_difficulty);
+        setBotName(botInfo.name);
+        setBotAvatar(botInfo.avatar);
+      }
+      
+      // Load player info - mark bot players
+      if (isBotGameCheck) {
+        // We need to check which player is the bot
+        // The bot user has username "__BOT__"
+        // For now, we'll check by trying to load player data or use a heuristic
+        // Since we can't easily check here, we'll mark based on game structure
+        // The bot will be the player that's not the current user
+        if (gameData.white_player_id === user?.id) {
+          setWhitePlayer({ id: gameData.white_player_id });
+          setBlackPlayer({ id: gameData.black_player_id, full_name: botName, isBot: true });
+        } else {
+          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, isBot: true });
+          setBlackPlayer({ id: gameData.black_player_id });
+        }
+      } else {
+        setWhitePlayer({ id: gameData.white_player_id });
+        setBlackPlayer({ id: gameData.black_player_id });
+      }
       
       // Set game status
       if (gameData.result) {
@@ -100,9 +145,30 @@ export default function ChessGamePage() {
         lastMoveCountRef.current = currentMoveCount;
 
         // Update turn status
+        const isBotGameCheck = !!updatedGameData.bot_difficulty;
+        
+        // Update bot name and avatar if needed
+        if (isBotGameCheck && updatedGameData.bot_difficulty) {
+          const botInfo = getBotInfo(updatedGameData.bot_difficulty);
+          setBotName(botInfo.name);
+          setBotAvatar(botInfo.avatar);
+        }
         const isWhite = updatedGameData.white_player_id === user.id;
+        const isBlack = updatedGameData.black_player_id === user.id;
         const isWhiteTurn = newChess.turn() === 'w';
-        setIsMyTurn(isWhite === isWhiteTurn);
+        setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
+        
+        // If it's a bot game and bot's turn, trigger bot move
+        if (isBotGameCheck && !isMyTurn && !updatedGameData.result) {
+          setTimeout(async () => {
+            try {
+              await gameAPI.getBotMove(gameId);
+              loadGame();
+            } catch (error) {
+              console.error('Failed to get bot move:', error);
+            }
+          }, 500);
+        }
 
         // Update game status
         if (updatedGameData.result) {
@@ -201,9 +267,32 @@ export default function ChessGamePage() {
         setChessFen(newChess.fen());
 
         // Update turn - check if it's still user's turn
+        const isBotGameCheck = !!updatedGame.bot_difficulty;
+        
+        // Update bot name and avatar if needed
+        if (isBotGameCheck && updatedGame.bot_difficulty) {
+          const botInfo = getBotInfo(updatedGame.bot_difficulty);
+          setBotName(botInfo.name);
+          setBotAvatar(botInfo.avatar);
+        }
         const isWhite = updatedGame.white_player_id === user?.id;
+        const isBlack = updatedGame.black_player_id === user?.id;
         const isWhiteTurn = newChess.turn() === 'w';
-        setIsMyTurn(isWhite === isWhiteTurn);
+        setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
+        
+        // If it's a bot game and bot's turn, trigger bot move
+        if (isBotGameCheck && !isMyTurn && !updatedGame.result) {
+          // Wait a bit then trigger bot move
+          setTimeout(async () => {
+            try {
+              await gameAPI.getBotMove(gameId);
+              // Refresh game state
+              loadGame();
+            } catch (error) {
+              console.error('Failed to get bot move:', error);
+            }
+          }, 500);
+        }
         
         // Check game status
         if (updatedGame.result) {
@@ -269,6 +358,7 @@ export default function ChessGamePage() {
     );
   }
 
+  const isBotGameCheck = !!game.bot_difficulty;
   const isWhite = game.white_player_id === user?.id;
   const isBlack = game.black_player_id === user?.id;
 
@@ -295,15 +385,19 @@ export default function ChessGamePage() {
             {/* Player Info - Black (top) */}
             <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-gray-800 bg-gray-900 p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-white">
-                  {blackPlayer?.full_name?.charAt(0) || 'B'}
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full text-2xl ${
+                  blackPlayer?.isBot 
+                    ? 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg' 
+                    : 'bg-gray-700'
+                } text-white`}>
+                  {blackPlayer?.isBot ? botAvatar : (blackPlayer?.full_name?.charAt(0) || 'B')}
                 </div>
                 <div>
                   <p className="font-heading font-bold text-white">
-                    {isBlack ? 'You (Black)' : 'Opponent (Black)'}
+                    {isBlack ? 'You (Black)' : (blackPlayer?.isBot ? `${botName} (Black)` : 'Opponent (Black)')}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {isBlack && !isMyTurn ? 'Your turn' : isBlack && isMyTurn ? 'Waiting...' : 'Opponent'}
+                    {isBlack && !isMyTurn ? 'Your turn' : isBlack && isMyTurn ? 'Waiting...' : (blackPlayer?.isBot ? 'Bot thinking...' : 'Opponent')}
                   </p>
                 </div>
               </div>
@@ -352,15 +446,19 @@ export default function ChessGamePage() {
             {/* Player Info - White (bottom) */}
             <div className="mt-4 flex items-center justify-between rounded-xl border-2 border-gray-200 bg-white p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-800">
-                  {whitePlayer?.full_name?.charAt(0) || 'W'}
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full text-2xl ${
+                  whitePlayer?.isBot 
+                    ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg' 
+                    : 'bg-gray-100'
+                } text-gray-800`}>
+                  {whitePlayer?.isBot ? botAvatar : (whitePlayer?.full_name?.charAt(0) || 'W')}
                 </div>
                 <div>
                   <p className="font-heading font-bold text-gray-900">
-                    {isWhite ? 'You (White)' : 'Opponent (White)'}
+                    {isWhite ? 'You (White)' : (whitePlayer?.isBot ? `${botName} (White)` : 'Opponent (White)')}
                   </p>
                   <p className="text-xs text-gray-600">
-                    {isWhite && isMyTurn ? 'Your turn' : isWhite && !isMyTurn ? 'Waiting...' : 'Opponent'}
+                    {isWhite && isMyTurn ? 'Your turn' : isWhite && !isMyTurn ? 'Waiting...' : (whitePlayer?.isBot ? 'Bot thinking...' : 'Opponent')}
                   </p>
                 </div>
               </div>

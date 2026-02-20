@@ -106,6 +106,8 @@ class GameResponse(BaseModel):
     pgn: Optional[str] = None
     starting_fen: Optional[str] = None
     final_fen: Optional[str] = None
+    bot_difficulty: Optional[str] = None
+    bot_depth: Optional[int] = None
     
     class Config:
         from_attributes = True
@@ -181,3 +183,9 @@ class GameInviteResponse(BaseModel):
 
 class GameInviteAccept(BaseModel):
     invite_id: int
+
+# Bot Game Schemas
+class BotGameCreate(BaseModel):
+    bot_difficulty: str
+    bot_depth: int
+    player_color: str  # 'white' or 'black'

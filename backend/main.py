@@ -36,7 +36,8 @@ from schemas import (
     GameInviteResponse,
     GameInviteAccept,
     GameCreate,
-    GameMoveCreate
+    GameMoveCreate,
+    BotGameCreate
 )
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
@@ -681,7 +682,13 @@ def make_move(
     # Check for game end conditions
     if board.is_checkmate():
         game.result = "1-0" if is_current_user_white else "0-1"
-        game.winner_id = current_user_id
+        # For bot games, set winner correctly
+        bot_user = get_or_create_bot_user(db)
+        if game.white_player_id == bot_user.id or game.black_player_id == bot_user.id:
+            # This is a bot game - winner is the human player (current_user_id)
+            game.winner_id = current_user_id
+        else:
+            game.winner_id = current_user_id
         game.ended_at = datetime.utcnow()
     elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
         game.result = "1/2-1/2"
@@ -689,7 +696,190 @@ def make_move(
     
     db.commit()
     db.refresh(game)
+    
+    # If this is a bot game, make bot move automatically
+    bot_user = get_or_create_bot_user(db)
+    if game.white_player_id == bot_user.id or game.black_player_id == bot_user.id:
+        # This is a bot game - trigger bot move if it's bot's turn
+        try:
+            _make_bot_move_if_needed(game, db, bot_user.id)
+        except Exception as e:
+            print(f"Error making bot move: {e}")
+            # Don't fail the player's move if bot move fails
+    
     return game
+
+# ==================== BOT GAME ENDPOINTS ====================
+
+def get_or_create_bot_user(db: Session) -> User:
+    """Get or create a special bot user"""
+    # Use a special username to identify bot user
+    bot_user = db.query(User).filter(User.username == "__BOT__").first()
+    if not bot_user:
+        bot_user = User(
+            email="bot@prodigypawns.com",
+            username="__BOT__",
+            full_name="ChessBot",
+            password_hash=get_password_hash("bot_password_not_used"),
+            role=UserRole.student,
+            rating=1000,
+            level=1,
+            total_xp=0,
+            is_active=True
+        )
+        db.add(bot_user)
+        db.commit()
+        db.refresh(bot_user)
+    return bot_user
+
+@app.post("/api/games/bot", response_model=GameResponse)
+def create_bot_game(
+    bot_data: BotGameCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new game against a bot"""
+    import chess
+    
+    bot_user = get_or_create_bot_user(db)
+    
+    # Determine player colors
+    if bot_data.player_color.lower() == 'white':
+        white_player_id = current_user_id
+        black_player_id = bot_user.id
+    else:
+        white_player_id = bot_user.id
+        black_player_id = current_user_id
+    
+    # Create game
+    new_game = Game(
+        white_player_id=white_player_id,
+        black_player_id=black_player_id,
+        time_control="Unlimited",
+        bot_difficulty=bot_data.bot_difficulty,
+        bot_depth=bot_data.bot_depth
+    )
+    db.add(new_game)
+    db.commit()
+    db.refresh(new_game)
+    
+    # If bot plays white, make first move
+    if white_player_id == bot_user.id:
+        try:
+            _make_bot_move_if_needed(new_game, db, bot_user.id)
+            db.refresh(new_game)
+        except Exception as e:
+            print(f"Error making initial bot move: {e}")
+    
+    return new_game
+
+@app.post("/api/games/{game_id}/bot-move", response_model=GameResponse)
+def get_bot_move(
+    game_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get bot's move (triggered automatically after player move)"""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Check if user is part of this game
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+    
+    # Check if this is a bot game
+    bot_user = get_or_create_bot_user(db)
+    if game.white_player_id != bot_user.id and game.black_player_id != bot_user.id:
+        raise HTTPException(status_code=400, detail="This is not a bot game")
+    
+    _make_bot_move_if_needed(game, db, bot_user.id)
+    db.refresh(game)
+    return game
+
+def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
+    """Make bot move if it's bot's turn"""
+    import chess
+    import chess.pgn
+    
+    # Check if game has ended
+    if game.result:
+        return
+    
+    # Initialize chess board
+    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    
+    # Replay existing moves from PGN if available
+    if game.pgn:
+        try:
+            pgn_io = chess.pgn.StringIO(game.pgn)
+            game_node = chess.pgn.read_game(pgn_io)
+            if game_node:
+                board = game_node.board()
+        except:
+            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    
+    # Determine whose turn it is
+    is_white_turn = board.turn == chess.WHITE
+    is_bot_white = game.white_player_id == bot_user_id
+    is_bot_black = game.black_player_id == bot_user_id
+    
+    # Check if it's bot's turn
+    if (is_white_turn and not is_bot_white) or (not is_white_turn and not is_bot_black):
+        return  # Not bot's turn
+    
+    # Get bot difficulty/depth
+    bot_depth = getattr(game, 'bot_depth', 15)
+    if not bot_depth:
+        bot_depth = 15
+    
+    # Get Stockfish service and make move
+    sf = get_stockfish_service()
+    analysis = sf.analyze_position(board.fen(), depth=bot_depth)
+    
+    if not analysis.get("success") or not analysis.get("best_move"):
+        raise HTTPException(status_code=500, detail="Failed to get bot move")
+    
+    best_move_uci = analysis["best_move"]
+    
+    # Make the move
+    try:
+        move = board.push(chess.Move.from_uci(best_move_uci))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid bot move: {best_move_uci} - {str(e)}")
+    
+    # Update game state
+    game.total_moves += 1
+    game.final_fen = board.fen()
+    
+    # Update PGN
+    pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    pgn_game = chess.pgn.Game()
+    pgn_game.setup(pgn_board)
+    node = pgn_game
+    
+    for move_in_stack in board.move_stack:
+        node = node.add_variation(move_in_stack)
+        pgn_board.push(move_in_stack)
+    
+    exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
+    game.pgn = str(pgn_game.accept(exporter)).strip()
+    
+    # Check for game end conditions
+    if board.is_checkmate():
+        # Bot wins if it's bot's color turn (meaning bot just made winning move)
+        if is_bot_white:
+            game.result = "1-0"
+            game.winner_id = bot_user_id
+        else:
+            game.result = "0-1"
+            game.winner_id = bot_user_id
+        game.ended_at = datetime.utcnow()
+    elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
+        game.result = "1/2-1/2"
+        game.ended_at = datetime.utcnow()
+    
+    db.commit()
 
 # ==================== USER SEARCH ENDPOINTS ====================
 # Note: search endpoint is defined above in USER ENDPOINTS section to avoid route conflicts

@@ -19,7 +19,7 @@ const playCards = [
     gradient: "from-purple-400 to-indigo-500",
     borderColor: "border-purple-300",
     emoji: "🤖",
-    href: "#",
+    href: "/beat-the-bot",
   },
   {
     title: "Play with Friends",
@@ -28,7 +28,7 @@ const playCards = [
     gradient: "from-orange-400 to-pink-500",
     borderColor: "border-orange-300",
     emoji: "👥",
-    href: "#",
+    href: "/chess-game",
   },
 ]
 
