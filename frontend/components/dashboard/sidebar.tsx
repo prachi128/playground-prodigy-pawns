@@ -220,7 +220,11 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
           <ul className="flex flex-col gap-2" role="list">
             {navItems.map((item) => {
               const Icon = item.icon
-              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href))
+              // Special case: chess-game routes should highlight Play button
+              const isChessGame = pathname?.startsWith('/chess-game')
+              const isActive = pathname === item.href || 
+                (item.href !== "/dashboard" && pathname?.startsWith(item.href)) ||
+                (item.href === "/play" && isChessGame)
 
               const menuItem = (
                 <a

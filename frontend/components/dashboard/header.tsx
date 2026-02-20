@@ -261,11 +261,15 @@ export function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
 
-        <div className="h-10 w-10 overflow-hidden rounded-full ring-3 ring-white/30 transition-transform hover:scale-105">
+        <button
+          onClick={() => router.push("/profile")}
+          className="h-10 w-10 overflow-hidden rounded-full ring-3 ring-white/30 transition-transform hover:scale-105 cursor-pointer"
+          aria-label="View profile"
+        >
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-lg font-bold text-white">
             {displayName.charAt(0).toUpperCase()}
           </div>
-        </div>
+        </button>
       </div>
     </header>
   )
