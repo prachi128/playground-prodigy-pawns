@@ -6,9 +6,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI } from '@/lib/api';
-import { Bot, Loader2, Trophy, Zap, Star, ArrowLeft } from 'lucide-react';
+import { Bot, Loader2, Trophy, Zap, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Link from 'next/link';
 
 interface BotOption {
   id: string;
@@ -118,30 +117,19 @@ export default function BeatTheBotPage() {
 
   return (
     <div className="mx-auto max-w-6xl pt-6">
-      {/* Header */}
-      <section className="mb-6">
+      {/* Page title - dashboard theme */}
+      <section className="mb-5">
         <div className="flex items-start gap-3">
           <div className="animate-mascot-bounce shrink-0 text-5xl">{"♞"}</div>
           <div className="relative flex-1">
             <div className="absolute -left-2 top-4 h-0 w-0 border-y-[8px] border-r-[10px] border-y-transparent border-r-white" />
             <div className="rounded-2xl bg-card p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="font-heading text-2xl font-bold text-card-foreground">
-                    Beat the Bot! 🤖
-                  </h1>
-                  <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                    Challenge AI opponents of varying difficulty levels
-                  </p>
-                </div>
-                <Link
-                  href="/play"
-                  className="flex items-center gap-2 rounded-lg border-2 border-border bg-background px-4 py-2 font-heading font-bold transition-all hover:bg-muted"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </Link>
-              </div>
+              <h1 className="font-heading text-2xl font-bold text-card-foreground">
+                Beat the Bot! 🤖
+              </h1>
+              <p className="mt-0.5 text-sm font-semibold text-muted-foreground">
+                Challenge AI opponents of varying difficulty levels
+              </p>
             </div>
           </div>
         </div>
@@ -149,13 +137,11 @@ export default function BeatTheBotPage() {
 
       {/* Bot Selection */}
       <section className="mb-6">
-        <div className="rounded-3xl border-2 border-border bg-card shadow-sm">
-          <div className="bg-gradient-to-r from-purple-400 to-indigo-500 px-5 py-4">
-            <h2 className="font-heading text-lg font-bold text-white">
+        <div className="rounded-3xl border-2 border-purple-200 bg-card shadow-sm">
+          <div className="p-5">
+            <h2 className="font-heading text-lg font-bold text-card-foreground mb-4">
               Choose Your Opponent
             </h2>
-          </div>
-          <div className="p-5">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {botOptions.map((bot, index) => (
                 <button
@@ -164,7 +150,7 @@ export default function BeatTheBotPage() {
                   className={`group relative overflow-hidden rounded-2xl border-3 p-5 text-left transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${
                     selectedBot?.id === bot.id
                       ? `${bot.borderColor} bg-gradient-to-br ${bot.color} text-white shadow-2xl scale-[1.02] ring-4 ring-opacity-50 ${bot.borderColor.replace('border-', 'ring-')}`
-                      : `border-border bg-white hover:${bot.borderColor} hover:shadow-xl`
+                      : 'border-border bg-white hover:shadow-xl'
                   }`}
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
@@ -272,13 +258,11 @@ export default function BeatTheBotPage() {
       {/* Color Selection */}
       {selectedBot && (
         <section className="mb-6">
-          <div className="rounded-3xl border-2 border-border bg-card shadow-sm">
-            <div className="bg-gradient-to-r from-orange-400 to-pink-500 px-5 py-4">
-              <h2 className="font-heading text-lg font-bold text-white">
+          <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-sm">
+            <div className="p-5">
+              <h2 className="font-heading text-lg font-bold text-card-foreground mb-4">
                 Choose Your Color
               </h2>
-            </div>
-            <div className="p-5">
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => setColorChoice('white')}
@@ -324,7 +308,7 @@ export default function BeatTheBotPage() {
               <button
                 onClick={handleStartGame}
                 disabled={isCreatingGame}
-                className="w-full rounded-xl bg-gradient-to-r from-green-400 to-emerald-500 px-6 py-4 font-heading text-lg font-bold text-white transition-all hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+                className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-6 py-4 font-heading text-lg font-bold text-white transition-all hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
               >
                 {isCreatingGame ? (
                   <>
@@ -349,26 +333,26 @@ export default function BeatTheBotPage() {
 
       {/* Info Section */}
       <section className="mb-6">
-        <div className="rounded-3xl border-2 border-blue-200 bg-card p-5 shadow-sm">
+        <div className="rounded-3xl border-2 border-cyan-200 bg-card p-5 shadow-sm">
           <h3 className="font-heading text-lg font-bold text-card-foreground mb-3 flex items-center gap-2">
-            <Zap className="h-5 w-5 text-blue-500" />
+            <Zap className="h-5 w-5 text-cyan-500" />
             How It Works
           </h3>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
-              <span className="text-blue-500 font-bold">•</span>
+              <span className="text-cyan-500 font-bold">•</span>
               <span>Select a bot difficulty level that matches your skill</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-500 font-bold">•</span>
+              <span className="text-cyan-500 font-bold">•</span>
               <span>Choose whether you want to play as White or Black</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-500 font-bold">•</span>
+              <span className="text-cyan-500 font-bold">•</span>
               <span>The bot will automatically make its moves after yours</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-blue-500 font-bold">•</span>
+              <span className="text-cyan-500 font-bold">•</span>
               <span>Win games to earn XP and improve your rating!</span>
             </li>
           </ul>

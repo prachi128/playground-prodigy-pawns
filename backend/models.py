@@ -88,6 +88,7 @@ class User(Base):
     puzzle_attempts = relationship("PuzzleAttempt", back_populates="user")
     achievements = relationship("UserAchievement", back_populates="user")
     daily_challenges = relationship("DailyChallengeAttempt", back_populates="user")
+    notifications = relationship("Notification", back_populates="user")
 
 # Game Model
 class Game(Base):
@@ -275,6 +276,24 @@ class PuzzleRaceAttempt(Base):
     
     # Relationships
     race = relationship("PuzzleRace", back_populates="race_attempts")
+
+# Notification Model (in-app bell dropdown)
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    category = Column(String(32), nullable=False)  # "coach" | "achievement" | "system"
+    title = Column(String(256), nullable=False)
+    message = Column(Text, nullable=False)
+    read = Column(Boolean, default=False)
+    link_url = Column(String(512), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="notifications")
 
 # Game Invite Model
 class GameInvite(Base):

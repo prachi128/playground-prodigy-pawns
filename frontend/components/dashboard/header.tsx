@@ -17,25 +17,45 @@ import {
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { useRouter } from "next/navigation"
+import { notificationsAPI, type ApiNotification } from "@/lib/api"
 
 type NotificationCategory = "coach" | "achievement" | "system"
 
-interface Notification {
-  id: number
-  category: NotificationCategory
-  icon: React.ReactNode
-  title: string
-  message: string
-  time: string
-  dateGroup: "today" | "yesterday" | "this_week"
-  read: boolean
+/** Derive date group and time label from ISO created_at */
+function getDateGroupAndTime(createdAt: string): { dateGroup: "today" | "yesterday" | "this_week"; time: string } {
+  const date = new Date(createdAt)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - 7)
+
+  if (date >= startOfToday) {
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    if (diffMins < 1) return { dateGroup: "today", time: "Just now" }
+    if (diffMins < 60) return { dateGroup: "today", time: `${diffMins} min ago` }
+    if (diffHours < 24) return { dateGroup: "today", time: `${diffHours} hour${diffHours === 1 ? "" : "s"} ago` }
+    return { dateGroup: "today", time: "Today" }
+  }
+  if (date >= startOfYesterday) return { dateGroup: "yesterday", time: "Yesterday" }
+  if (date >= startOfWeek) return { dateGroup: "this_week", time: `${Math.floor((now.getTime() - date.getTime()) / 86400000)} days ago` }
+  return { dateGroup: "this_week", time: date.toLocaleDateString() }
 }
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  { id: 1, category: "achievement", icon: <Trophy className="h-5 w-5 text-amber-500" />, title: "Puzzle Pro Unlocked!", message: "You solved 100 puzzles -- amazing work!", time: "2 min ago", dateGroup: "today", read: false },
-  { id: 2, category: "coach", icon: <Swords className="h-5 w-5 text-emerald-500" />, title: "Coach Alex says...", message: "Great job on Knight forks! Watch the Rook Endgames video next.", time: "15 min ago", dateGroup: "today", read: false },
-  { id: 3, category: "system", icon: <BookOpen className="h-5 w-5 text-blue-500" />, title: "New Lesson Available", message: "Advanced Tactics: The Isolated Queen Pawn is ready for you.", time: "1 hour ago", dateGroup: "today", read: false },
-]
+function getCategoryIcon(category: NotificationCategory) {
+  switch (category) {
+    case "achievement":
+      return <Trophy className="h-5 w-5 text-amber-500" />
+    case "coach":
+      return <Swords className="h-5 w-5 text-emerald-500" />
+    case "system":
+    default:
+      return <BookOpen className="h-5 w-5 text-blue-500" />
+  }
+}
 
 const TABS = [
   { key: "all" as const, label: "All" },
@@ -60,7 +80,8 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
   const { user } = useAuthStore()
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
+  const [notifications, setNotifications] = useState<ApiNotification[]>([])
+  const [loading, setLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [isWiggling, setIsWiggling] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>("all")
@@ -73,13 +94,40 @@ export function Header({ onMenuClick }: HeaderProps) {
   const filteredNotifications = notifications.filter((n) => activeTab === "all" || n.category === activeTab)
   const grouped = filteredNotifications.reduce(
     (acc, n) => {
-      if (!acc[n.dateGroup]) acc[n.dateGroup] = []
-      acc[n.dateGroup].push(n)
+      const { dateGroup } = getDateGroupAndTime(n.created_at)
+      if (!acc[dateGroup]) acc[dateGroup] = []
+      acc[dateGroup].push(n)
       return acc
     },
-    {} as Record<string, Notification[]>,
+    {} as Record<string, ApiNotification[]>,
   )
   const dateOrder: Array<"today" | "yesterday" | "this_week"> = ["today", "yesterday", "this_week"]
+
+  const fetchNotifications = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    try {
+      const list = await notificationsAPI.getList()
+      setNotifications(list)
+    } catch {
+      setNotifications([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchNotifications(false)
+  }, [fetchNotifications])
+
+  useEffect(() => {
+    if (isOpen) fetchNotifications(true)
+  }, [isOpen, fetchNotifications])
+
+  // Refetch periodically so bell badge updates (e.g. when someone sends a game invite)
+  useEffect(() => {
+    const interval = setInterval(() => fetchNotifications(false), 45 * 1000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -103,18 +151,41 @@ export function Header({ onMenuClick }: HeaderProps) {
     setTimeout(() => setIsWiggling(false), 600)
   }, [])
 
-  function markAsRead(id: number) {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+  async function markAsRead(id: number) {
+    try {
+      await notificationsAPI.markAsRead(id)
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    } catch {
+      // keep UI unchanged on error
+    }
   }
 
-  function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+  function handleNotificationClick(notification: ApiNotification) {
+    markAsRead(notification.id)
+    if (notification.link_url) {
+      setIsOpen(false)
+      router.push(notification.link_url)
+    }
   }
 
-  function dismissNotification(id: number) {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-    setSwipingId(null)
-    setSwipeX(0)
+  async function markAllRead() {
+    try {
+      await notificationsAPI.markAllRead()
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    } catch {
+      // keep UI unchanged on error
+    }
+  }
+
+  async function dismissNotification(id: number) {
+    try {
+      await notificationsAPI.dismiss(id)
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+      setSwipingId(null)
+      setSwipeX(0)
+    } catch {
+      // keep UI unchanged on error
+    }
   }
 
   function handleTouchStart(id: number, e: React.TouchEvent) {
@@ -207,7 +278,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                 })}
               </div>
               <div className="max-h-[400px] overflow-y-auto">
-                {filteredNotifications.length === 0 ? (
+                {loading ? (
+                  <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                    <p className="font-heading text-sm font-semibold text-muted-foreground">Loading notifications...</p>
+                  </div>
+                ) : filteredNotifications.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
                       <Bell className="h-7 w-7 text-muted-foreground/40" />
@@ -226,16 +302,17 @@ export function Header({ onMenuClick }: HeaderProps) {
                         </div>
                         {items.map((notification) => {
                           const isSwiping = swipingId === notification.id
+                          const { time } = getDateGroupAndTime(notification.created_at)
                           return (
                             <div key={notification.id} className="relative overflow-hidden" onTouchStart={(e) => handleTouchStart(notification.id, e)} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
                               <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-red-500 text-sm font-bold text-white">Dismiss</div>
                               <button
-                                onClick={() => markAsRead(notification.id)}
+                                onClick={() => handleNotificationClick(notification)}
                                 className={`relative flex w-full items-start gap-3 px-4 py-3 text-left transition-all hover:bg-emerald-50/60 ${!notification.read ? "bg-blue-50/50" : "bg-card"}`}
                                 style={{ transform: isSwiping ? `translateX(-${swipeX}px)` : "translateX(0)", transition: isSwiping ? "none" : "transform 0.2s ease-out" }}
                               >
                                 <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${notification.category === "coach" ? "bg-emerald-100" : notification.category === "achievement" ? "bg-amber-100" : "bg-blue-100"}`}>
-                                  {notification.icon}
+                                  {getCategoryIcon(notification.category)}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2">
@@ -243,7 +320,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                                     {!notification.read && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
                                   </div>
                                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{notification.message}</p>
-                                  <p className="mt-1 text-[10px] font-medium text-muted-foreground/50">{notification.time}</p>
+                                  <p className="mt-1 text-[10px] font-medium text-muted-foreground/50">{time}</p>
                                 </div>
                               </button>
                             </div>

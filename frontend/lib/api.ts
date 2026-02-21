@@ -235,6 +235,36 @@ export const dailyChallengeAPI = {
   },
 };
 
+// Notifications API (in-app bell dropdown)
+export interface ApiNotification {
+  id: number;
+  user_id: number;
+  category: 'coach' | 'achievement' | 'system';
+  title: string;
+  message: string;
+  read: boolean;
+  link_url: string | null;
+  created_at: string;
+}
+
+export const notificationsAPI = {
+  getList: async (limit = 50): Promise<ApiNotification[]> => {
+    const response = await api.get('/api/notifications', { params: { limit } });
+    return response.data;
+  },
+  markAsRead: async (id: number): Promise<ApiNotification> => {
+    const response = await api.patch(`/api/notifications/${id}`, { read: true });
+    return response.data;
+  },
+  markAllRead: async (): Promise<{ marked: number }> => {
+    const response = await api.post('/api/notifications/mark-all-read');
+    return response.data;
+  },
+  dismiss: async (id: number): Promise<void> => {
+    await api.delete(`/api/notifications/${id}`);
+  },
+};
+
 // Game API
 export interface GameInvite {
   id: number;

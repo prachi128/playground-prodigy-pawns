@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 # Import models and utilities
-from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite
+from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification
 from database import get_db
 from auth import (
     get_password_hash,
@@ -37,7 +37,9 @@ from schemas import (
     GameInviteAccept,
     GameCreate,
     GameMoveCreate,
-    BotGameCreate
+    BotGameCreate,
+    NotificationResponse,
+    NotificationMarkRead,
 )
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
@@ -379,6 +381,15 @@ def submit_puzzle_attempt(
     )
     
     db.add(puzzle_attempt)
+    if attempt.is_solved:
+        create_notification(
+            db,
+            current_user.id,
+            "achievement",
+            "Puzzle solved!",
+            f"You earned {xp_earned} XP. Great work!",
+            link_url=f"/puzzles/{puzzle_id}",
+        )
     db.commit()
     db.refresh(puzzle_attempt)
     
@@ -615,18 +626,31 @@ def make_move(
     if game.result:
         raise HTTPException(status_code=400, detail="Game has already ended")
     
-    # Initialize chess board
+    # Initialize chess board - rebuild from PGN to preserve move history, fallback to final_fen
     board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
     
-    # Replay existing moves from PGN if available
+    # Replay existing moves from PGN to get current position with move history
     if game.pgn:
         try:
             pgn_io = chess.pgn.StringIO(game.pgn)
             game_node = chess.pgn.read_game(pgn_io)
             if game_node:
                 board = game_node.board()
+        except Exception as e:
+            print(f"Warning: PGN parsing failed, using final_fen: {e}")
+            # If PGN parsing fails, use final_fen as fallback
+            if game.final_fen:
+                try:
+                    board = chess.Board(game.final_fen)
+                except:
+                    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+            else:
+                board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    elif game.final_fen:
+        # No PGN but we have final_fen, use it
+        try:
+            board = chess.Board(game.final_fen)
         except:
-            # If PGN parsing fails, start fresh
             board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
     
     # Determine whose turn it is
@@ -660,24 +684,66 @@ def make_move(
     game.total_moves += 1
     game.final_fen = board.fen()
     
-    # Update PGN - rebuild from scratch by replaying all moves
-    # Create a fresh board and replay all moves to build PGN correctly
+    # Update PGN - rebuild by replaying existing PGN and appending new move
     pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
     pgn_game = chess.pgn.Game()
     pgn_game.setup(pgn_board)
     node = pgn_game
     
-    # Replay all moves from the move stack
-    for move_in_stack in board.move_stack:
-        # Add the move to the PGN node
-        # The add_variation method automatically applies the move to the board
-        node = node.add_variation(move_in_stack)
-        # Also apply to our tracking board
-        pgn_board.push(move_in_stack)
+    # Replay existing PGN moves if available
+    if game.pgn:
+        try:
+            pgn_io = chess.pgn.StringIO(game.pgn)
+            existing_game = chess.pgn.read_game(pgn_io)
+            if existing_game:
+                # Replay all moves from existing PGN
+                for existing_move in existing_game.mainline_moves():
+                    if existing_move in pgn_board.legal_moves:
+                        node = node.add_variation(existing_move)
+                        pgn_board.push(existing_move)
+                    else:
+                        print(f"Warning: Existing PGN move {existing_move} is not legal, skipping PGN rebuild")
+                        # Reset and start fresh
+                        pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+                        pgn_game = chess.pgn.Game()
+                        pgn_game.setup(pgn_board)
+                        node = pgn_game
+                        break
+        except Exception as e:
+            print(f"Warning: Failed to parse existing PGN: {e}")
+            # Reset to starting position
+            pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+            pgn_game = chess.pgn.Game()
+            pgn_game.setup(pgn_board)
+            node = pgn_game
     
-    # Export PGN
+    # Add the new move (the one we just made)
+    # Get the move we just made - use move variable or get from move_stack as fallback
+    new_move = move if move else (board.move_stack[-1] if board.move_stack else None)
+    
+    if new_move is None:
+        print(f"Error: Could not determine the move that was just made")
+        # Skip PGN update if we can't determine the move
+    elif new_move in pgn_board.legal_moves:
+        node = node.add_variation(new_move)
+    else:
+        # Try to find matching legal move (might be promotion difference)
+        matching_move = None
+        for legal_move in pgn_board.legal_moves:
+            if (legal_move.from_square == new_move.from_square and 
+                legal_move.to_square == new_move.to_square):
+                matching_move = legal_move
+                break
+        if matching_move:
+            node = node.add_variation(matching_move)
+        else:
+            print(f"Error: Cannot add move {new_move} to PGN - not legal in current state")
+    
+    # Export PGN (append "*" when game in progress so clients like chess.js can parse it)
     exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
     game.pgn = str(pgn_game.accept(exporter)).strip()
+    if not game.pgn.endswith(("*", "1-0", "0-1", "1/2-1/2")):
+        game.pgn = game.pgn + " *"
     
     # Check for game end conditions
     if board.is_checkmate():
@@ -697,15 +763,8 @@ def make_move(
     db.commit()
     db.refresh(game)
     
-    # If this is a bot game, make bot move automatically
-    bot_user = get_or_create_bot_user(db)
-    if game.white_player_id == bot_user.id or game.black_player_id == bot_user.id:
-        # This is a bot game - trigger bot move if it's bot's turn
-        try:
-            _make_bot_move_if_needed(game, db, bot_user.id)
-        except Exception as e:
-            print(f"Error making bot move: {e}")
-            # Don't fail the player's move if bot move fails
+    # Don't make bot move here - let frontend trigger it after showing player's move
+    # This ensures the player sees their move first before bot responds
     
     return game
 
@@ -720,7 +779,7 @@ def get_or_create_bot_user(db: Session) -> User:
             email="bot@prodigypawns.com",
             username="__BOT__",
             full_name="ChessBot",
-            password_hash=get_password_hash("bot_password_not_used"),
+            hashed_password=get_password_hash("bot_password_not_used"),
             role=UserRole.student,
             rating=1000,
             level=1,
@@ -804,43 +863,87 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     
     # Check if game has ended
     if game.result:
+        print(f"Bot move skipped: Game already ended with result {game.result}")
         return
     
-    # Initialize chess board
-    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    # Initialize chess board - use final_fen if available, otherwise starting_fen
+    if game.final_fen:
+        try:
+            board = chess.Board(game.final_fen)
+        except:
+            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    else:
+        board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
     
-    # Replay existing moves from PGN if available
+    # Replay existing moves from PGN if available (as backup/verification)
     if game.pgn:
         try:
             pgn_io = chess.pgn.StringIO(game.pgn)
             game_node = chess.pgn.read_game(pgn_io)
             if game_node:
-                board = game_node.board()
-        except:
-            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+                pgn_board = game_node.board()
+                # Use PGN board if it matches the final_fen, otherwise trust final_fen
+                if pgn_board.fen() == board.fen():
+                    board = pgn_board
+        except Exception as e:
+            print(f"Warning: PGN parsing failed, using FEN: {e}")
+            # Continue with board from FEN
     
     # Determine whose turn it is
     is_white_turn = board.turn == chess.WHITE
     is_bot_white = game.white_player_id == bot_user_id
     is_bot_black = game.black_player_id == bot_user_id
     
+    print(f"Bot move check: is_white_turn={is_white_turn}, is_bot_white={is_bot_white}, is_bot_black={is_bot_black}")
+    print(f"Board FEN: {board.fen()}")
+    print(f"Game final_fen: {game.final_fen}")
+    print(f"Game PGN: {game.pgn}")
+    
     # Check if it's bot's turn
     if (is_white_turn and not is_bot_white) or (not is_white_turn and not is_bot_black):
+        print(f"Bot move skipped: Not bot's turn (white turn: {is_white_turn}, bot is white: {is_bot_white}, bot is black: {is_bot_black})")
         return  # Not bot's turn
+    
+    # Check if there are legal moves
+    legal_moves = list(board.legal_moves)
+    if not legal_moves:
+        print("Bot move skipped: No legal moves available")
+        return
+    
+    print(f"Bot has {len(legal_moves)} legal moves available")
     
     # Get bot difficulty/depth
     bot_depth = getattr(game, 'bot_depth', 15)
     if not bot_depth:
         bot_depth = 15
     
+    print(f"Bot making move: depth={bot_depth}, position={board.fen()}")
+    
     # Get Stockfish service and make move
     sf = get_stockfish_service()
     analysis = sf.analyze_position(board.fen(), depth=bot_depth)
     
-    if not analysis.get("success") or not analysis.get("best_move"):
-        raise HTTPException(status_code=500, detail="Failed to get bot move")
+    print(f"Stockfish analysis result: {analysis}")
     
-    best_move_uci = analysis["best_move"]
+    if not analysis.get("success"):
+        error_msg = analysis.get("error", "Unknown error")
+        print(f"Stockfish failed: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Failed to get bot move: {error_msg}")
+    
+    best_move_uci = analysis.get("best_move")
+    
+    # If Stockfish didn't return a best move, try to get a legal move as fallback
+    if not best_move_uci:
+        print("Warning: Stockfish returned no best move, trying to find a legal move")
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            print("No legal moves available - game might be over")
+            raise HTTPException(status_code=400, detail="No legal moves available")
+        # Use first legal move as fallback
+        best_move_uci = legal_moves[0].uci()
+        print(f"Using fallback move: {best_move_uci}")
+    else:
+        print(f"Bot best move: {best_move_uci}")
     
     # Make the move
     try:
@@ -852,18 +955,65 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     game.total_moves += 1
     game.final_fen = board.fen()
     
-    # Update PGN
+    # Update PGN - rebuild by replaying existing PGN and appending new move
     pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
     pgn_game = chess.pgn.Game()
     pgn_game.setup(pgn_board)
     node = pgn_game
     
-    for move_in_stack in board.move_stack:
-        node = node.add_variation(move_in_stack)
-        pgn_board.push(move_in_stack)
+    # Replay existing PGN moves if available
+    if game.pgn:
+        try:
+            pgn_io = chess.pgn.StringIO(game.pgn)
+            existing_game = chess.pgn.read_game(pgn_io)
+            if existing_game:
+                # Replay all moves from existing PGN
+                for existing_move in existing_game.mainline_moves():
+                    if existing_move in pgn_board.legal_moves:
+                        node = node.add_variation(existing_move)
+                        pgn_board.push(existing_move)
+                    else:
+                        print(f"Warning: Existing PGN move {existing_move} is not legal, skipping PGN rebuild")
+                        # Reset and start fresh
+                        pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+                        pgn_game = chess.pgn.Game()
+                        pgn_game.setup(pgn_board)
+                        node = pgn_game
+                        break
+        except Exception as e:
+            print(f"Warning: Failed to parse existing PGN: {e}")
+            # Reset to starting position
+            pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+            pgn_game = chess.pgn.Game()
+            pgn_game.setup(pgn_board)
+            node = pgn_game
+    
+    # Add the new bot move (the one we just made)
+    # Get the move we just made - use move variable or get from move_stack as fallback
+    new_move = move if move else (board.move_stack[-1] if board.move_stack else None)
+    
+    if new_move is None:
+        print(f"Error: Could not determine the bot move that was just made")
+        # Skip PGN update if we can't determine the move
+    elif new_move in pgn_board.legal_moves:
+        node = node.add_variation(new_move)
+    else:
+        # Try to find matching legal move (might be promotion difference)
+        matching_move = None
+        for legal_move in pgn_board.legal_moves:
+            if (legal_move.from_square == new_move.from_square and 
+                legal_move.to_square == new_move.to_square):
+                matching_move = legal_move
+                break
+        if matching_move:
+            node = node.add_variation(matching_move)
+        else:
+            print(f"Error: Cannot add bot move {new_move} to PGN - not legal in current state")
     
     exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
     game.pgn = str(pgn_game.accept(exporter)).strip()
+    if not game.pgn.endswith(("*", "1-0", "0-1", "1/2-1/2")):
+        game.pgn = game.pgn + " *"
     
     # Check for game end conditions
     if board.is_checkmate():
@@ -921,12 +1071,21 @@ def create_game_invite(
         expires_at=datetime.utcnow() + timedelta(hours=24)
     )
     db.add(new_invite)
+    db.flush()  # ensure invite is in session so commit persists both
+    inviter = db.query(User).filter(User.id == current_user_id).first()
+    # Notify the invitee (Student B) immediately so they see it in the bell
+    create_notification(
+        db,
+        invite_data.invitee_id,
+        "system",
+        "Game invite!",
+        f"{inviter.full_name} invited you to play chess. Tap to view in Play.",
+        link_url="/chess-game",
+    )
     db.commit()
     db.refresh(new_invite)
     
     # Load relationships for response
-    db.refresh(new_invite)
-    inviter = db.query(User).filter(User.id == current_user_id).first()
     invitee_user = db.query(User).filter(User.id == invite_data.invitee_id).first()
     
     response_data = GameInviteResponse.model_validate(new_invite).model_dump(mode="json")
@@ -1002,6 +1161,15 @@ def accept_game_invite(
     invite.status = "accepted"
     invite.game_id = new_game.id
     invite.responded_at = datetime.utcnow()
+    invitee_user = db.query(User).filter(User.id == invite.invitee_id).first()
+    create_notification(
+        db,
+        invite.inviter_id,
+        "system",
+        "Invite accepted!",
+        f"{invitee_user.full_name} accepted your game invite. Let's play!",
+        link_url=f"/chess-game/{new_game.id}" if new_game else None,
+    )
     db.commit()
     
     return new_game
@@ -1027,6 +1195,15 @@ def reject_game_invite(
     
     invite.status = "rejected"
     invite.responded_at = datetime.utcnow()
+    invitee_user = db.query(User).filter(User.id == invite.invitee_id).first()
+    create_notification(
+        db,
+        invite.inviter_id,
+        "system",
+        "Invite declined",
+        f"{invitee_user.full_name} declined your game invite.",
+        link_url="/chess-game",
+    )
     db.commit()
     
     return {"message": "Invite rejected"}
@@ -1088,6 +1265,102 @@ def get_leaderboard(
         }
         for idx, user in enumerate(users)
     ]
+
+
+# ==================== NOTIFICATION HELPERS & ENDPOINTS ====================
+
+def create_notification(
+    db: Session,
+    user_id: int,
+    category: str,
+    title: str,
+    message: str,
+    link_url: Optional[str] = None,
+):
+    """Create an in-app notification for a user. Caller must commit."""
+    notification = Notification(
+        user_id=user_id,
+        category=category,
+        title=title,
+        message=message,
+        link_url=link_url,
+    )
+    db.add(notification)
+    return notification
+
+
+@app.get("/api/notifications", response_model=List[NotificationResponse])
+def get_notifications(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=100),
+):
+    """Get current user's notifications, newest first."""
+    notifications = (
+        db.query(Notification)
+        .filter(Notification.user_id == user_id)
+        .order_by(Notification.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return notifications
+
+
+@app.patch("/api/notifications/{notification_id}", response_model=NotificationResponse)
+def mark_notification_read(
+    notification_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a single notification as read."""
+    notification = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == user_id)
+        .first()
+    )
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notification.read = True
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+
+@app.post("/api/notifications/mark-all-read")
+def mark_all_notifications_read(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark all notifications as read for the current user."""
+    to_update = (
+        db.query(Notification)
+        .filter(Notification.user_id == user_id, Notification.read == False)
+        .all()
+    )
+    for n in to_update:
+        n.read = True
+    db.commit()
+    return {"marked": len(to_update)}
+
+
+@app.delete("/api/notifications/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
+def dismiss_notification(
+    notification_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove (dismiss) a notification."""
+    notification = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == user_id)
+        .first()
+    )
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    db.delete(notification)
+    db.commit()
+    return None
+
 
 # ==================== STATS ENDPOINTS ====================
 

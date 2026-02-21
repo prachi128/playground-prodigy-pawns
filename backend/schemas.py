@@ -189,3 +189,20 @@ class BotGameCreate(BaseModel):
     bot_difficulty: str
     bot_depth: int
     player_color: str  # 'white' or 'black'
+
+# Notification Schemas
+class NotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    category: str  # "coach" | "achievement" | "system"
+    title: str
+    message: str
+    read: bool
+    link_url: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class NotificationMarkRead(BaseModel):
+    read: bool = True

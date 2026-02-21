@@ -42,11 +42,32 @@ export default function ChessGamePage() {
     if (difficultyLower === 'expert') return { name: 'Queen Chess', avatar: '♛' };
     return { name: 'Pawny', avatar: '♟️' };
   };
+
+  // chess.js loadPgn expects PGN to end with a game termination (*, 1-0, 0-1, 1/2-1/2). Backend may not send it.
+  const normalizePgnForChessJs = (pgn: string): string => {
+    const trimmed = pgn.trim();
+    if (!trimmed) return trimmed;
+    if (/\s*(\*|1-0|0-1|1\/2-1\/2)\s*$/.test(trimmed)) return trimmed;
+    return `${trimmed} *`;
+  };
   const lastMoveCountRef = useRef<number>(0);
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
 
   useEffect(() => {
     loadGame();
   }, [gameId]);
+
+  // Get last move from chess instance for highlighting
+  const getLastMove = useCallback(() => {
+    if (!chess) return null;
+    const history = chess.history({ verbose: true });
+    if (history.length === 0) return null;
+    const lastMoveObj = history[history.length - 1];
+    return {
+      from: lastMoveObj.from,
+      to: lastMoveObj.to,
+    };
+  }, [chess]);
 
   const loadGame = async () => {
     try {
@@ -54,13 +75,31 @@ export default function ChessGamePage() {
       const gameData = await gameAPI.getGame(gameId);
       setGame(gameData);
       
-      // Initialize chess board with starting position or current FEN
+      // Initialize chess board: use PGN when available (preserves move history), else FEN
       const startingFen = gameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       const currentFen = gameData.final_fen || startingFen;
-      
-      const chessInstance = new Chess(currentFen);
+      let chessInstance: Chess;
+      if (gameData.pgn && gameData.pgn.trim()) {
+        try {
+          chessInstance = new Chess();
+          chessInstance.loadPgn(normalizePgnForChessJs(gameData.pgn));
+        } catch {
+          chessInstance = new Chess(currentFen);
+        }
+      } else {
+        chessInstance = new Chess(currentFen);
+      }
       setChess(chessInstance);
       setChessFen(chessInstance.fen());
+      
+      // Update last move for highlighting
+      const history = chessInstance.history({ verbose: true });
+      if (history.length > 0) {
+        const lastMoveObj = history[history.length - 1];
+        setLastMove({ from: lastMoveObj.from, to: lastMoveObj.to });
+      } else {
+        setLastMove(null);
+      }
       
       // Check if this is a bot game - we'll check by loading player info
       // For now, assume it's a bot game if we can't find player info
@@ -134,20 +173,37 @@ export default function ChessGamePage() {
       // Check if game state has changed (new moves made)
       const currentMoveCount = updatedGameData.total_moves || 0;
       if (currentMoveCount > lastMoveCountRef.current) {
-        // Game state has changed - update the board
+        // Game state has changed - update the board (use PGN when available for move history)
         const startingFen = updatedGameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
         const currentFen = updatedGameData.final_fen || startingFen;
-        
-        const newChess = new Chess(currentFen);
-        setChess(newChess);
-        setChessFen(newChess.fen());
-        setGame(updatedGameData);
+        let newChess: Chess | null = null;
+        if (updatedGameData.pgn && updatedGameData.pgn.trim()) {
+          try {
+            newChess = new Chess();
+            newChess.loadPgn(normalizePgnForChessJs(updatedGameData.pgn));
+          } catch {
+            if (updatedGameData.final_fen || currentMoveCount === 0) newChess = new Chess(currentFen);
+          }
+        } else {
+          if (updatedGameData.final_fen || currentMoveCount === 0) newChess = new Chess(currentFen);
+        }
+        // Don't reset board to starting position when game has progressed but API sent no valid PGN/FEN
+        if (newChess) {
+          setChess(newChess);
+          setChessFen(newChess.fen());
+          const history = newChess.history({ verbose: true });
+          if (history.length > 0) {
+            const lastMoveObj = history[history.length - 1];
+            setLastMove({ from: lastMoveObj.from, to: lastMoveObj.to });
+          } else {
+            setLastMove(null);
+          }
+        }
         lastMoveCountRef.current = currentMoveCount;
+        setGame(updatedGameData);
 
-        // Update turn status
+        // Update turn status (infer from FEN or newChess when available)
         const isBotGameCheck = !!updatedGameData.bot_difficulty;
-        
-        // Update bot name and avatar if needed
         if (isBotGameCheck && updatedGameData.bot_difficulty) {
           const botInfo = getBotInfo(updatedGameData.bot_difficulty);
           setBotName(botInfo.name);
@@ -155,19 +211,26 @@ export default function ChessGamePage() {
         }
         const isWhite = updatedGameData.white_player_id === user.id;
         const isBlack = updatedGameData.black_player_id === user.id;
-        const isWhiteTurn = newChess.turn() === 'w';
-        setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
+        if (newChess) {
+          const isWhiteTurn = newChess.turn() === 'w';
+          setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
+        } else {
+          // Infer turn from move count when we couldn't build board (even = white, odd = black)
+          setIsMyTurn((isWhite && currentMoveCount % 2 === 0) || (isBlack && currentMoveCount % 2 === 1));
+        }
         
-        // If it's a bot game and bot's turn, trigger bot move
-        if (isBotGameCheck && !isMyTurn && !updatedGameData.result) {
-          setTimeout(async () => {
-            try {
-              await gameAPI.getBotMove(gameId);
-              loadGame();
-            } catch (error) {
-              console.error('Failed to get bot move:', error);
-            }
-          }, 500);
+        if (isBotGameCheck && !updatedGameData.result) {
+          const myTurn = newChess ? ((isWhite && newChess.turn() === 'w') || (isBlack && newChess.turn() === 'b')) : ((isWhite && currentMoveCount % 2 === 0) || (isBlack && currentMoveCount % 2 === 1));
+          if (!myTurn) {
+            setTimeout(async () => {
+              try {
+                await gameAPI.getBotMove(gameId);
+                loadGame();
+              } catch (error) {
+                console.error('Failed to get bot move:', error);
+              }
+            }, 500);
+          }
         }
 
         // Update game status
@@ -178,18 +241,22 @@ export default function ChessGamePage() {
           } else {
             toast('Game ended');
           }
-        } else if (newChess.isCheckmate()) {
-          setGameStatus('Checkmate!');
-          toast.success('Checkmate!');
-        } else if (newChess.isCheck()) {
-          setGameStatus('Check!');
-          toast('Check!');
-        } else if (newChess.isDraw()) {
-          setGameStatus('Draw!');
-          toast('Game ended in a draw');
+        } else if (newChess) {
+          if (newChess.isCheckmate()) {
+            setGameStatus('Checkmate!');
+            toast.success('Checkmate!');
+          } else if (newChess.isCheck()) {
+            setGameStatus('Check!');
+            toast('Check!');
+          } else if (newChess.isDraw()) {
+            setGameStatus('Draw!');
+            toast('Game ended in a draw');
+          } else {
+            setGameStatus('Game in progress');
+            toast('Opponent made a move!');
+          }
         } else {
           setGameStatus('Game in progress');
-          // Show notification that opponent made a move
           toast('Opponent made a move!');
         }
       }
@@ -229,12 +296,23 @@ export default function ChessGamePage() {
         to: targetSquare,
       };
       
-      let move = chess.move(moveOptions);
+      let move = null;
+      try {
+        move = chess.move(moveOptions);
+      } catch (error) {
+        // chess.js throws error for invalid moves - catch it and set move to null
+        move = null;
+      }
       
       // If move failed and we're on a promotion rank, try with promotion
       if (move === null && isPromotionRank) {
-        moveOptions.promotion = 'q';
-        move = chess.move(moveOptions);
+        try {
+          moveOptions.promotion = 'q';
+          move = chess.move(moveOptions);
+        } catch (error) {
+          // Still invalid even with promotion
+          move = null;
+        }
       }
 
       if (move === null) {
@@ -258,68 +336,125 @@ export default function ChessGamePage() {
         
         const updatedGame = await gameAPI.makeMove(gameId, movePayload);
 
-        // Update game state
-        setGame(updatedGame);
-        
-        // Update chess instance with new FEN from backend
-        const newChess = new Chess(updatedGame.final_fen || chess.fen());
-        setChess(newChess);
-        setChessFen(newChess.fen());
+        // Helper function to update game state
+        const updateGameState = (gameData: Game) => {
+          // Update game state
+          setGame(gameData);
+          
+          // Update chess instance: use PGN when available (for move history), else FEN
+          const fenToUse = gameData.final_fen || gameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+          let newChess: Chess;
+          if (gameData.pgn && gameData.pgn.trim()) {
+            try {
+              newChess = new Chess();
+              newChess.loadPgn(normalizePgnForChessJs(gameData.pgn));
+            } catch {
+              newChess = new Chess(fenToUse);
+            }
+          } else {
+            newChess = new Chess(fenToUse);
+          }
+          setChess(newChess);
+          setChessFen(newChess.fen());
+          
+          // Update last move for highlighting
+          const history = newChess.history({ verbose: true });
+          if (history.length > 0) {
+            const lastMoveObj = history[history.length - 1];
+            setLastMove({ from: lastMoveObj.from, to: lastMoveObj.to });
+          } else {
+            setLastMove(null);
+          }
+          
+          // Update last move count
+          lastMoveCountRef.current = gameData.total_moves || 0;
 
-        // Update turn - check if it's still user's turn
+          // Update bot name and avatar if needed
+          const isBotGameCheck = !!gameData.bot_difficulty;
+          if (isBotGameCheck && gameData.bot_difficulty) {
+            const botInfo = getBotInfo(gameData.bot_difficulty);
+            setBotName(botInfo.name);
+            setBotAvatar(botInfo.avatar);
+          }
+          
+          // Update turn status
+          const isWhite = gameData.white_player_id === user?.id;
+          const isBlack = gameData.black_player_id === user?.id;
+          const isWhiteTurn = newChess.turn() === 'w';
+          setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
+          
+          // Check game status
+          if (gameData.result) {
+            setGameStatus(`Game Over: ${gameData.result}`);
+            if (gameData.winner_id === user?.id) {
+              toast.success('You won! 🎉');
+            } else {
+              toast('Game ended');
+            }
+          } else if (newChess.isCheckmate()) {
+            setGameStatus('Checkmate!');
+            toast.success('Checkmate!');
+          } else if (newChess.isDraw()) {
+            setGameStatus('Draw!');
+            toast('Game ended in a draw');
+          } else if (newChess.isCheck()) {
+            setGameStatus('Check!');
+            toast('Check!');
+          } else {
+            setGameStatus('Game in progress');
+          }
+        };
+
+        // Update with player's move immediately
+        updateGameState(updatedGame);
+
+        // For bot games, trigger bot move after a delay so player can see their move first
         const isBotGameCheck = !!updatedGame.bot_difficulty;
         
-        // Update bot name and avatar if needed
-        if (isBotGameCheck && updatedGame.bot_difficulty) {
-          const botInfo = getBotInfo(updatedGame.bot_difficulty);
-          setBotName(botInfo.name);
-          setBotAvatar(botInfo.avatar);
-        }
-        const isWhite = updatedGame.white_player_id === user?.id;
-        const isBlack = updatedGame.black_player_id === user?.id;
-        const isWhiteTurn = newChess.turn() === 'w';
-        setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
-        
-        // If it's a bot game and bot's turn, trigger bot move
-        if (isBotGameCheck && !isMyTurn && !updatedGame.result) {
-          // Wait a bit then trigger bot move
-          setTimeout(async () => {
-            try {
-              await gameAPI.getBotMove(gameId);
-              // Refresh game state
-              loadGame();
-            } catch (error) {
-              console.error('Failed to get bot move:', error);
-            }
-          }, 500);
-        }
-        
-        // Check game status
-        if (updatedGame.result) {
-          setGameStatus(`Game Over: ${updatedGame.result}`);
-          if (updatedGame.winner_id === user?.id) {
-            toast.success('You won! 🎉');
-          } else {
-            toast('Game ended');
+        if (isBotGameCheck) {
+          // Check if it's bot's turn (player just moved, so it should be bot's turn)
+          const isWhite = updatedGame.white_player_id === user?.id;
+          const isBlack = updatedGame.black_player_id === user?.id;
+          const newChess = new Chess(updatedGame.final_fen || chess.fen());
+          const isWhiteTurn = newChess.turn() === 'w';
+          const isBotTurn = (isWhite && !isWhiteTurn) || (isBlack && isWhiteTurn);
+          
+          if (isBotTurn && !updatedGame.result) {
+            // Wait 1.5 seconds so player can see their move, then trigger bot move
+            setTimeout(async () => {
+              try {
+                const botGame = await gameAPI.getBotMove(gameId);
+                updateGameState(botGame);
+                toast('Bot made a move!');
+              } catch (error) {
+                console.error('Failed to get bot move:', error);
+                // Refresh game state as fallback
+                try {
+                  const latestGame = await gameAPI.getGame(gameId);
+                  updateGameState(latestGame);
+                } catch (refreshError) {
+                  console.error('Failed to refresh game:', refreshError);
+                }
+              }
+            }, 1500); // 1.5 second delay
           }
-        } else if (newChess.isCheckmate()) {
-          setGameStatus('Checkmate!');
-          toast.success('Checkmate!');
-        } else if (newChess.isDraw()) {
-          setGameStatus('Draw!');
-          toast('Game ended in a draw');
-        } else if (newChess.isCheck()) {
-          setGameStatus('Check!');
-          toast('Check!');
-        } else {
-          setGameStatus('Game in progress');
         }
 
         return true;
       } catch (apiError: any) {
-        // Revert the move if API call failed
-        chess.undo();
-        setChessFen(chess.fen());
+        // Revert the move if API call failed (only if move was successfully made)
+        try {
+          if (move && chess.history().length > 0) {
+            chess.undo();
+            setChessFen(chess.fen());
+          }
+        } catch (undoError) {
+          // If undo fails, just reload the chess state from FEN
+          const currentFen = game?.final_fen || game?.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+          const resetChess = new Chess(currentFen);
+          setChess(resetChess);
+          setChessFen(resetChess.fen());
+        }
         const errorMessage = apiError.response?.data?.detail || 'Failed to make move';
         toast.error(errorMessage);
         return false;
@@ -327,7 +462,8 @@ export default function ChessGamePage() {
         setIsMakingMove(false);
       }
     } catch (error) {
-      console.error('Invalid move:', error);
+      // Handle any errors during move validation (invalid moves, etc.)
+      console.error('Move validation error:', error);
       toast.error('Invalid move');
       setIsMakingMove(false);
       return false;
@@ -438,6 +574,16 @@ export default function ChessGamePage() {
                     },
                     darkSquareStyle: { backgroundColor: '#769656' },
                     lightSquareStyle: { backgroundColor: '#eeeed2' },
+                    customSquareStyles: lastMove ? {
+                      [lastMove.from]: {
+                        backgroundColor: 'rgba(255, 255, 0, 0.4)',
+                        borderRadius: '4px',
+                      },
+                      [lastMove.to]: {
+                        backgroundColor: 'rgba(255, 255, 0, 0.4)',
+                        borderRadius: '4px',
+                      },
+                    } : {},
                   }}
                 />
               </div>
@@ -530,15 +676,47 @@ export default function ChessGamePage() {
             </div>
           </div>
 
-          {/* Move History (placeholder) */}
+          {/* Move History */}
           <div className="rounded-3xl border-2 border-border bg-card p-5 shadow-sm">
             <h3 className="font-heading text-lg font-bold text-card-foreground mb-4">
               Move History
             </h3>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground text-center py-4">
-                Move history will appear here
-              </p>
+            <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+              {(() => {
+                const history = chess.history({ verbose: true });
+                if (history.length === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No moves yet
+                    </p>
+                  );
+                }
+                // Group into (white, black?) pairs per move number
+                const rows: { num: number; white: string; black?: string }[] = [];
+                let num = 1;
+                let i = 0;
+                while (i < history.length) {
+                  const whiteSan = history[i].san;
+                  const blackSan = i + 1 < history.length ? history[i + 1].san : undefined;
+                  rows.push({ num, white: whiteSan, black: blackSan });
+                  i += 2;
+                  num += 1;
+                }
+                return rows.map((row) => (
+                  <div
+                    key={row.num}
+                    className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5 text-sm"
+                  >
+                    <span className="font-heading font-bold text-muted-foreground w-6 shrink-0">
+                      {row.num}.
+                    </span>
+                    <span className="font-mono">{row.white}</span>
+                    {row.black != null && (
+                      <span className="font-mono">{row.black}</span>
+                    )}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         </div>
