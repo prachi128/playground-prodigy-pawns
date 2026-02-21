@@ -176,9 +176,12 @@ export default function PuzzleSolvePage() {
         <div className="space-y-2">
           <HintSystem
             puzzleId={puzzleId}
-            fen={puzzle.fen}
+            fen={game.fen()}
             userXP={userXP}
-            onXPDeducted={(newXP) => setUserXP(newXP)}
+            onXPDeducted={(newXP) => {
+              setUserXP(newXP);
+              if (user) updateUser({ total_xp: newXP });
+            }}
           />
 
           {isCorrect !== null && (

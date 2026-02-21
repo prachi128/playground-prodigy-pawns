@@ -466,14 +466,14 @@ def get_hint(
     xp_cost = result["xp_cost"]
 
     # Check if user has enough XP
-    if user.xp < xp_cost:
+    if user.total_xp < xp_cost:
         raise HTTPException(
             status_code=400,
-            detail=f"Not enough XP! You need {xp_cost} XP but only have {user.xp}."
+            detail=f"Not enough XP! You need {xp_cost} XP but only have {user.total_xp}."
         )
 
     # Deduct XP
-    user.xp -= xp_cost
+    user.total_xp -= xp_cost
     db.commit()
 
     return {
@@ -481,7 +481,7 @@ def get_hint(
         "hint_level": result["hint_level"],
         "hint_text": result["hint_text"],
         "xp_cost": xp_cost,
-        "remaining_xp": user.xp,
+        "remaining_xp": user.total_xp,
     }
 
 @app.post("/api/puzzles/validate")

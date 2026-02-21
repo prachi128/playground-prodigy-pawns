@@ -1,128 +1,87 @@
-// app/(student)/puzzles/page.tsx - Puzzles List (student theme, dashboard layout)
+// app/(student)/puzzles/page.tsx - Puzzles Landing (Solve puzzles | Puzzle racer)
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, getThemeEmoji } from '@/lib/utils';
-import { Puzzle as PuzzleIcon, Loader2, Star } from 'lucide-react';
-import toast from 'react-hot-toast';
+import Link from 'next/link';
+import { Puzzle, Zap, ArrowLeft } from 'lucide-react';
 
-export default function PuzzlesPage() {
-  const router = useRouter();
-  const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
+const puzzleOptions = [
+  {
+    title: 'Solve Puzzles',
+    description: 'Pick a puzzle, take your time, and find the best move. Earn XP and sharpen your tactics.',
+    href: '/puzzles/solve',
+    gradient: 'from-cyan-400 to-blue-500',
+    borderColor: 'border-cyan-300',
+    emoji: '🧩',
+    icon: Puzzle,
+  },
+  {
+    title: 'Puzzle Racer',
+    description: 'Solve as many puzzles as you can before time runs out. Race the clock and climb the leaderboard!',
+    href: '/puzzles/racer',
+    gradient: 'from-orange-400 to-amber-500',
+    borderColor: 'border-orange-300',
+    emoji: '🏎️',
+    icon: Zap,
+  },
+];
 
-  const loadPuzzles = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await puzzleAPI.getAll(selectedDifficulty || undefined);
-      setPuzzles(data);
-    } catch (error) {
-      console.error('Failed to load puzzles:', error);
-      toast.error('Failed to load puzzles');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedDifficulty]);
-
-  useEffect(() => {
-    loadPuzzles();
-  }, [loadPuzzles]);
-
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-7xl flex items-center justify-center py-12">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
-          <p className="font-heading font-semibold text-muted-foreground">Loading puzzles...</p>
-        </div>
-      </div>
-    );
-  }
-
+export default function PuzzlesLandingPage() {
   return (
-    <div className="mx-auto max-w-7xl">
-      {/* Difficulty Filter */}
-      <div className="flex gap-2 mb-5 overflow-x-auto pb-2">
-        {[
-          { value: '', label: 'All' },
-          { value: 'beginner', label: 'Beginner' },
-          { value: 'intermediate', label: 'Intermediate' },
-          { value: 'advanced', label: 'Advanced' },
-          { value: 'expert', label: 'Expert' }
-        ].map((diff) => {
-          const isSelected = selectedDifficulty === diff.value;
-          return (
-            <button
-              key={diff.value}
-              onClick={() => setSelectedDifficulty(diff.value)}
-              className={`px-3 py-1.5 rounded-lg font-heading font-semibold text-xs whitespace-nowrap transition-all ${
-                isSelected
-                  ? 'bg-primary text-primary-foreground border-2 border-primary'
-                  : 'bg-card text-card-foreground border-2 border-border hover:border-primary/50'
-              }`}
-            >
-              {diff.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Puzzles Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {puzzles.map((puzzle) => (
-          <div
-            key={puzzle.id}
-            onClick={() => router.push(`/puzzles/${puzzle.id}`)}
-            className="bg-card rounded-xl p-4 shadow-lg border-2 border-border hover:border-primary/50 transition-all hover:shadow-xl cursor-pointer transform hover:scale-[1.02]"
-          >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1 pr-2">
-                <h3 className="font-heading text-base font-bold text-card-foreground mb-1">
-                  {getThemeEmoji(puzzle.theme)} {puzzle.title}
-                </h3>
-                <p className="font-sans text-xs text-muted-foreground">{puzzle.description}</p>
-              </div>
-              <div className="flex items-center gap-1 text-amber-500 flex-shrink-0">
-                <Star className="w-3.5 h-3.5 fill-current" />
-                <span className="font-heading font-bold text-xs">{puzzle.xp_reward}</span>
-              </div>
+    <div className="mx-auto max-w-6xl pt-6">
+      {/* Intro */}
+      <section className="mb-8">
+        <div className="flex items-start gap-3">
+          <div className="animate-mascot-bounce shrink-0 text-5xl">♞</div>
+          <div className="relative flex-1">
+            <div className="absolute -left-2 top-4 h-0 w-0 border-y-[8px] border-r-[10px] border-y-transparent border-r-white" />
+            <div className="rounded-2xl bg-card p-4 shadow-sm border-2 border-border">
+              <p className="font-heading text-lg font-bold text-card-foreground">
+                Train your tactics! Choose how you want to play 🧠
+              </p>
+              <p className="mt-0.5 font-heading text-sm font-semibold text-muted-foreground">
+                Solve at your own pace or race against the clock.
+              </p>
             </div>
-
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-heading font-bold border-2 ${getDifficultyColor(puzzle.difficulty)}`}>
-                {puzzle.difficulty}
-              </span>
-              {puzzle.theme && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-heading font-bold bg-blue-100 text-blue-800 border-2 border-blue-300">
-                  {puzzle.theme}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between font-sans text-xs text-muted-foreground mb-3">
-              <span>Rating: {puzzle.rating}</span>
-              <span>
-                {puzzle.success_count}/{puzzle.attempts_count} solved
-              </span>
-            </div>
-
-            <button className="w-full bg-gradient-to-r from-primary to-accent text-primary-foreground font-heading font-bold py-1.5 px-3 rounded-lg hover:opacity-90 transition-all text-xs">
-              Solve Puzzle →
-            </button>
           </div>
-        ))}
-      </div>
-
-      {puzzles.length === 0 && (
-        <div className="text-center py-12">
-          <PuzzleIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <p className="font-sans text-sm text-muted-foreground">No puzzles found</p>
         </div>
-      )}
+      </section>
+
+      {/* Two options */}
+      <section className="mb-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          {puzzleOptions.map((card, idx) => {
+            const Icon = card.icon;
+            return (
+              <Link
+                key={card.title}
+                href={card.href}
+                className={`animate-bounce-in hover-wiggle group flex flex-col overflow-hidden rounded-3xl border-2 ${card.borderColor} bg-card shadow-md transition-all duration-200 hover:shadow-xl hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+                style={{ animationDelay: `${idx * 120}ms` }}
+              >
+                <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
+                  <span className="text-6xl sm:text-7xl drop-shadow-lg">{card.emoji}</span>
+                  <div className="absolute right-3 top-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg">
+                    <Icon className="h-6 w-6 text-gray-700" />
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-col p-5">
+                  <h2 className="font-heading text-xl font-bold text-card-foreground">
+                    {card.title}
+                  </h2>
+                  <p className="mt-2 font-sans text-sm text-muted-foreground">
+                    {card.description}
+                  </p>
+                  <div className={`mt-4 inline-flex items-center gap-2 self-start rounded-xl bg-gradient-to-r ${card.gradient} px-4 py-2 font-heading text-sm font-bold text-white shadow-sm group-hover:shadow-md transition-shadow`}>
+                    Get started
+                    <ArrowLeft className="h-4 w-4 rotate-180" />
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

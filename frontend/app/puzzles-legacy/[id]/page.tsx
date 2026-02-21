@@ -28,7 +28,7 @@ export default function PuzzleSolveLegacyPage() {
   const [startTime, setStartTime] = useState<number>(0);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [userXP, setUserXP] = useState(user?.xp || 0);
+  const [userXP, setUserXP] = useState(user?.total_xp ?? 0);
 
   useEffect(() => {
     loadPuzzle();
@@ -199,9 +199,12 @@ export default function PuzzleSolveLegacyPage() {
           <div className="space-y-2">
             <HintSystem
               puzzleId={puzzleId}
-              fen={puzzle.fen}
+              fen={game.fen()}
               userXP={userXP}
-              onXPDeducted={(newXP) => setUserXP(newXP)}
+              onXPDeducted={(newXP) => {
+                setUserXP(newXP);
+                if (user) updateUser({ total_xp: newXP });
+              }}
             />
 
             {isCorrect !== null && (
