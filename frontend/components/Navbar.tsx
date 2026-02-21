@@ -43,13 +43,13 @@ export default function Navbar() {
       : '/dashboard';
 
   return (
-    <nav className="bg-gradient-to-r from-primary-600 via-purple-600 to-blue-600 shadow-lg sticky top-0 z-50">
+    <nav className="bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 shadow-lg sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href={logoHref} className="flex items-center gap-2 group">
             <Sparkles className="w-8 h-8 text-yellow-300 group-hover:animate-spin" />
-            <span className="text-2xl font-bold text-white">
+            <span className="font-heading text-2xl font-bold text-white">
               Prodigy Pawns
             </span>
           </Link>
@@ -65,9 +65,9 @@ export default function Navbar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold transition-all ${
                       isActive
-                        ? 'bg-white text-primary-700 shadow-lg'
+                        ? 'bg-white text-emerald-700 shadow-lg'
                         : 'text-white hover:bg-white/20'
                     }`}
                   >
@@ -79,9 +79,9 @@ export default function Navbar() {
               {user?.role === 'coach' || user?.role === 'admin' ? (
                 <Link
                   href="/coach"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold transition-all ${
                     pathname === '/coach'
-                      ? 'bg-white text-primary-700 shadow-lg'
+                      ? 'bg-white text-emerald-700 shadow-lg'
                       : 'text-white hover:bg-white/20'
                   }`}
                 >
@@ -95,12 +95,12 @@ export default function Navbar() {
           {isAuthenticated && user ? (
             <div className="flex items-center gap-4">
               {/* XP and Level Badge */}
-              <div className="hidden sm:flex items-center gap-3 bg-white/20 px-4 py-2 rounded-full">
+              <div className="hidden sm:flex items-center gap-3 bg-white/20 px-4 py-2 rounded-2xl">
                 <div className="text-right">
-                  <p className="text-xs text-white/80 font-medium">Level {user.level}</p>
-                  <p className="text-sm text-white font-bold">{user.total_xp} XP</p>
+                  <p className="text-xs text-white/80 font-heading font-medium">Level {user.level}</p>
+                  <p className="text-sm text-white font-heading font-bold">{user.total_xp} XP</p>
                 </div>
-                <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center font-bold text-purple-800 text-lg shadow-lg">
+                <div className="w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center font-heading font-bold text-emerald-800 text-lg shadow-lg">
                   {user.level}
                 </div>
               </div>
@@ -108,12 +108,12 @@ export default function Navbar() {
               {/* User Dropdown */}
               <div className="flex items-center gap-2">
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm font-semibold text-white">{user.full_name}</p>
+                  <p className="text-sm font-heading font-semibold text-white">{user.full_name}</p>
                   <p className="text-xs text-white/80">@{user.username}</p>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl"
+                  className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl font-heading font-semibold transition-all shadow-lg hover:shadow-xl"
                 >
                   <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Logout</span>
@@ -124,14 +124,14 @@ export default function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/login"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white hover:bg-white/20 transition-all"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold text-white hover:bg-white/20 transition-all"
               >
                 <LogIn className="w-5 h-5" />
                 <span className="hidden sm:inline">Login</span>
               </Link>
               <Link
                 href="/signup"
-                className="flex items-center gap-2 bg-white text-primary-700 px-4 py-2 rounded-lg font-semibold shadow-lg hover:bg-white/90 transition-all"
+                className="flex items-center gap-2 bg-white text-emerald-700 px-4 py-2 rounded-xl font-heading font-semibold shadow-lg hover:bg-white/90 transition-all"
               >
                 <UserPlus className="w-5 h-5" />
                 <span className="hidden sm:inline">Sign up</span>
@@ -151,9 +151,9 @@ export default function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold whitespace-nowrap transition-all ${
                     isActive
-                      ? 'bg-white text-primary-700 shadow-lg'
+                      ? 'bg-white text-emerald-700 shadow-lg'
                       : 'text-white bg-white/10'
                   }`}
                 >
@@ -165,9 +165,9 @@ export default function Navbar() {
             {user?.role === 'coach' || user?.role === 'admin' ? (
               <Link
                 href="/coach"
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold whitespace-nowrap transition-all ${
                   pathname === '/coach'
-                    ? 'bg-white text-primary-700 shadow-lg'
+                    ? 'bg-white text-emerald-700 shadow-lg'
                     : 'text-white bg-white/10'
                 }`}
               >
@@ -181,16 +181,16 @@ export default function Navbar() {
           <div className="md:hidden pb-3 flex gap-2 overflow-x-auto">
             <Link
               href="/login"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-white bg-white/10"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold whitespace-nowrap text-white bg-white/10"
             >
               <LogIn className="w-4 h-4" />
               Login
             </Link>
             <Link
               href="/signup"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold whitespace-nowrap bg-white text-primary-700 shadow-lg"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl font-heading font-semibold whitespace-nowrap bg-white text-emerald-700 shadow-lg"
             >
-              <UserPlus className="w-4 h-4" />
+              <UserPlus className="w-5 h-5" />
               Sign up
             </Link>
           </div>

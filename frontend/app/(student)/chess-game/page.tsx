@@ -208,24 +208,6 @@ export default function ChessGamePage() {
 
   return (
     <div className="mx-auto max-w-4xl pt-6">
-      {/* Header */}
-      <section className="mb-6">
-        <div className="flex items-start gap-3">
-          <div className="animate-mascot-bounce shrink-0 text-5xl">{"♞"}</div>
-          <div className="relative flex-1">
-            <div className="absolute -left-2 top-4 h-0 w-0 border-y-[8px] border-r-[10px] border-y-transparent border-r-white" />
-            <div className="rounded-2xl bg-card p-4 shadow-sm">
-              <h1 className="font-heading text-2xl font-bold text-card-foreground">
-                Challenge a Friend! ⚔️
-              </h1>
-              <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                Search for students and invite them to play chess
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Search Section */}
       <section className="mb-6">
         <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-sm">

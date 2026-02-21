@@ -11,8 +11,8 @@ import Navbar from '@/components/Navbar';
 export default function ConditionalNavbar() {
   const pathname = usePathname();
   
-  // Routes that use the dashboard theme (sidebar + header)
-  const studentAppRoutes = ['/dashboard', '/play', '/leaderboard', '/adventure', '/learn', '/progress', '/settings', '/puzzles', '/chess-game', '/profile'];
+  // Routes that use the dashboard theme (sidebar + header) — only Dashboard header is used on these
+  const studentAppRoutes = ['/dashboard', '/play', '/leaderboard', '/adventure', '/learn', '/progress', '/settings', '/puzzles', '/chess-game', '/profile', '/beat-the-bot'];
   
   if (studentAppRoutes.some(route => pathname?.startsWith(route))) {
     return null;

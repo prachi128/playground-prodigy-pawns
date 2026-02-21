@@ -45,16 +45,6 @@ export default function PuzzlesPage() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="font-heading text-2xl font-bold text-foreground mb-1">
-          Chess Puzzles 🧩
-        </h1>
-        <p className="font-sans text-sm text-muted-foreground">
-          Solve puzzles and earn XP!
-        </p>
-      </div>
-
       {/* Difficulty Filter */}
       <div className="flex gap-2 mb-5 overflow-x-auto pb-2">
         {[

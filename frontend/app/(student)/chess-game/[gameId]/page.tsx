@@ -8,7 +8,7 @@ import { useAuthStore } from '@/lib/store';
 import { gameAPI, Game } from '@/lib/api';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { ArrowLeft, Loader2, Trophy, Users } from 'lucide-react';
+import { Loader2, Trophy, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -500,20 +500,6 @@ export default function ChessGamePage() {
 
   return (
     <div className="mx-auto max-w-6xl pt-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <Link
-          href="/chess-game"
-          className="flex items-center gap-2 rounded-lg border-2 border-border bg-background px-4 py-2 font-heading font-bold transition-all hover:bg-muted"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Lobby
-        </Link>
-        <div className="rounded-lg bg-gradient-to-r from-orange-400 to-pink-500 px-4 py-2">
-          <span className="font-heading font-bold text-white">Game #{game.id}</span>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
         <div className="lg:col-span-2">

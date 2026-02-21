@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, getThemeEmoji } from '@/lib/utils';
+import { getDifficultyColor } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { ArrowLeft, Lightbulb, RotateCcw, Check, X, Star, Trophy } from 'lucide-react';
+import { Lightbulb, RotateCcw, Check, X, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
@@ -148,30 +148,6 @@ export default function PuzzleSolvePage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      {/* Header */}
-      <div className="mb-2">
-        <Link
-          href="/puzzles"
-          className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-xs mb-2"
-        >
-          <ArrowLeft className="w-3 h-3" />
-          Back
-        </Link>
-        
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="font-heading text-lg font-bold text-foreground mb-0.5">
-              {getThemeEmoji(puzzle.theme)} {puzzle.title}
-            </h1>
-            <p className="font-sans text-xs text-muted-foreground">{puzzle.description}</p>
-          </div>
-          <div className="flex items-center gap-1 bg-amber-100 px-2 py-1 rounded-full border-2 border-amber-300">
-            <Star className="w-3 h-3 text-amber-600 fill-current" />
-            <span className="font-heading font-bold text-amber-700 text-xs">{puzzle.xp_reward} XP</span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2">
