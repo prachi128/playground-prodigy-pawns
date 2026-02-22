@@ -44,6 +44,7 @@ from schemas import (
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
+from student_management_backend import router as student_router
 
 # FastAPI app
 app = FastAPI(
@@ -63,6 +64,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(coach_router)
+app.include_router(student_router)
 
 
 # Cookie settings for auth (Cookie-Based Session Auth)

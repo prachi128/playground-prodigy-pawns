@@ -1,11 +1,11 @@
-// app/coach/puzzles/[id]/page.tsx - View/Edit Puzzle Page
+// app/(coach)/coach/puzzles/[id]/page.tsx - View/Edit Puzzle Page
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { coachAPI, Puzzle } from '@/lib/api';
-import { ArrowLeft, Save, Eye, Brain } from 'lucide-react';
+import { ArrowLeft, Save, Brain } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { Chessboard } from 'react-chessboard';

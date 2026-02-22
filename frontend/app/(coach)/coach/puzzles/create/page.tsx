@@ -1,4 +1,4 @@
-// app/coach/puzzles/create/page.tsx - Create Puzzle with Stockfish
+// app/(coach)/coach/puzzles/create/page.tsx - Create Puzzle with Stockfish
 
 'use client';
 

@@ -449,7 +449,19 @@ export const coachAPI = {
   autoSolve: async (fen: string) => {
     const response = await api.post('/api/puzzles/auto-solve', { fen });
     return response.data;
-  }
+  },
+
+  // List students (for coach). Returns [] if endpoint is not implemented (404).
+  getStudents: async (): Promise<User[]> => {
+    try {
+      const response = await api.get('/api/coach/students');
+      return response.data?.students ?? response.data ?? [];
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) return [];
+      throw err;
+    }
+  },
 };
 
 export default api;

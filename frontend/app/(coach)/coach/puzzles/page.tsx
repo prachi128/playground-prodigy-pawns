@@ -1,4 +1,4 @@
-// app/coach/puzzles/page.tsx - Manage Puzzles Page
+// app/(coach)/coach/puzzles/page.tsx - Manage Puzzles Page
 
 'use client';
 
@@ -112,7 +112,7 @@ export default function ManagePuzzlesPage() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 flex items-center justify-center">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-semibold">Loading puzzles...</p>
@@ -122,26 +122,19 @@ export default function ManagePuzzlesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50">
-      <div className="max-w-7xl mx-auto px-8 lg:px-12 py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              📝 Manage Puzzles
-            </h1>
-            <p className="text-gray-600">
-              Edit, delete, or revalidate puzzles
-            </p>
-          </div>
-          <Link
-            href="/coach/puzzles/create"
-            className="bg-gradient-to-r from-primary-500 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:from-primary-600 hover:to-purple-700 transition-all shadow-lg flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Create New
-          </Link>
-        </div>
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-gray-600">
+          Edit, delete, or revalidate puzzles
+        </p>
+        <Link
+          href="/coach/puzzles/create"
+          className="bg-gradient-to-r from-primary-500 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:from-primary-600 hover:to-purple-700 transition-all shadow-lg flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Create New
+        </Link>
+      </div>
 
         {/* Filter Buttons */}
         <div className="flex gap-3 mb-6">
@@ -289,7 +282,6 @@ export default function ManagePuzzlesPage() {
             </p>
           </div>
         </div>
-      </div>
 
       {/* Confirmation Dialog */}
       <ConfirmDialog
