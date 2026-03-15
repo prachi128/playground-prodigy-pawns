@@ -15,10 +15,12 @@ const MemoizedHeader = memo(Header)
 const MemoizedWelcomeModal = memo(WelcomeModal)
 const MemoizedCoachGuidance = memo(CoachGuidance)
 
+/** First-time (no saved pref): desktop/laptop expanded, tablet/mobile collapsed so hamburger shows. */
 function getInitialSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false
   const saved = localStorage.getItem("sidebar-collapsed")
   if (saved !== null) return saved === "true"
+  // Desktop/laptop (lg and up): expanded. Tablet/mobile: collapsed (hamburger).
   return window.innerWidth < 1024
 }
 
@@ -64,11 +66,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     setSidebarOpen(true)
   }, [])
 
+  const handleCollapsedChange = useCallback((collapsed: boolean) => {
+    setSidebarCollapsed(collapsed)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar-collapsed", String(collapsed))
+      window.dispatchEvent(new CustomEvent("sidebar-toggle"))
+    }
+  }, [])
+
   return (
     <div className="flex min-h-screen bg-background">
-      <MemoizedSidebar isOpen={sidebarOpen} onClose={handleCloseSidebar} />
+      <MemoizedSidebar
+        isOpen={sidebarOpen}
+        onClose={handleCloseSidebar}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={handleCollapsedChange}
+      />
 
-      <div className={`flex min-w-0 flex-1 flex-col overflow-x-hidden transition-all duration-300 ${sidebarCollapsed ? "lg:pl-20" : "lg:pl-60"}`}>
+      <div className={`flex min-w-0 flex-1 flex-col overflow-x-hidden transition-all duration-300 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"}`}>
         <MemoizedHeader
           onMenuClick={handleMenuClick}
           theme={theme}

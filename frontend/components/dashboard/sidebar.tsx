@@ -122,14 +122,16 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
         role="navigation"
         aria-label="Main navigation"
       >
-        {/* Collapse toggle: desktop only; on mobile/tablet only the X closes the overlay */}
-        <button
-          onClick={toggleCollapse}
-          className="absolute right-2 top-3 z-10 hidden rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-        </button>
+        {/* Collapse toggle: desktop only; when expanded, top-right; when collapsed, below knight to avoid overlap */}
+        {!effectiveCollapsed && (
+          <button
+            onClick={toggleCollapse}
+            className="absolute right-2 top-3 z-10 hidden rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
 
         {/* Close button (mobile) */}
         <button
@@ -140,11 +142,20 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
           <X className="h-5 w-5" />
         </button>
 
-        {/* Logo with mascot knight (v1 layout) */}
+        {/* Logo with mascot knight (v1 layout); when collapsed, expand button below knight */}
         <div className={`flex flex-col items-center gap-1 px-4 pt-5 pb-2 ${effectiveCollapsed ? "px-2" : ""}`}>
-          <div className="text-[40px] leading-none" role="img" aria-label="Chess knight mascot">
+          <div className={`leading-none ${effectiveCollapsed ? "text-3xl" : "text-[40px]"}`} role="img" aria-label="Chess knight mascot">
             {"♞"}
           </div>
+          {effectiveCollapsed && (
+            <button
+              onClick={toggleCollapse}
+              className="hidden rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
+              aria-label="Expand sidebar"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
           {!effectiveCollapsed && (
             <h1 className="font-heading text-2xl font-bold text-sidebar-foreground">
               Prodigy Pawns
@@ -252,8 +263,8 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                   }`}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  {/* Active left border */}
-                  {isActive && (
+                  {/* Active left border - hide when collapsed */}
+                  {isActive && !effectiveCollapsed && (
                     <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]" />
                   )}
 

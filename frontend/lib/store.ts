@@ -25,6 +25,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user, isAuthenticated: true }),
 
   login: (user) => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('sidebar-collapsed');
+    }
     set({ user, isAuthenticated: true, isLoading: false });
   },
 
