@@ -9,7 +9,7 @@ import { coachAPI, Puzzle } from '@/lib/api';
 import { Plus, Edit, Trash2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { getDifficultyColor } from '@/lib/utils';
+import { getDifficultyColor, parseThemeList } from '@/lib/utils';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function ManagePuzzlesPage() {
@@ -202,8 +202,18 @@ export default function ManagePuzzlesPage() {
                         {puzzle.difficulty}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 capitalize">
-                      {puzzle.theme || '—'}
+                    <td className="px-4 py-3 text-sm">
+                      {parseThemeList(puzzle.theme).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {parseThemeList(puzzle.theme).map((t) => (
+                            <span key={t} className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 capitalize">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-yellow-600">
                       {puzzle.xp_reward} XP

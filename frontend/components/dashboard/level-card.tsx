@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { ChevronRight, Zap, TrendingUp, Trophy, Lock, Star } from 'lucide-react'
 import Link from 'next/link'
+import { getRatingBandForLevel, getRatingProgressToNextLevel, getRatingForNextLevel } from '@/lib/utils'
 
 interface LevelCardProps {
   currentLevel: number
-  currentXP: number
-  totalXPNeeded: number
+  rating: number
+  totalXP: number
   userName: string
 }
 
@@ -26,11 +27,13 @@ const quickXPOpportunities = [
   { activity: 'Win a game', xp: 25, icon: '⚔️' },
 ]
 
-export function LevelCard({ currentLevel = 4, currentXP = 640, totalXPNeeded = 1000, userName = 'Player' }: LevelCardProps) {
+export function LevelCard({ currentLevel = 4, rating = 650, totalXP = 640, userName = 'Player' }: LevelCardProps) {
   const [expandedTab, setExpandedTab] = useState<'benefits' | 'leaderboard' | 'quick' | null>(null)
 
-  const xpProgress = Math.round((currentXP / totalXPNeeded) * 100)
-  const xpRemaining = totalXPNeeded - currentXP
+  // Level is from rating; show progress within current rating band toward next level
+  const ratingProgress = getRatingProgressToNextLevel(rating, currentLevel)
+  const ratingNext = getRatingForNextLevel(currentLevel)
+  const band = getRatingBandForLevel(currentLevel)
   const levelName = `Knight ${(currentLevel % 3) + 1}`
   const nextLevelName = `Knight ${(currentLevel % 3) + 2}`
   const userRank = 47
@@ -48,7 +51,7 @@ export function LevelCard({ currentLevel = 4, currentXP = 640, totalXPNeeded = 1
   const currentPiece = getCurrentPiece()
 
   return (
-    <section className="mb-6">
+    <section id="your-level" className="mb-6 scroll-mt-20">
       <div className="overflow-hidden rounded-3xl border-2 border-green-200 bg-card shadow-sm">
         <div className="bg-gradient-to-r from-green-500 via-teal-500 to-green-600 px-5 py-4">
           <div className="flex items-center justify-between">
@@ -67,28 +70,41 @@ export function LevelCard({ currentLevel = 4, currentXP = 640, totalXPNeeded = 1
           </div>
 
           <div className="space-y-3">
+            <p className="text-sm font-semibold text-muted-foreground">Level is based on your rating</p>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-muted-foreground">Progress to {nextLevelName}</span>
-              <span className="font-heading text-lg font-bold text-green-600">{xpProgress}%</span>
+              <span className="text-sm font-bold text-muted-foreground">Rating → Level {currentLevel + 1}</span>
+              <span className="font-heading text-lg font-bold text-green-600">{ratingProgress}%</span>
             </div>
             <div className="h-6 overflow-hidden rounded-full border-2 border-green-200 bg-gradient-to-r from-green-50 to-teal-50">
-              <div className="h-full bg-gradient-to-r from-green-500 via-teal-400 to-emerald-500 transition-all duration-500 animate-xp-bar-fill flex items-center justify-center" style={{ width: `${xpProgress}%` }}>
-                {xpProgress > 30 && <span className="text-xs font-bold text-white drop-shadow">{currentXP} XP</span>}
+              <div className="h-full bg-gradient-to-r from-green-500 via-teal-400 to-emerald-500 transition-all duration-500 animate-xp-bar-fill flex items-center justify-center" style={{ width: `${ratingProgress}%` }}>
+                {ratingProgress > 30 && <span className="text-xs font-bold text-white drop-shadow">{rating}</span>}
               </div>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="font-semibold text-card-foreground">{currentXP} / {totalXPNeeded} XP</span>
-              <span className="font-heading text-lg font-bold text-orange-600">{xpRemaining} more to go!</span>
+              <span className="font-semibold text-card-foreground">Rating {rating}{band.max != null ? ` (${band.min}–${band.max})` : ` (${band.min}+)`}</span>
+              {ratingNext != null ? (
+                <span className="font-heading text-lg font-bold text-orange-600">Reach {ratingNext} for Level {currentLevel + 1}</span>
+              ) : (
+                <span className="font-heading text-lg font-bold text-emerald-600">Max level!</span>
+              )}
             </div>
-            {xpRemaining < 100 ? (
+            {ratingNext != null && ratingNext - rating <= 100 ? (
               <div className="rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 p-3">
-                <p className="font-heading font-bold text-amber-900">Almost there! Just {xpRemaining} XP to {nextLevelName}!</p>
+                <p className="font-heading font-bold text-amber-900">Almost there! Reach rating {ratingNext} for {nextLevelName}!</p>
               </div>
-            ) : (
+            ) : ratingNext != null ? (
               <div className="rounded-lg bg-gradient-to-r from-teal-50 to-green-50 border-2 border-teal-200 p-3">
-                <p className="font-heading font-bold text-teal-900">{xpRemaining} more XP to {nextLevelName}! Keep going!</p>
+                <p className="font-heading font-bold text-teal-900">Win more games to raise your rating and reach Level {currentLevel + 1}!</p>
               </div>
-            )}
+            ) : null}
+          </div>
+
+          <div className="space-y-2 rounded-lg border-2 border-amber-200 bg-amber-50/50 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-muted-foreground">Total XP</span>
+              <span className="font-heading font-bold text-amber-700">{totalXP.toLocaleString()} XP</span>
+            </div>
+            <p className="text-xs text-muted-foreground">XP is used for hints and rewards, not for level. Level is based on rating.</p>
           </div>
 
           <div className="space-y-3">
@@ -114,7 +130,7 @@ export function LevelCard({ currentLevel = 4, currentXP = 640, totalXPNeeded = 1
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-green-600" />
-                  <span className="font-heading font-bold text-green-900">When you reach {nextLevelName}</span>
+                  <span className="font-heading font-bold text-green-900">When you reach {nextLevelName} (by rating)</span>
                 </div>
                 <ChevronRight className={`h-5 w-5 transition-transform ${expandedTab === 'benefits' ? 'rotate-90' : ''}`} />
               </div>
@@ -149,7 +165,7 @@ export function LevelCard({ currentLevel = 4, currentXP = 640, totalXPNeeded = 1
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Zap className="h-5 w-5 text-amber-600" />
-                  <span className="font-heading font-bold text-amber-900">Quick ways to level up</span>
+                  <span className="font-heading font-bold text-amber-900">Quick ways to earn XP</span>
                 </div>
                 <ChevronRight className={`h-5 w-5 transition-transform ${expandedTab === 'quick' ? 'rotate-90' : ''}`} />
               </div>

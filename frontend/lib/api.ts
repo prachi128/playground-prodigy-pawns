@@ -74,6 +74,8 @@ export interface User {
   total_xp: number;
   level: number;
   rating: number;
+  /** Category from rating: Pawn, Knight, Bishop, Rook, Queen, King */
+  level_category?: string;
   created_at: string;
   is_active: boolean;
 }
@@ -180,13 +182,26 @@ export const userAPI = {
 };
 
 // Puzzle API
+const PUZZLES_PAGE_SIZE = 20;
+
 export const puzzleAPI = {
-  getAll: async (difficulty?: string, theme?: string): Promise<Puzzle[]> => {
+  getAll: async (
+    difficulty?: string,
+    theme?: string,
+    skip: number = 0,
+    limit: number = PUZZLES_PAGE_SIZE
+  ): Promise<Puzzle[]> => {
     const params = new URLSearchParams();
     if (difficulty) params.append('difficulty', difficulty);
     if (theme) params.append('theme', theme);
+    params.append('skip', String(skip));
+    params.append('limit', String(limit));
     const response = await api.get(`/api/puzzles?${params.toString()}`);
     return response.data;
+  },
+
+  get pageSize() {
+    return PUZZLES_PAGE_SIZE;
   },
 
   getById: async (id: number): Promise<Puzzle> => {

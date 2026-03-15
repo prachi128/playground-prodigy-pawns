@@ -1,12 +1,12 @@
 "use client"
 
+import { useEffect } from "react"
 import {
   TrendingUp,
   Star,
   Trophy,
   Target,
   Zap,
-  Flame,
   BookOpen,
   Swords,
   Puzzle,
@@ -18,6 +18,7 @@ import {
   CheckCircle,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
+import { getRatingProgressToNextLevel, getRatingForNextLevel } from "@/lib/utils"
 import { LevelCard } from "./level-card"
 
 const skillCategories = [
@@ -30,7 +31,6 @@ const skillCategories = [
 const achievements = [
   { title: "First Win", icon: Trophy, earned: true, progress: 100, emoji: "🏆" },
   { title: "Puzzle Master", icon: Puzzle, earned: true, progress: 100, emoji: "🧩" },
-  { title: "10 Day Streak", icon: Flame, earned: true, progress: 100, emoji: "🔥" },
   { title: "100 Puzzles", icon: Target, earned: false, progress: 64, emoji: "🎯" },
   { title: "Level 10", icon: Star, earned: false, progress: 40, emoji: "⭐" },
   { title: "Perfect Week", icon: Calendar, earned: false, progress: 85, emoji: "📅" },
@@ -48,13 +48,20 @@ export function ProgressContent() {
 
   const totalXP = user?.total_xp ?? 0
   const currentLevel = user?.level ?? 1
-  const rating = user?.rating ?? 1000
-  const nextLevelXP = currentLevel * 1000
-  const xpToNextLevel = nextLevelXP - totalXP
-  const levelProgress = totalXP > 0 ? Math.min(100, Math.round((totalXP / nextLevelXP) * 100)) : 0
+  const rating = user?.rating ?? 100
 
   const totalAchievements = achievements.filter((a) => a.earned).length
   const totalAchievementsPercent = Math.round((totalAchievements / achievements.length) * 100)
+
+  // Scroll to Your Level when navigating with hash (e.g. from sidebar card)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#your-level") {
+      const t = setTimeout(() => {
+        document.getElementById("your-level")?.scrollIntoView({ behavior: "smooth" })
+      }, 150)
+      return () => clearTimeout(t)
+    }
+  }, [])
 
   return (
     <div className="mx-auto max-w-6xl pt-6">
@@ -76,19 +83,19 @@ export function ProgressContent() {
         </div>
       </section>
 
-      {/* Level Card */}
+      {/* Level Card - level from rating, XP for hints/rewards */}
       <section className="mb-6">
         <LevelCard
           currentLevel={currentLevel}
-          currentXP={totalXP}
-          totalXPNeeded={nextLevelXP}
+          rating={rating}
+          totalXP={totalXP}
           userName={user?.full_name ?? "Player"}
         />
       </section>
 
       {/* Main Stats Grid */}
       <section className="mb-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="overflow-hidden rounded-3xl border-2 border-emerald-200 bg-card shadow-sm">
             <div className="bg-gradient-to-r from-emerald-400 to-green-500 px-5 py-3">
               <h3 className="font-heading text-lg font-bold text-white">Total XP</h3>
@@ -109,18 +116,6 @@ export function ProgressContent() {
               <Trophy className="h-8 w-8 text-blue-500" />
               <span className="font-heading text-4xl font-bold text-blue-600">
                 {rating}
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-3xl border-2 border-orange-200 bg-card shadow-sm">
-            <div className="bg-gradient-to-r from-orange-400 to-red-500 px-5 py-3">
-              <h3 className="font-heading text-lg font-bold text-white">Streak</h3>
-            </div>
-            <div className="flex items-center justify-center gap-3 p-5">
-              <Flame className="h-8 w-8 text-orange-500" />
-              <span className="font-heading text-4xl font-bold text-orange-600">
-                7
               </span>
             </div>
           </div>
@@ -301,13 +296,14 @@ export function ProgressContent() {
         </div>
       </section>
 
-      {/* XP to Next Level */}
+      {/* Rating → Next Level (level is from rating) */}
       <section>
         <div className="overflow-hidden rounded-3xl border-2 border-emerald-200 bg-card shadow-sm">
           <div className="bg-gradient-to-r from-emerald-400 to-green-500 px-5 py-4">
             <h3 className="font-heading text-xl font-bold text-white">
               {"Next Level Progress 🎯"}
             </h3>
+            <p className="text-xs font-semibold text-white/90">Level is based on your rating</p>
           </div>
           <div className="p-5">
             <div className="mb-3 flex items-center justify-between">
@@ -315,17 +311,21 @@ export function ProgressContent() {
                 Level {currentLevel} → Level {currentLevel + 1}
               </span>
               <span className="font-heading text-sm font-bold text-emerald-600">
-                {xpToNextLevel > 0 ? `${xpToNextLevel} XP needed` : "Level Up!"}
+                {getRatingForNextLevel(currentLevel) != null
+                  ? `Reach ${getRatingForNextLevel(currentLevel)} rating`
+                  : "Max level!"}
               </span>
             </div>
             <div className="h-4 overflow-hidden rounded-full bg-emerald-100">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-green-500 transition-all duration-500"
-                style={{ width: `${levelProgress}%` }}
+                style={{ width: `${getRatingProgressToNextLevel(rating, currentLevel)}%` }}
               />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              {totalXP.toLocaleString()} / {nextLevelXP.toLocaleString()} XP
+              Rating {rating}
+              {getRatingForNextLevel(currentLevel) != null &&
+                ` → ${getRatingForNextLevel(currentLevel)} for Level ${currentLevel + 1}`}
             </p>
           </div>
         </div>

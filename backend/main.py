@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import List, Optional
+import io
 
 # Import models and utilities
 from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification
@@ -46,6 +47,83 @@ from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router
 
+# Level from rating (max level 15; level is no longer from XP)
+LEVEL_MIN = 1
+LEVEL_MAX = 15
+# Rating thresholds: level 2 starts at 300, level 3 at 500, ..., level 15 at 2900+
+_RATING_THRESHOLDS = [300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900]
+
+
+def level_from_rating(rating: int) -> int:
+    """Compute level 1-15 from player rating. Level is driven only by rating."""
+    r = max(100, rating)
+    level = LEVEL_MIN
+    for t in _RATING_THRESHOLDS:
+        if r >= t:
+            level += 1
+        else:
+            break
+    return min(level, LEVEL_MAX)
+
+
+def get_level_category(level: int) -> str:
+    """Category name for display: Pawn, Knight, Bishop, Rook, Queen, King."""
+    if level <= 2:
+        return "Pawn"
+    if level <= 5:
+        return "Knight"
+    if level <= 8:
+        return "Bishop"
+    if level <= 11:
+        return "Rook"
+    if level <= 14:
+        return "Queen"
+    return "King"
+
+
+def sync_user_level_from_rating(user: User) -> None:
+    """Ensure user.level matches rating (for existing users or if level got out of sync)."""
+    expected = level_from_rating(user.rating or 100)
+    if user.level != expected:
+        user.level = expected
+
+
+# Elo rating update (K=32, min 100)
+def _score_white_from_result(result) -> float:
+    res = str(getattr(result, "value", result) or "")
+    if res == "1-0":
+        return 1.0
+    if res == "0-1":
+        return 0.0
+    if res == "1/2-1/2":
+        return 0.5
+    return 0.5
+
+
+def update_ratings_after_game(game: Game, db: Session) -> None:
+    """Update both players' ratings using Elo only for PvP games. No rating change when playing vs bot."""
+    if not game.result:
+        return
+    white = db.query(User).filter(User.id == game.white_player_id).first()
+    black = db.query(User).filter(User.id == game.black_player_id).first()
+    if not white or not black:
+        return
+    BOT_USERNAME = "__BOT__"
+    if white.username == BOT_USERNAME or black.username == BOT_USERNAME:
+        return  # Bot game: do not update anyone's rating or level
+    score_white = _score_white_from_result(game.result)
+    rw = white.rating or 100
+    rb = black.rating or 100
+    K = 32
+    min_rating = 100
+    expected_white = 1.0 / (1.0 + 10.0 ** ((rb - rw) / 400.0))
+    delta_white = K * (score_white - expected_white)
+    white.rating = max(min_rating, round((white.rating or 100) + delta_white))
+    white.level = level_from_rating(white.rating)
+    black.rating = max(min_rating, round((black.rating or 100) - delta_white))
+    black.level = level_from_rating(black.rating)
+
+
 # FastAPI app
 app = FastAPI(
     title="Prodigy Pawns Student Portal API",
@@ -53,10 +131,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware (include both localhost and 127.0.0.1 so it works either way)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -89,6 +172,29 @@ def read_root():
 def health_check():
     return {"status": "healthy", "database": "connected"}
 
+
+@app.get("/api/levels")
+def get_levels_info():
+    """Return level bands (1–15) and categories. Level is determined by rating only."""
+    # Rating band for each level: level 1 = 100–299, 2 = 300–499, ..., 15 = 2900+
+    bands = []
+    low = 100
+    for level in range(LEVEL_MIN, LEVEL_MAX + 1):
+        if level == LEVEL_MAX:
+            high = None  # 2900+
+        else:
+            high = _RATING_THRESHOLDS[level - 1] - 1
+        bands.append({
+            "level": level,
+            "category": get_level_category(level),
+            "rating_min": low,
+            "rating_max": high,
+        })
+        if level < LEVEL_MAX:
+            low = _RATING_THRESHOLDS[level - 1]
+    return {"max_level": LEVEL_MAX, "levels": bands}
+
+
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 @app.post("/api/auth/signup")
@@ -115,12 +221,14 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         age=user.age,
         role=UserRole.student
     )
+    new_user.level = level_from_rating(new_user.rating or 100)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     access_token = create_access_token(data={"sub": new_user.id})
     refresh_token = create_refresh_token(data={"sub": new_user.id})
     user_payload = UserResponse.model_validate(new_user).model_dump(mode="json")
+    user_payload["level_category"] = get_level_category(new_user.level)
     response = JSONResponse(content={"user": user_payload})
     response.set_cookie(
         key=COOKIE_ACCESS_TOKEN,
@@ -151,11 +259,13 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     user.last_login = datetime.utcnow()
+    sync_user_level_from_rating(user)
     db.commit()
     db.refresh(user)
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
     user_payload = UserResponse.model_validate(user).model_dump(mode="json")
+    user_payload["level_category"] = get_level_category(user.level)
     response = JSONResponse(content={"user": user_payload})
     
     # Debug: log origin
@@ -197,8 +307,12 @@ def refresh_token(request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    sync_user_level_from_rating(user)
+    db.commit()
+    db.refresh(user)
     access_token = create_access_token(data={"sub": user.id})
     user_payload = UserResponse.model_validate(user).model_dump(mode="json")
+    user_payload["level_category"] = get_level_category(user.level)
     response = JSONResponse(content={"user": user_payload})
     response.set_cookie(
         key=COOKIE_ACCESS_TOKEN,
@@ -227,7 +341,10 @@ def get_current_user_info(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    sync_user_level_from_rating(user)
+    db.commit()
+    db.refresh(user)
+    return {**UserResponse.model_validate(user).model_dump(mode="json"), "level_category": get_level_category(user.level)}
 
 # ==================== USER ENDPOINTS ====================
 
@@ -326,7 +443,8 @@ def get_puzzles(
     if theme:
         query = query.filter(Puzzle.theme == theme)
     
-    puzzles = query.offset(skip).limit(limit).all()
+    # Order by id for fast indexed query (ORDER BY random() is slow on large sets)
+    puzzles = query.order_by(Puzzle.id).offset(skip).limit(limit).all()
     return puzzles
 
 @app.get("/api/puzzles/{puzzle_id}", response_model=PuzzleResponse)
@@ -360,11 +478,8 @@ def submit_puzzle_attempt(
         # Reduce XP for hints used
         xp_earned = max(5, xp_earned - (attempt.hints_used * 2))
         
-        # Award XP to user
+        # Award XP to user (level is driven by rating, not XP)
         current_user.total_xp += xp_earned
-        
-        # Update level (simple: 100 XP per level)
-        current_user.level = (current_user.total_xp // 100) + 1
         
         # Update puzzle stats
         puzzle.success_count += 1
@@ -474,7 +589,7 @@ def get_hint(
             detail=f"Not enough XP! You need {xp_cost} XP but only have {user.total_xp}."
         )
 
-    # Deduct XP
+    # Deduct XP (level is driven by rating, not XP)
     user.total_xp -= xp_cost
     db.commit()
 
@@ -619,6 +734,7 @@ def make_move(
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
+    db.refresh(game)  # ensure latest from DB (avoids stale state if bot-move just committed)
     
     # Check if user is part of this game
     if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
@@ -628,32 +744,36 @@ def make_move(
     if game.result:
         raise HTTPException(status_code=400, detail="Game has already ended")
     
-    # Initialize chess board - rebuild from PGN to preserve move history, fallback to final_fen
+    # Initialize chess board - prefer PGN so we use full move history (avoids desync with final_fen)
     board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
-    
-    # Replay existing moves from PGN to get current position with move history
+    used_pgn = False
     if game.pgn:
         try:
-            pgn_io = chess.pgn.StringIO(game.pgn)
+            pgn_io = io.StringIO(game.pgn)
             game_node = chess.pgn.read_game(pgn_io)
             if game_node:
                 board = game_node.board()
+                for move in game_node.mainline_moves():
+                    board.push(move)
+                used_pgn = True
         except Exception as e:
             print(f"Warning: PGN parsing failed, using final_fen: {e}")
-            # If PGN parsing fails, use final_fen as fallback
-            if game.final_fen:
-                try:
-                    board = chess.Board(game.final_fen)
-                except:
-                    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
-            else:
-                board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
-    elif game.final_fen:
-        # No PGN but we have final_fen, use it
+    if not used_pgn and game.final_fen:
         try:
             board = chess.Board(game.final_fen)
-        except:
+        except Exception:
             board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    elif not used_pgn:
+        board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    # If PGN and final_fen disagree, trust PGN and repair final_fen so bot and next load see correct state
+    if game.final_fen and used_pgn:
+        try:
+            fen_from_final = chess.Board(game.final_fen)
+            if fen_from_final.fen() != board.fen():
+                print(f"Warning: PGN and final_fen out of sync; using PGN position and repairing final_fen")
+                game.final_fen = board.fen()
+        except Exception:
+            pass
     
     # Determine whose turn it is
     is_white_turn = board.turn == chess.WHITE
@@ -678,9 +798,15 @@ def make_move(
         move_uci += move_data.promotion.lower()
     
     try:
-        move = board.push(chess.Move.from_uci(move_uci))
+        move_obj = chess.Move.from_uci(move_uci)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid move: {move_uci} - {str(e)}")
+    if not board.is_legal(move_obj):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Move {move_uci} is not legal in current position (e.g. wrong turn or piece already moved)."
+        )
+    move = board.push(move_obj)
     
     # Update game state
     game.total_moves += 1
@@ -695,7 +821,7 @@ def make_move(
     # Replay existing PGN moves if available
     if game.pgn:
         try:
-            pgn_io = chess.pgn.StringIO(game.pgn)
+            pgn_io = io.StringIO(game.pgn)
             existing_game = chess.pgn.read_game(pgn_io)
             if existing_game:
                 # Replay all moves from existing PGN
@@ -762,6 +888,8 @@ def make_move(
         game.result = "1/2-1/2"
         game.ended_at = datetime.utcnow()
     
+    if game.result:
+        update_ratings_after_game(game, db)
     db.commit()
     db.refresh(game)
     
@@ -844,6 +972,7 @@ def get_bot_move(
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
+    db.refresh(game)  # ensure we have latest (e.g. user's move that just committed)
     
     # Check if user is part of this game
     if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
@@ -868,28 +997,36 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
         print(f"Bot move skipped: Game already ended with result {game.result}")
         return
     
-    # Initialize chess board - use final_fen if available, otherwise starting_fen
-    if game.final_fen:
-        try:
-            board = chess.Board(game.final_fen)
-        except:
-            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
-    else:
-        board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
-    
-    # Replay existing moves from PGN if available (as backup/verification)
+    # Initialize chess board - prefer PGN (same as make_move) so we never play from stale final_fen
+    board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    used_pgn = False
     if game.pgn:
         try:
-            pgn_io = chess.pgn.StringIO(game.pgn)
+            pgn_io = io.StringIO(game.pgn)
             game_node = chess.pgn.read_game(pgn_io)
             if game_node:
-                pgn_board = game_node.board()
-                # Use PGN board if it matches the final_fen, otherwise trust final_fen
-                if pgn_board.fen() == board.fen():
-                    board = pgn_board
+                board = game_node.board()
+                for move in game_node.mainline_moves():
+                    board.push(move)
+                used_pgn = True
         except Exception as e:
-            print(f"Warning: PGN parsing failed, using FEN: {e}")
-            # Continue with board from FEN
+            print(f"Warning: PGN parsing failed in bot move, using FEN: {e}")
+    if not used_pgn and game.final_fen:
+        try:
+            board = chess.Board(game.final_fen)
+        except Exception:
+            board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    elif not used_pgn:
+        board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
+    # If PGN and final_fen disagree, trust PGN and repair final_fen
+    if game.final_fen and used_pgn:
+        try:
+            fen_from_final = chess.Board(game.final_fen)
+            if fen_from_final.fen() != board.fen():
+                print(f"Warning: Bot using PGN position (final_fen was out of sync); repairing final_fen")
+                game.final_fen = board.fen()
+        except Exception:
+            pass
     
     # Determine whose turn it is
     is_white_turn = board.turn == chess.WHITE
@@ -966,7 +1103,7 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     # Replay existing PGN moves if available
     if game.pgn:
         try:
-            pgn_io = chess.pgn.StringIO(game.pgn)
+            pgn_io = io.StringIO(game.pgn)
             existing_game = chess.pgn.read_game(pgn_io)
             if existing_game:
                 # Replay all moves from existing PGN
@@ -1031,6 +1168,8 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
         game.result = "1/2-1/2"
         game.ended_at = datetime.utcnow()
     
+    if game.result:
+        update_ratings_after_game(game, db)
     db.commit()
 
 # ==================== USER SEARCH ENDPOINTS ====================

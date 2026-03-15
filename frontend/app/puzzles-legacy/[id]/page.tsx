@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, getThemeEmoji } from '@/lib/utils';
+import { getDifficultyColor, getThemeEmoji, parseThemeList } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { ArrowLeft, Lightbulb, RotateCcw, Check, X, Star, Trophy } from 'lucide-react';
@@ -99,8 +99,7 @@ export default function PuzzleSolveLegacyPage() {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
         if (user) {
           const newXP = user.total_xp + result.xp_earned;
-          const newLevel = Math.floor(newXP / 100) + 1;
-          updateUser({ total_xp: newXP, level: newLevel });
+          updateUser({ total_xp: newXP });
         }
       } else {
         toast.error('Not quite right. Try again!');
@@ -161,7 +160,7 @@ export default function PuzzleSolveLegacyPage() {
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-800 mb-0.5">
-                {getThemeEmoji(puzzle.theme)} {puzzle.title}
+                {getThemeEmoji(parseThemeList(puzzle.theme)[0])} {puzzle.title}
               </h1>
               <p className="text-gray-600 text-xs">{puzzle.description}</p>
             </div>
@@ -262,12 +261,16 @@ export default function PuzzleSolveLegacyPage() {
                     {puzzle.difficulty}
                   </span>
                 </div>
-                {puzzle.theme && (
+                {parseThemeList(puzzle.theme).length > 0 && (
                   <div>
                     <p className="text-xs text-gray-600 mb-0.5">Theme</p>
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border-2 border-blue-300">
-                      {puzzle.theme}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {parseThemeList(puzzle.theme).map((t) => (
+                        <span key={t} className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border-2 border-blue-300 capitalize">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <div className="flex justify-between items-center">

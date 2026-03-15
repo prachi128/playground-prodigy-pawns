@@ -11,11 +11,8 @@ import { puzzleAPI, Puzzle, leaderboardAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
 
-const ROUND_OPTIONS = [
-  { label: '1 min', seconds: 60, emoji: '⚡' },
-  { label: '2 min', seconds: 120, emoji: '🏃' },
-  { label: '3 min', seconds: 180, emoji: '🌟' },
-];
+/** Fixed race duration: 2.5 minutes */
+const RACE_DURATION_SECONDS = 150;
 
 const TRACK_MAX_SCORE = 15;
 const CAR_EMOJIS = ['🏎️', '🚗', '🚙', '🏁', '🚕'];
@@ -40,7 +37,6 @@ function shuffle<T>(arr: T[]): T[] {
 export default function PuzzleRacerPage() {
   const { user, updateUser } = useAuthStore();
   const [phase, setPhase] = useState<'start' | 'racing' | 'ended'>('start');
-  const [selectedSeconds, setSelectedSeconds] = useState(120);
   const [puzzlePool, setPuzzlePool] = useState<Puzzle[]>([]);
   const [poolIndex, setPoolIndex] = useState(0);
   const [loadingPool, setLoadingPool] = useState(false);
@@ -116,7 +112,7 @@ export default function PuzzleRacerPage() {
       ]);
       setPuzzlePool(shuffled);
       setPhase('racing');
-      setTimeLeft(selectedSeconds);
+      setTimeLeft(RACE_DURATION_SECONDS);
       setPuzzlesSolved(0);
       setTotalXP(0);
       setPoolIndex(1);
@@ -133,7 +129,7 @@ export default function PuzzleRacerPage() {
     } finally {
       setLoadingPool(false);
     }
-  }, [selectedSeconds, user?.id, user?.full_name]);
+  }, [user?.id, user?.full_name]);
 
   useEffect(() => {
     if (phase !== 'racing' || timeLeft <= 0) return;
@@ -232,8 +228,8 @@ export default function PuzzleRacerPage() {
 
   if (phase === 'start') {
     return (
-      <div className="mx-auto max-w-2xl pt-6">
-        <div className="mb-6">
+      <div className="mx-auto max-w-2xl pt-1 pb-4 overflow-hidden max-h-[calc(100vh-5rem)]">
+        <div className="mb-3">
           <Link
             href="/puzzles"
             className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"
@@ -243,37 +239,21 @@ export default function PuzzleRacerPage() {
           </Link>
         </div>
         <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-orange-400 to-amber-500 px-6 py-6 text-center">
-            <span className="text-5xl block mb-2">🏎️</span>
+          <div className="bg-gradient-to-r from-orange-400 to-amber-500 px-6 py-4 text-center">
+            <span className="text-4xl block mb-1">🏎️</span>
             <h1 className="font-heading text-2xl font-bold text-white">Puzzle Racer</h1>
-            <p className="mt-1 font-heading text-sm font-semibold text-white/90">
+            <p className="mt-0.5 font-heading text-sm font-semibold text-white/90">
               Solve as many puzzles as you can before time runs out!
             </p>
           </div>
-          <div className="p-6 space-y-6">
+          <div className="p-4 space-y-4">
             <p className="font-sans text-muted-foreground text-center">
-              Pick a round length. You’ll get beginner puzzles one after another. Each correct solve earns XP!
+              You have 2.5 minutes to solve as many beginner puzzles as you can. Each correct solve earns XP!
             </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              {ROUND_OPTIONS.map((opt) => (
-                <button
-                  key={opt.seconds}
-                  onClick={() => setSelectedSeconds(opt.seconds)}
-                  className={`flex flex-col items-center rounded-2xl border-2 px-6 py-4 font-heading font-bold transition-all ${
-                    selectedSeconds === opt.seconds
-                      ? 'border-orange-400 bg-orange-50 text-orange-700 shadow-md'
-                      : 'border-border bg-card text-muted-foreground hover:border-orange-300'
-                  }`}
-                >
-                  <span className="text-2xl mb-1">{opt.emoji}</span>
-                  <span>{opt.label}</span>
-                </button>
-              ))}
-            </div>
             <div className="flex flex-wrap gap-3 justify-center text-sm text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <Clock className="h-4 w-4 text-amber-500" />
-                Timed round
+                2.5 min round
               </span>
               <span className="flex items-center gap-1.5">
                 <Zap className="h-4 w-4 text-orange-500" />
@@ -284,27 +264,21 @@ export default function PuzzleRacerPage() {
                 Beat your score
               </span>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <div className="flex justify-center pt-1">
               <button
                 onClick={startRace}
                 disabled={loadingPool}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-amber-500 text-white font-heading font-bold py-3 px-6 shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-400 to-amber-500 text-white font-heading font-bold py-3 px-6 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 cursor-default"
               >
                 {loadingPool ? (
                   'Loading…'
                 ) : (
                   <>
                     <Play className="h-5 w-5" />
-                    Start race
+                    Start Race
                   </>
                 )}
               </button>
-              <Link
-                href="/puzzles/solve"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-border bg-card font-heading font-bold py-3 px-6 text-foreground hover:bg-muted transition-all"
-              >
-                Solve at my pace
-              </Link>
             </div>
           </div>
         </div>
@@ -314,7 +288,7 @@ export default function PuzzleRacerPage() {
 
   if (phase === 'ended') {
     return (
-      <div className="mx-auto max-w-2xl pt-6">
+      <div className="mx-auto max-w-2xl pt-1 pb-4 overflow-hidden max-h-[calc(100vh-5rem)]">
         <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-xl overflow-hidden">
           <div className="bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-8 text-center">
             <span className="text-6xl block mb-2">🏁</span>
@@ -362,8 +336,8 @@ export default function PuzzleRacerPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl pt-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-4xl pt-1 pb-4 overflow-hidden">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/puzzles"
           className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"

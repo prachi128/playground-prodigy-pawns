@@ -8,7 +8,6 @@ import {
   GraduationCap,
   Swords,
   TrendingUp,
-  Flame,
   Star,
   X,
   Map,
@@ -47,13 +46,23 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
       if (saved !== null) {
         return saved === "true"
       }
-      // Default: collapsed on tablet, expanded on desktop
-      return window.innerWidth >= 768 && window.innerWidth < 1024
+      // Default: collapsed on mobile/tablet, expanded on desktop
+      return window.innerWidth < 1024
     }
     return false
   })
 
   const collapsed = externalCollapsed !== undefined ? externalCollapsed : internalCollapsed
+
+  // When sidebar is open as overlay (mobile/tablet), always show expanded content; collapse toggle is hidden there.
+  const [isLg, setIsLg] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches)
+  useEffect(() => {
+    const m = window.matchMedia("(min-width: 1024px)")
+    const fn = () => setIsLg(m.matches)
+    m.addEventListener("change", fn)
+    return () => m.removeEventListener("change", fn)
+  }, [])
+  const effectiveCollapsed = isOpen && !isLg ? false : collapsed
 
   const toggleCollapse = useCallback(() => {
     const newState = !collapsed
@@ -88,13 +97,12 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
   const rating = user?.rating ?? 0
 
-  // Use simple level/xp display but keep v1 layout
+  // Level is from rating; XP is for hints/rewards only
   const level = user?.level ?? 4
-  const currentXP = user?.total_xp ?? 640
-  const totalXPNeeded = 1000
-  const xpPercent = Math.min(100, Math.round((currentXP / totalXPNeeded) * 100))
+  const totalXP = user?.total_xp ?? 0
 
-  const sidebarWidth = collapsed ? "w-16" : "w-60"
+  // On mobile/tablet overlay: always full width (expanded). On desktop: respect collapsed state.
+  const sidebarWidthClass = `w-60 ${collapsed ? "lg:w-16" : "lg:w-60"}`
 
   return (
     <>
@@ -108,16 +116,16 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex ${sidebarWidth} flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex ${sidebarWidthClass} flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         role="navigation"
         aria-label="Main navigation"
       >
-        {/* Collapse toggle button (matches v1 position) */}
+        {/* Collapse toggle: desktop only; on mobile/tablet only the X closes the overlay */}
         <button
           onClick={toggleCollapse}
-          className="absolute right-2 top-3 z-10 rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
+          className="absolute right-2 top-3 z-10 hidden rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -133,11 +141,11 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
         </button>
 
         {/* Logo with mascot knight (v1 layout) */}
-        <div className={`flex flex-col items-center gap-1 px-4 pt-5 pb-2 ${collapsed ? "px-2" : ""}`}>
+        <div className={`flex flex-col items-center gap-1 px-4 pt-5 pb-2 ${effectiveCollapsed ? "px-2" : ""}`}>
           <div className="text-[40px] leading-none" role="img" aria-label="Chess knight mascot">
             {"♞"}
           </div>
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <h1 className="font-heading text-2xl font-bold text-sidebar-foreground">
               Prodigy Pawns
             </h1>
@@ -145,9 +153,24 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
         </div>
 
         {/* Player Card with XP bar - expanded */}
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <div className="px-4 py-2">
-            <div className="mx-3 overflow-hidden rounded-xl bg-white/5 p-3">
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("your-level")
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth" })
+                } else {
+                  const isDashboard = pathname === "/dashboard"
+                  const isProgress = pathname === "/progress"
+                  if (isDashboard || isProgress) return
+                  router.push("/progress#your-level")
+                }
+              }}
+              className="mx-3 w-[calc(100%-24px)] cursor-pointer overflow-hidden rounded-xl bg-white/5 p-3 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Scroll to Your Level"
+            >
               <div className="flex items-center gap-3">
                 {/* Avatar (use v1 image-based layout) */}
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-accent">
@@ -170,40 +193,26 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                     </span>
                   </div>
                 </div>
-
-                {/* Streak badge */}
-                <div className="flex shrink-0 flex-col items-center rounded-xl bg-orange-500/20 px-2 py-1.5">
-                  <Flame className="h-5 w-5 text-orange-400" />
-                  <span className="font-heading text-sm font-bold text-orange-400">
-                    7
-                  </span>
-                </div>
               </div>
 
-              {/* XP progress bar at bottom */}
+              {/* Level (from rating) + Total XP (for hints & rewards) */}
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[11px] font-bold">
                   <span className="flex items-center gap-1 text-sidebar-foreground/70">
                     <Zap className="h-3 w-3 text-amber-400" />
                     Level {level}
                   </span>
-                  <span className="text-amber-400">
-                    {currentXP} / {totalXPNeeded} XP
+                  <span className="text-amber-400" title="XP for hints and rewards">
+                    {totalXP} XP
                   </span>
                 </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-emerald-900">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 transition-all duration-500 ease-out"
-                    style={{ width: `${xpPercent}%` }}
-                  />
-                </div>
               </div>
-            </div>
+            </button>
           </div>
         )}
 
         {/* Collapsed avatar only */}
-        {collapsed && (
+        {effectiveCollapsed && (
           <div className="flex justify-center px-2 py-2">
             <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-accent">
               <img
@@ -235,7 +244,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                     router.push(item.href)
                   }}
                   className={`group relative flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-base transition-all duration-150 ${
-                    collapsed ? "justify-center px-3" : ""
+                    effectiveCollapsed ? "justify-center px-3" : ""
                   } ${
                     isActive
                       ? "scale-[1.02] bg-white/15 font-semibold text-white shadow-md"
@@ -254,7 +263,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                     } ${!isActive ? "group-hover:opacity-90" : ""}`}
                   />
 
-                  {!collapsed && (
+                  {!effectiveCollapsed && (
                     <div className="min-w-0 flex-1 text-left">
                       <div className="truncate leading-tight">{item.label}</div>
                       {item.badge && (
@@ -268,7 +277,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                   )}
 
                   {/* Progress indicator */}
-                  {!collapsed && item.progress !== null && (
+                  {!effectiveCollapsed && item.progress !== null && (
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <div className="h-1 w-10 overflow-hidden rounded-full bg-white/20">
                         <div
@@ -290,8 +299,8 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
         </nav>
 
         {/* Footer with Log Out (and implicit settings in nav) */}
-        <div className={`border-t border-white/10 bg-emerald-900/30 p-3 ${collapsed ? "px-2" : ""}`}>
-          {collapsed ? (
+        <div className={`border-t border-white/10 bg-emerald-900/30 p-3 ${effectiveCollapsed ? "px-2" : ""}`}>
+          {effectiveCollapsed ? (
             <button
               onClick={handleLogout}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-red-400 transition-all duration-150 hover:bg-red-500/20 hover:text-red-300"

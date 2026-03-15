@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 from typing import Optional
 from datetime import datetime
 
@@ -24,6 +24,7 @@ class UserResponse(UserBase):
     total_xp: int
     level: int
     rating: int
+    level_category: Optional[str] = None  # Pawn, Knight, Bishop, Rook, Queen, King (from rating)
     created_at: datetime
     is_active: bool
     
@@ -55,10 +56,18 @@ class PuzzleResponse(PuzzleBase):
     id: int
     rating: int
     xp_reward: int
-    attempts_count: int
-    success_count: int
-    created_at: datetime
-    
+    attempts_count: Optional[int] = 0  # DB may have NULL for older/imported rows
+    success_count: Optional[int] = 0
+    created_at: Optional[datetime] = None
+
+    @field_serializer("attempts_count", "success_count")
+    def serialize_count(self, v):
+        return v if v is not None else 0
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, v):
+        return v if v is not None else datetime.min
+
     class Config:
         from_attributes = True
 

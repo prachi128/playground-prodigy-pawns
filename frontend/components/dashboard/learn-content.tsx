@@ -337,7 +337,7 @@ export function LearnContent() {
 
       {/* Quick Stats */}
       <section className="mb-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="overflow-hidden rounded-3xl border-2 border-pink-200 bg-card shadow-sm">
             <div className="bg-gradient-to-r from-pink-400 to-rose-500 px-5 py-3">
               <h3 className="font-heading text-lg font-bold text-white">
@@ -366,19 +366,6 @@ export function LearnContent() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border-2 border-purple-200 bg-card shadow-sm">
-            <div className="bg-gradient-to-r from-purple-400 to-indigo-500 px-5 py-3">
-              <h3 className="font-heading text-lg font-bold text-white">
-                Streak
-              </h3>
-            </div>
-            <div className="flex items-center justify-center gap-3 p-5">
-              <Trophy className="h-8 w-8 text-purple-500" />
-              <span className="font-heading text-4xl font-bold text-purple-600">
-                {user?.current_streak ?? 0}
-              </span>
-            </div>
-          </div>
         </div>
       </section>
     </div>

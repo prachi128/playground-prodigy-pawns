@@ -20,10 +20,9 @@ interface ActivityItem {
 }
 
 const mockActivities: ActivityItem[] = [
-  { id: '1', type: 'achievement', title: '7-Day Streak!', subtitle: 'Consistent learner', timestamp: '2 min ago', badge: 'Achieved! 🏆', badgeColor: 'bg-amber-100 text-amber-700', xp: 50, action: 'Share', actionUrl: '#', icon: <Trophy className="h-8 w-8 text-amber-500" /> },
-  { id: '2', type: 'game', title: 'You beat ChessWhiz42!', subtitle: 'Rapid match', timestamp: '15 min ago', badge: 'Won! 🎉', badgeColor: 'bg-green-100 text-green-700', xp: 25, action: 'View Game', actionUrl: '#', icon: <Swords className="h-8 w-8 text-orange-500" />, stats: 'Checkmate in 8 moves' },
-  { id: '3', type: 'puzzle', title: 'Knight Fork Puzzle #4821', timestamp: '42 min ago', badge: 'Solved! ⭐', badgeColor: 'bg-blue-100 text-blue-700', xp: 10, action: 'Try Similar', actionUrl: '/puzzles', icon: <Target className="h-8 w-8 text-cyan-500" />, stats: 'In 1:23 • 1 attempt' },
-  { id: '4', type: 'lesson', title: 'Meet the Bishop', subtitle: 'Lesson 3 of 5', timestamp: '1h ago', badge: 'Complete! 🎓', badgeColor: 'bg-purple-100 text-purple-700', xp: 40, action: 'Next Lesson', actionUrl: '#', icon: <BookOpen className="h-8 w-8 text-purple-500" />, stats: 'In "The Pieces"' },
+  { id: '1', type: 'game', title: 'You beat ChessWhiz42!', subtitle: 'Rapid match', timestamp: '15 min ago', badge: 'Won! 🎉', badgeColor: 'bg-green-100 text-green-700', xp: 25, action: 'View Game', actionUrl: '#', icon: <Swords className="h-8 w-8 text-orange-500" />, stats: 'Checkmate in 8 moves' },
+  { id: '2', type: 'puzzle', title: 'Knight Fork Puzzle #4821', timestamp: '42 min ago', badge: 'Solved! ⭐', badgeColor: 'bg-blue-100 text-blue-700', xp: 10, action: 'Try Similar', actionUrl: '/puzzles', icon: <Target className="h-8 w-8 text-cyan-500" />, stats: 'In 1:23 • 1 attempt' },
+  { id: '3', type: 'lesson', title: 'Meet the Bishop', subtitle: 'Lesson 3 of 5', timestamp: '1h ago', badge: 'Complete! 🎓', badgeColor: 'bg-purple-100 text-purple-700', xp: 40, action: 'Next Lesson', actionUrl: '#', icon: <BookOpen className="h-8 w-8 text-purple-500" />, stats: 'In "The Pieces"' },
 ]
 
 export function ActivityFeed() {
