@@ -2,40 +2,63 @@
 
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Use localhost (not 127.0.0.1) to match frontend origin for cookie-based auth
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Create axios instance
+// Create axios instance (Cookie-Based Session Auth: cookies sent via withCredentials)
 const api = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add token to requests if available
-api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
+// 401 handling: try refresh once, then redirect to login
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (v?: unknown) => void; reject: (e: unknown) => void }> = [];
 
-// Response interceptor for handling errors
+const processQueue = (err: unknown, token: string | null = null) => {
+  failedQueue.forEach((p) => (err ? p.reject(err) : p.resolve(token)));
+  failedQueue = [];
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+  async (error) => {
+    const originalRequest = error.config;
+    const isSessionCheck = originalRequest?.url?.includes('/api/auth/me') && originalRequest?.method === 'get';
+    if (isSessionCheck) {
+      return Promise.reject(error);
+    }
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
         window.location.href = '/login';
       }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then(() => api(originalRequest))
+        .catch((e) => Promise.reject(e));
+    }
+    originalRequest._retry = true;
+    isRefreshing = true;
+    try {
+      await api.post('/api/auth/refresh');
+      processQueue(null, null);
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
   }
 );
 
@@ -51,13 +74,13 @@ export interface User {
   total_xp: number;
   level: number;
   rating: number;
+  /** Category from rating: Pawn, Knight, Bishop, Rook, Queen, King */
+  level_category?: string;
   created_at: string;
   is_active: boolean;
 }
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: string;
   user: User;
 }
 
@@ -130,6 +153,15 @@ export const authAPI = {
     const response = await api.get('/api/auth/me');
     return response.data;
   },
+
+  refresh: async (): Promise<{ user: User }> => {
+    const response = await api.post('/api/auth/refresh');
+    return response.data;
+  },
+
+  logout: async (): Promise<void> => {
+    await api.post('/api/auth/logout');
+  },
 };
 
 // User API
@@ -150,13 +182,26 @@ export const userAPI = {
 };
 
 // Puzzle API
+const PUZZLES_PAGE_SIZE = 20;
+
 export const puzzleAPI = {
-  getAll: async (difficulty?: string, theme?: string): Promise<Puzzle[]> => {
+  getAll: async (
+    difficulty?: string,
+    theme?: string,
+    skip: number = 0,
+    limit: number = PUZZLES_PAGE_SIZE
+  ): Promise<Puzzle[]> => {
     const params = new URLSearchParams();
     if (difficulty) params.append('difficulty', difficulty);
     if (theme) params.append('theme', theme);
+    params.append('skip', String(skip));
+    params.append('limit', String(limit));
     const response = await api.get(`/api/puzzles?${params.toString()}`);
     return response.data;
+  },
+
+  get pageSize() {
+    return PUZZLES_PAGE_SIZE;
   },
 
   getById: async (id: number): Promise<Puzzle> => {
@@ -201,6 +246,163 @@ export const achievementAPI = {
 export const dailyChallengeAPI = {
   getToday: async () => {
     const response = await api.get('/api/daily-challenge');
+    return response.data;
+  },
+};
+
+// Notifications API (in-app bell dropdown)
+export interface ApiNotification {
+  id: number;
+  user_id: number;
+  category: 'coach' | 'achievement' | 'system';
+  title: string;
+  message: string;
+  read: boolean;
+  link_url: string | null;
+  created_at: string;
+}
+
+export const notificationsAPI = {
+  getList: async (limit = 50): Promise<ApiNotification[]> => {
+    const response = await api.get('/api/notifications', { params: { limit } });
+    return response.data;
+  },
+  markAsRead: async (id: number): Promise<ApiNotification> => {
+    const response = await api.patch(`/api/notifications/${id}`, { read: true });
+    return response.data;
+  },
+  markAllRead: async (): Promise<{ marked: number }> => {
+    const response = await api.post('/api/notifications/mark-all-read');
+    return response.data;
+  },
+  dismiss: async (id: number): Promise<void> => {
+    await api.delete(`/api/notifications/${id}`);
+  },
+};
+
+// Game API
+export interface GameInvite {
+  id: number;
+  inviter_id: number;
+  invitee_id: number;
+  status: string;
+  game_id?: number;
+  created_at: string;
+  responded_at?: string;
+  inviter?: User;
+  invitee?: User;
+}
+
+export interface GameInviteCreate {
+  invitee_id: number;
+}
+
+export interface Game {
+  id: number;
+  white_player_id: number;
+  black_player_id: number;
+  result?: string;
+  time_control: string;
+  total_moves: number;
+  started_at: string;
+  ended_at?: string;
+  pgn?: string;
+  starting_fen?: string;
+  final_fen?: string;
+  winner_id?: number;
+  bot_difficulty?: string;
+  bot_depth?: number;
+}
+
+export const gameAPI = {
+  getGames: async (): Promise<Game[]> => {
+    const response = await api.get('/api/games');
+    return response.data;
+  },
+
+  getGame: async (gameId: number): Promise<Game> => {
+    const response = await api.get(`/api/games/${gameId}`);
+    return response.data;
+  },
+
+  createGame: async (data: { white_player_id: number; black_player_id: number; time_control: string }): Promise<Game> => {
+    const response = await api.post('/api/games', data);
+    return response.data;
+  },
+
+  searchUsers: async (query: string, limit: number = 20): Promise<User[]> => {
+    // Don't make API call if query is too short
+    if (!query || query.trim().length < 2) {
+      return [];
+    }
+    
+    // Ensure limit is a valid number
+    const validLimit = Math.max(1, Math.min(100, limit || 20));
+    const trimmedQuery = query.trim();
+    
+    try {
+      const response = await api.get(`/api/users/search`, {
+        params: {
+          query: trimmedQuery,
+          limit: validLimit
+        }
+      });
+      return response.data;
+    } catch (error: any) {
+      // Log detailed error for debugging
+      const errorDetails = {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        query: trimmedQuery,
+        limit: validLimit,
+        url: error.config?.url,
+        params: error.config?.params
+      };
+      console.error('Search users API error:', errorDetails);
+      // Log the full error object
+      console.error('Full error object:', error);
+      throw error;
+    }
+  },
+
+  createInvite: async (inviteeId: number): Promise<GameInvite> => {
+    const response = await api.post('/api/game-invites', { invitee_id: inviteeId });
+    return response.data;
+  },
+
+  getInvites: async (status?: string): Promise<GameInvite[]> => {
+    const params = status ? `?status=${status}` : '';
+    const response = await api.get(`/api/game-invites${params}`);
+    return response.data;
+  },
+
+  acceptInvite: async (inviteId: number): Promise<Game> => {
+    const response = await api.post(`/api/game-invites/${inviteId}/accept`);
+    return response.data;
+  },
+
+  rejectInvite: async (inviteId: number): Promise<void> => {
+    await api.post(`/api/game-invites/${inviteId}/reject`);
+  },
+
+  makeMove: async (gameId: number, move: { from: string; to: string; promotion?: string }): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/move`, {
+      from_square: move.from,
+      to_square: move.to,
+      promotion: move.promotion || undefined,
+    });
+    return response.data;
+  },
+
+  createBotGame: async (data: { bot_difficulty: string; bot_depth: number; player_color: 'white' | 'black' }): Promise<Game> => {
+    const response = await api.post('/api/games/bot', data);
+    return response.data;
+  },
+
+  getBotMove: async (gameId: number): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/bot-move`);
     return response.data;
   },
 };
@@ -262,7 +464,19 @@ export const coachAPI = {
   autoSolve: async (fen: string) => {
     const response = await api.post('/api/puzzles/auto-solve', { fen });
     return response.data;
-  }
+  },
+
+  // List students (for coach). Returns [] if endpoint is not implemented (404).
+  getStudents: async (): Promise<User[]> => {
+    try {
+      const response = await api.get('/api/coach/students');
+      return response.data?.students ?? response.data ?? [];
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404) return [];
+      throw err;
+    }
+  },
 };
 
 export default api;

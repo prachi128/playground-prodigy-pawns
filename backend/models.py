@@ -75,7 +75,7 @@ class User(Base):
     avatar_url = Column(String, default="/avatars/default.png")
     total_xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
-    rating = Column(Integer, default=400)
+    rating = Column(Integer, default=100)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -88,6 +88,7 @@ class User(Base):
     puzzle_attempts = relationship("PuzzleAttempt", back_populates="user")
     achievements = relationship("UserAchievement", back_populates="user")
     daily_challenges = relationship("DailyChallengeAttempt", back_populates="user")
+    notifications = relationship("Notification", back_populates="user")
 
 # Game Model
 class Game(Base):
@@ -108,6 +109,10 @@ class Game(Base):
     final_fen = Column(String)
     total_moves = Column(Integer, default=0)
     
+    # Bot game metadata (optional, only for bot games)
+    bot_difficulty = Column(String, nullable=True)
+    bot_depth = Column(Integer, nullable=True)
+    
     # XP rewards
     xp_awarded_white = Column(Integer, default=0)
     xp_awarded_black = Column(Integer, default=0)
@@ -125,6 +130,7 @@ class Puzzle(Base):
     __tablename__ = "puzzles"
     
     id = Column(Integer, primary_key=True, index=True)
+    lichess_id = Column(String, unique=True, index=True, nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text)
     
@@ -271,3 +277,45 @@ class PuzzleRaceAttempt(Base):
     
     # Relationships
     race = relationship("PuzzleRace", back_populates="race_attempts")
+
+# Notification Model (in-app bell dropdown)
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    category = Column(String(32), nullable=False)  # "coach" | "achievement" | "system"
+    title = Column(String(256), nullable=False)
+    message = Column(Text, nullable=False)
+    read = Column(Boolean, default=False)
+    link_url = Column(String(512), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="notifications")
+
+# Game Invite Model
+class GameInvite(Base):
+    __tablename__ = "game_invites"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    invitee_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Invite status: pending, accepted, rejected, expired
+    status = Column(String, default="pending")
+    
+    # Game details (set when invite is accepted)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    responded_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    inviter = relationship("User", foreign_keys=[inviter_id])
+    invitee = relationship("User", foreign_keys=[invitee_id])
+    game = relationship("Game", foreign_keys=[game_id])

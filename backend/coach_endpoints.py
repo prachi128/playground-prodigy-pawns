@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel
-from models import Puzzle, User, DifficultyLevel
+from models import Puzzle, User, DifficultyLevel, UserRole
 from auth import get_current_user
 from database import get_db
 from stockfish_service import get_stockfish_service

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 from typing import Optional
 from datetime import datetime
 
@@ -24,6 +24,7 @@ class UserResponse(UserBase):
     total_xp: int
     level: int
     rating: int
+    level_category: Optional[str] = None  # Pawn, Knight, Bishop, Rook, Queen, King (from rating)
     created_at: datetime
     is_active: bool
     
@@ -55,10 +56,18 @@ class PuzzleResponse(PuzzleBase):
     id: int
     rating: int
     xp_reward: int
-    attempts_count: int
-    success_count: int
-    created_at: datetime
-    
+    attempts_count: Optional[int] = 0  # DB may have NULL for older/imported rows
+    success_count: Optional[int] = 0
+    created_at: Optional[datetime] = None
+
+    @field_serializer("attempts_count", "success_count")
+    def serialize_count(self, v):
+        return v if v is not None else 0
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, v):
+        return v if v is not None else datetime.min
+
     class Config:
         from_attributes = True
 
@@ -103,9 +112,19 @@ class GameResponse(BaseModel):
     total_moves: int
     started_at: datetime
     ended_at: Optional[datetime]
+    pgn: Optional[str] = None
+    starting_fen: Optional[str] = None
+    final_fen: Optional[str] = None
+    bot_difficulty: Optional[str] = None
+    bot_depth: Optional[int] = None
     
     class Config:
         from_attributes = True
+
+class GameMoveCreate(BaseModel):
+    from_square: str
+    to_square: str
+    promotion: Optional[str] = None
 
 # Achievement Schema
 class AchievementResponse(BaseModel):
@@ -152,3 +171,47 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
     age: Optional[int] = None
+
+# Game Invite Schemas
+class GameInviteCreate(BaseModel):
+    invitee_id: int
+
+class GameInviteResponse(BaseModel):
+    id: int
+    inviter_id: int
+    invitee_id: int
+    status: str
+    game_id: Optional[int]
+    created_at: datetime
+    responded_at: Optional[datetime]
+    inviter: Optional[UserResponse] = None
+    invitee: Optional[UserResponse] = None
+    
+    class Config:
+        from_attributes = True
+
+class GameInviteAccept(BaseModel):
+    invite_id: int
+
+# Bot Game Schemas
+class BotGameCreate(BaseModel):
+    bot_difficulty: str
+    bot_depth: int
+    player_color: str  # 'white' or 'black'
+
+# Notification Schemas
+class NotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    category: str  # "coach" | "achievement" | "system"
+    title: str
+    message: str
+    read: bool
+    link_url: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class NotificationMarkRead(BaseModel):
+    read: bool = True

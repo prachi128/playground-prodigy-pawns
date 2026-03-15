@@ -1,0 +1,2 @@
+{"sessionId":"a32ced","location":"api.ts:292","message":"Frontend: About to call searchUsers API","data":{"query":"diana","limit":20,"limitType":"number","queryType":"string"},"timestamp":1771592885197,"runId":"run1","hypothesisId":"B"}
+{"sessionId":"a32ced","location":"api.ts:298","message":"Frontend: Request config before API call","data":{"params":{"query":"diana","limit":20},"url":"/api/users/search"},"timestamp":1771592885198,"runId":"run1","hypothesisId":"C"}

@@ -1,12 +1,13 @@
 // app/layout.tsx - Root Layout
 
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Fredoka } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
+import ConditionalNavbar from "@/components/ConditionalNavbar";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
+const fredoka = Fredoka({ subsets: ["latin"], variable: "--font-fredoka" });
 
 export const metadata: Metadata = {
   title: "Prodigy Pawns - Chess Academy Portal",
@@ -20,8 +21,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <Navbar />
+      <body className={`${inter.className} ${fredoka.variable}`}>
+        <ConditionalNavbar />
         {children}
         <Toaster
           position="top-right"
