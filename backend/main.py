@@ -9,7 +9,7 @@ from typing import List, Optional
 import io
 
 # Import models and utilities
-from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification
+from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification, ParentStudent
 from database import get_db
 from auth import (
     get_password_hash,
@@ -41,11 +41,14 @@ from schemas import (
     BotGameCreate,
     NotificationResponse,
     NotificationMarkRead,
+    ParentSignup,
 )
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router
+from parent_endpoints import router as parent_router
+from batch_endpoints import router as batch_router
 
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
@@ -148,6 +151,8 @@ app.add_middleware(
 # Include routers
 app.include_router(coach_router)
 app.include_router(student_router)
+app.include_router(parent_router)
+app.include_router(batch_router)
 
 
 # Cookie settings for auth (Cookie-Based Session Auth)
@@ -243,6 +248,65 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         **_cookie_attrs(),
     )
     return response
+
+@app.post("/api/auth/signup/parent")
+def signup_parent(data: ParentSignup, db: Session = Depends(get_db)):
+    """Register a new parent account and link to existing student(s)."""
+    # Check if email/username taken
+    if db.query(User).filter(User.email == data.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.query(User).filter(User.username == data.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    # Verify child emails exist as students
+    children = []
+    for child_email in data.child_emails:
+        student = db.query(User).filter(User.email == child_email).first()
+        if not student:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No student account found with email: {child_email}"
+            )
+        children.append(student)
+
+    # Create parent user
+    hashed_password = get_password_hash(data.password)
+    parent = User(
+        email=data.email,
+        username=data.username,
+        full_name=data.full_name,
+        hashed_password=hashed_password,
+        role=UserRole.parent,
+    )
+    db.add(parent)
+    db.commit()
+    db.refresh(parent)
+
+    # Link to children
+    for child in children:
+        link = ParentStudent(parent_id=parent.id, student_id=child.id)
+        db.add(link)
+    db.commit()
+
+    access_token = create_access_token(data={"sub": parent.id})
+    refresh_token = create_refresh_token(data={"sub": parent.id})
+    user_payload = UserResponse.model_validate(parent).model_dump(mode="json")
+    user_payload["level_category"] = None
+    response = JSONResponse(content={"user": user_payload})
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        value=access_token,
+        max_age=15 * 60,
+        **_cookie_attrs(),
+    )
+    response.set_cookie(
+        key=COOKIE_REFRESH_TOKEN,
+        value=refresh_token,
+        max_age=7 * 24 * 3600,
+        **_cookie_attrs(),
+    )
+    return response
+
 
 @app.post("/api/auth/login")
 def login(

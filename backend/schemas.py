@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_serializer
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 # User Schemas
@@ -215,3 +215,145 @@ class NotificationResponse(BaseModel):
 
 class NotificationMarkRead(BaseModel):
     read: bool = True
+
+
+# ==================== PARENT & BATCH SCHEMAS ====================
+
+# Parent Signup
+class ParentSignup(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: str
+    password: str = Field(..., min_length=6)
+    phone: Optional[str] = None
+    child_emails: List[str]  # emails of existing student accounts to link
+
+
+# Batch Schemas
+class BatchCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    schedule: Optional[str] = None
+    monthly_fee: int = 0  # in cents
+
+class BatchUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    schedule: Optional[str] = None
+    monthly_fee: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class BatchResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    schedule: Optional[str]
+    coach_id: int
+    monthly_fee: int
+    is_active: bool
+    created_at: datetime
+    student_count: Optional[int] = 0
+
+    class Config:
+        from_attributes = True
+
+
+# Class Session Schemas
+class ClassSessionCreate(BaseModel):
+    date: datetime
+    duration_minutes: int = 60
+    topic: Optional[str] = None
+    meeting_link: Optional[str] = None
+    notes: Optional[str] = None
+
+class ClassSessionResponse(BaseModel):
+    id: int
+    batch_id: int
+    date: datetime
+    duration_minutes: int
+    topic: Optional[str]
+    meeting_link: Optional[str]
+    notes: Optional[str]
+    created_at: datetime
+    batch_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Announcement Schemas
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+
+class AnnouncementResponse(BaseModel):
+    id: int
+    batch_id: Optional[int]
+    title: str
+    message: str
+    created_by: int
+    created_at: datetime
+    batch_name: Optional[str] = None
+    coach_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Payment Schemas
+class PaymentCheckoutCreate(BaseModel):
+    student_id: int
+    batch_id: int
+    billing_month: str  # "YYYY-MM"
+
+class PaymentResponse(BaseModel):
+    id: int
+    parent_id: int
+    student_id: int
+    batch_id: int
+    amount: int
+    currency: str
+    billing_month: str
+    status: str
+    paid_at: Optional[datetime]
+    created_at: datetime
+    student_name: Optional[str] = None
+    batch_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Child info visible to parent
+class ChildResponse(BaseModel):
+    id: int
+    full_name: str
+    username: str
+    avatar_url: str
+    rating: int
+    level: int
+    level_category: Optional[str] = None
+    total_xp: int
+    batch_name: Optional[str] = None
+    batch_id: Optional[int] = None
+    payment_status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Student Batch Management
+class StudentBatchAdd(BaseModel):
+    student_id: int
+
+class StudentBatchResponse(BaseModel):
+    student_id: int
+    student_name: str
+    student_username: str
+    batch_id: int
+    payment_status: str
+    joined_at: datetime
+    is_active: bool
+
+    class Config:
+        from_attributes = True

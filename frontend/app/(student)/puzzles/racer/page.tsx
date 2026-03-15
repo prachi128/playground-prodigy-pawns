@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 
 /** Fixed race duration: 2.5 minutes */
 const RACE_DURATION_SECONDS = 150;
+const COUNTDOWN_SECONDS = 10;
 
 const TRACK_MAX_SCORE = 15;
 const CAR_EMOJIS = ['🏎️', '🚗', '🚙', '🏁', '🚕'];
@@ -36,11 +37,12 @@ function shuffle<T>(arr: T[]): T[] {
 
 export default function PuzzleRacerPage() {
   const { user, updateUser } = useAuthStore();
-  const [phase, setPhase] = useState<'start' | 'racing' | 'ended'>('start');
+  const [phase, setPhase] = useState<'start' | 'countdown' | 'racing' | 'ended'>('start');
   const [puzzlePool, setPuzzlePool] = useState<Puzzle[]>([]);
   const [poolIndex, setPoolIndex] = useState(0);
   const [loadingPool, setLoadingPool] = useState(false);
 
+  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [timeLeft, setTimeLeft] = useState(0);
   const [puzzlesSolved, setPuzzlesSolved] = useState(0);
   const [totalXP, setTotalXP] = useState(0);
@@ -55,6 +57,7 @@ export default function PuzzleRacerPage() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simulateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
 
   const loadNextPuzzle = useCallback(() => {
@@ -111,8 +114,6 @@ export default function PuzzleRacerPage() {
         ...others,
       ]);
       setPuzzlePool(shuffled);
-      setPhase('racing');
-      setTimeLeft(RACE_DURATION_SECONDS);
       setPuzzlesSolved(0);
       setTotalXP(0);
       setPoolIndex(1);
@@ -123,6 +124,10 @@ export default function PuzzleRacerPage() {
       setGame(new Chess(first.fen));
       setMovesMade([]);
       startTimeRef.current = Date.now();
+
+      // Start countdown phase
+      setCountdown(COUNTDOWN_SECONDS);
+      setPhase('countdown');
     } catch (e) {
       console.error(e);
       toast.error('Could not load puzzles');
@@ -131,6 +136,26 @@ export default function PuzzleRacerPage() {
     }
   }, [user?.id, user?.full_name]);
 
+  // Countdown timer
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    countdownRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          setPhase('racing');
+          setTimeLeft(RACE_DURATION_SECONDS);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [phase]);
+
+  // Race timer
   useEffect(() => {
     if (phase !== 'racing' || timeLeft <= 0) return;
     timerRef.current = setInterval(() => {
@@ -148,6 +173,7 @@ export default function PuzzleRacerPage() {
     };
   }, [phase, timeLeft]);
 
+  // Simulate opponents
   useEffect(() => {
     if (phase !== 'racing' || participants.length === 0) return;
     simulateRef.current = setInterval(() => {
@@ -201,13 +227,13 @@ export default function PuzzleRacerPage() {
                   updateUser({ total_xp: user.total_xp + result.xp_earned });
                 }
                 setShowCorrect(true);
-                toast.success(`Correct! +${result.xp_earned ?? 0} XP 🎉`, { duration: 1500 });
+                toast.success(`Correct! +${result.xp_earned ?? 0} XP`, { duration: 1500 });
                 setTimeout(() => {
                   loadNextPuzzle();
                 }, 1200);
               } else {
                 setShowWrong(true);
-                toast.error('Not quite! Try again 🧩');
+                toast.error('Not quite! Try again');
                 setTimeout(() => {
                   setShowWrong(false);
                   setGame(new Chess(currentPuzzle.fen));
@@ -226,6 +252,7 @@ export default function PuzzleRacerPage() {
     [game, currentPuzzle, movesMade, showCorrect, showWrong, user, updateUser, loadNextPuzzle]
   );
 
+  // ==================== START SCREEN ====================
   if (phase === 'start') {
     return (
       <div className="mx-auto max-w-2xl pt-1 pb-4 overflow-hidden max-h-[calc(100vh-5rem)]">
@@ -286,18 +313,98 @@ export default function PuzzleRacerPage() {
     );
   }
 
+  // ==================== COUNTDOWN SCREEN ====================
+  if (phase === 'countdown') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-500">
+        <div className="text-center">
+          {/* Participants preview */}
+          <div className="mb-8">
+            <p className="font-heading text-lg font-bold text-white/80 mb-3">Get Ready to Race!</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {participants.map((p) => (
+                <span
+                  key={p.id}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-heading font-bold ${
+                    p.isYou
+                      ? 'bg-white text-amber-800'
+                      : 'bg-white/30 text-white'
+                  }`}
+                >
+                  {CAR_EMOJIS[p.carIndex % CAR_EMOJIS.length]} {p.name}{p.isYou ? ' (you)' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Countdown number */}
+          <div className="relative">
+            <span
+              key={countdown}
+              className="block font-heading font-black text-white animate-bounce"
+              style={{ fontSize: '12rem', lineHeight: 1, textShadow: '0 8px 30px rgba(0,0,0,0.3)' }}
+            >
+              {countdown}
+            </span>
+          </div>
+
+          <p className="mt-6 font-heading text-xl font-bold text-white/90">
+            {countdown > 5 ? 'Preparing puzzles...' : countdown > 2 ? 'Almost there...' : 'GO!'}
+          </p>
+
+          {/* Progress dots */}
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {Array.from({ length: COUNTDOWN_SECONDS }, (_, i) => (
+              <div
+                key={i}
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                  i < COUNTDOWN_SECONDS - countdown
+                    ? 'bg-white scale-100'
+                    : 'bg-white/30 scale-75'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== ENDED SCREEN ====================
   if (phase === 'ended') {
     return (
       <div className="mx-auto max-w-2xl pt-1 pb-4 overflow-hidden max-h-[calc(100vh-5rem)]">
         <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-xl overflow-hidden">
           <div className="bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-8 text-center">
             <span className="text-6xl block mb-2">🏁</span>
-            <h1 className="font-heading text-3xl font-bold text-white">Time’s up!</h1>
+            <h1 className="font-heading text-3xl font-bold text-white">Time&apos;s up!</h1>
             <p className="mt-2 font-heading text-lg font-semibold text-white/90">
-              Great job! Here’s how you did.
+              Great job! Here&apos;s how you did.
             </p>
           </div>
           <div className="p-6 space-y-6">
+            {/* Final standings */}
+            <div className="space-y-1.5">
+              {[...participants]
+                .sort((a, b) => b.score - a.score)
+                .map((p, rank) => (
+                  <div
+                    key={p.id}
+                    className={`flex items-center justify-between px-4 py-2 rounded-xl text-sm font-heading font-bold ${
+                      p.isYou
+                        ? 'bg-amber-100 border-2 border-amber-300 text-amber-900'
+                        : 'bg-gray-50 border border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : `${rank + 1}.`}</span>
+                      <span>{CAR_EMOJIS[p.carIndex % CAR_EMOJIS.length]}</span>
+                      <span>{p.name}{p.isYou ? ' (you)' : ''}</span>
+                    </span>
+                    <span>{p.score} solved</span>
+                  </div>
+                ))}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-4 text-center">
                 <p className="font-heading text-3xl font-bold text-cyan-700">{puzzlesSolved}</p>
@@ -335,9 +442,14 @@ export default function PuzzleRacerPage() {
     );
   }
 
+  // ==================== RACING SCREEN ====================
+  // Side-by-side layout: chessboard on left, race track on right — no scrolling needed
+  const myRank = [...participants].sort((a, b) => b.score - a.score).findIndex((p) => p.isYou) + 1;
+
   return (
-    <div className="mx-auto max-w-4xl pt-1 pb-4 overflow-hidden">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="h-[calc(100vh-5rem)] flex flex-col overflow-hidden">
+      {/* Top bar: stats */}
+      <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-2 px-1 pb-2">
         <Link
           href="/puzzles"
           className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"
@@ -345,140 +457,158 @@ export default function PuzzleRacerPage() {
           <ArrowLeft className="w-4 h-4" />
           Puzzles
         </Link>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-xl bg-amber-100 px-4 py-2 border-2 border-amber-300">
-            <Clock className="h-5 w-5 text-amber-600" />
-            <span className="font-heading text-lg font-bold text-amber-800">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 rounded-xl bg-amber-100 px-3 py-1.5 border-2 border-amber-300">
+            <Clock className="h-4 w-4 text-amber-600" />
+            <span className="font-heading text-base font-bold text-amber-800">
               {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-xl bg-cyan-100 px-4 py-2 border-2 border-cyan-300">
-            <Star className="h-5 w-5 text-cyan-600" />
-            <span className="font-heading text-lg font-bold text-cyan-800">{puzzlesSolved}</span>
+          <div className="flex items-center gap-1.5 rounded-xl bg-cyan-100 px-3 py-1.5 border-2 border-cyan-300">
+            <Star className="h-4 w-4 text-cyan-600" />
+            <span className="font-heading text-base font-bold text-cyan-800">{puzzlesSolved}</span>
           </div>
-          <div className="flex items-center gap-2 rounded-xl bg-green-100 px-4 py-2 border-2 border-green-300">
-            <Zap className="h-5 w-5 text-green-600" />
-            <span className="font-heading text-lg font-bold text-green-800">+{totalXP} XP</span>
+          <div className="flex items-center gap-1.5 rounded-xl bg-green-100 px-3 py-1.5 border-2 border-green-300">
+            <Zap className="h-4 w-4 text-green-600" />
+            <span className="font-heading text-base font-bold text-green-800">+{totalXP}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col items-center">
-        {loadingPuzzle || (!currentPuzzle && puzzlePool.length === 0) ? (
-          <div className="rounded-2xl border-2 border-border bg-card p-12 text-center">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="font-heading font-semibold text-muted-foreground">Loading puzzle…</p>
-          </div>
-        ) : currentPuzzle && game ? (
-          <>
-            <div className="relative rounded-2xl border-2 border-border bg-card p-4 shadow-xl">
-              {(showCorrect || showWrong) && (
-                <div
-                  className={`absolute inset-0 z-10 flex items-center justify-center rounded-2xl ${
-                    showCorrect ? 'bg-green-500/90' : 'bg-red-500/90'
-                  }`}
-                >
-                  <span className="font-heading text-2xl font-bold text-white">
-                    {showCorrect ? 'Correct! 🎉' : 'Not quite! Try again 🧩'}
-                  </span>
+      {/* Main content: chessboard + race track side by side */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3">
+        {/* Left: Chessboard */}
+        <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+          {loadingPuzzle || (!currentPuzzle && puzzlePool.length === 0) ? (
+            <div className="rounded-2xl border-2 border-border bg-card p-8 text-center">
+              <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="font-heading font-semibold text-muted-foreground">Loading puzzle…</p>
+            </div>
+          ) : currentPuzzle && game ? (
+            <div className="flex flex-col items-center min-h-0">
+              <div className="relative rounded-2xl border-2 border-border bg-card p-3 shadow-xl">
+                {(showCorrect || showWrong) && (
+                  <div
+                    className={`absolute inset-0 z-10 flex items-center justify-center rounded-2xl ${
+                      showCorrect ? 'bg-green-500/90' : 'bg-red-500/90'
+                    }`}
+                  >
+                    <span className="font-heading text-2xl font-bold text-white">
+                      {showCorrect ? 'Correct!' : 'Not quite!'}
+                    </span>
+                  </div>
+                )}
+                <div className="w-full" style={{ maxWidth: 'min(340px, calc(100vh - 14rem))' }}>
+                  <Chessboard
+                    key={game.fen()}
+                    options={{
+                      position: game.fen(),
+                      onPieceDrop: ({ sourceSquare, targetSquare }) =>
+                        sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
+                      boardStyle: { borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.2)' },
+                      darkSquareStyle: { backgroundColor: 'hsl(var(--primary))' },
+                      lightSquareStyle: { backgroundColor: 'hsl(var(--primary) / 0.15)' },
+                    }}
+                  />
                 </div>
-              )}
-              <div className="w-full max-w-[360px] mx-auto">
-                <Chessboard
-                  key={game.fen()}
-                  options={{
-                    position: game.fen(),
-                    onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                      sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
-                    boardStyle: { borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.2)' },
-                    darkSquareStyle: { backgroundColor: 'hsl(var(--primary))' },
-                    lightSquareStyle: { backgroundColor: 'hsl(var(--primary) / 0.15)' },
-                  }}
-                />
+              </div>
+              <p className="mt-2 font-heading text-sm font-semibold text-muted-foreground">
+                Find the best move! Puzzle {puzzlesSolved + 1}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border-2 border-border bg-card p-8 text-center">
+              <p className="font-heading font-semibold text-muted-foreground">Loading next puzzle…</p>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Race track + standings */}
+        {participants.length > 0 && (
+          <div className="lg:w-72 xl:w-80 flex-shrink-0 flex flex-col gap-3 min-h-0 overflow-auto">
+            {/* Your position highlight */}
+            <div className="rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 p-3 text-center text-white">
+              <p className="font-heading text-xs font-bold uppercase tracking-wide opacity-80">Your Position</p>
+              <p className="font-heading text-3xl font-black">
+                {myRank === 1 ? '🥇' : myRank === 2 ? '🥈' : myRank === 3 ? '🥉' : `#${myRank}`}
+              </p>
+            </div>
+
+            {/* Race track */}
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-3">
+              <p className="text-[10px] font-heading font-bold text-amber-800 mb-2 uppercase tracking-wide text-center">
+                Race Track
+              </p>
+              <div className="space-y-1.5">
+                {[...participants]
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, rank) => {
+                    const pos = Math.min((p.score / TRACK_MAX_SCORE) * 100, 100);
+                    return (
+                      <div key={p.id} className="flex items-center gap-1.5">
+                        <span className="w-4 text-center text-xs font-heading font-bold text-amber-700">
+                          {rank + 1}
+                        </span>
+                        <div className="relative flex-1 h-8 rounded-lg bg-gradient-to-r from-amber-100 to-amber-200 border-2 border-amber-300 overflow-hidden">
+                          <div className="absolute inset-y-0 left-0 right-0 flex items-center pointer-events-none">
+                            <div className="flex-1 border-t-2 border-dashed border-amber-400/50" />
+                          </div>
+                          <div
+                            className="absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all duration-500 ease-out"
+                            style={{ left: `max(2px, ${pos}% - 18px)` }}
+                          >
+                            <span className="text-lg leading-none">
+                              {CAR_EMOJIS[p.carIndex % CAR_EMOJIS.length]}
+                            </span>
+                            <span
+                              className={`text-[9px] font-heading font-bold truncate max-w-[40px] ${
+                                p.isYou ? 'text-amber-800' : 'text-muted-foreground'
+                              }`}
+                            >
+                              {p.isYou ? 'You' : p.name}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="w-5 text-right text-xs font-heading font-bold text-foreground">
+                          {p.score}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+              <div className="flex justify-between mt-1.5 text-[9px] font-heading font-bold text-amber-700">
+                <span>Start</span>
+                <span>Finish 🏁</span>
               </div>
             </div>
-            <p className="mt-3 font-heading text-sm font-semibold text-muted-foreground">
-              Find the best move! Puzzle {puzzlesSolved + 1}
-            </p>
 
-            {/* Participants & race track */}
-            {participants.length > 0 && (
-              <div className="mt-8 w-full max-w-2xl">
-                <p className="font-heading text-sm font-bold text-foreground mb-2">Racers</p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {[...participants]
-                    .sort((a, b) => b.score - a.score)
-                    .map((p, idx) => (
-                      <span
-                        key={p.id}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-heading font-bold ${
-                          p.isYou
-                            ? 'bg-amber-200 text-amber-900 border-2 border-amber-400'
-                            : 'bg-muted text-muted-foreground border-2 border-border'
-                        }`}
-                      >
+            {/* Standings list */}
+            <div className="rounded-xl border-2 border-border bg-card p-3">
+              <p className="text-[10px] font-heading font-bold text-muted-foreground mb-2 uppercase tracking-wide text-center">
+                Standings
+              </p>
+              <div className="space-y-1">
+                {[...participants]
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-xs font-heading font-bold ${
+                        p.isYou
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'text-muted-foreground'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
                         <span>{idx + 1}.</span>
                         <span>{CAR_EMOJIS[p.carIndex % CAR_EMOJIS.length]}</span>
                         <span>{p.name}{p.isYou ? ' (you)' : ''}</span>
-                        <span className="opacity-80">{p.score}</span>
                       </span>
-                    ))}
-                </div>
-                <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-3 overflow-hidden">
-                  <p className="text-[10px] font-heading font-bold text-amber-800 mb-2 uppercase tracking-wide text-center">
-                    🏁 Race track — who&apos;s ahead?
-                  </p>
-                  <div className="space-y-1.5">
-                    {[...participants]
-                      .sort((a, b) => b.score - a.score)
-                      .map((p, rank) => {
-                        const pos = Math.min((p.score / TRACK_MAX_SCORE) * 100, 100);
-                        return (
-                          <div
-                            key={p.id}
-                            className="flex items-center gap-2"
-                          >
-                            <span className="w-5 text-center text-xs font-heading font-bold text-amber-700">
-                              {rank + 1}
-                            </span>
-                            <div className="relative flex-1 h-10 rounded-lg bg-gradient-to-r from-amber-100 to-amber-200 border-2 border-amber-300 overflow-hidden">
-                              <div className="absolute inset-y-0 left-0 right-0 flex items-center pointer-events-none">
-                                <div className="flex-1 border-t-2 border-dashed border-amber-400/50" />
-                              </div>
-                              <div
-                                className="absolute top-1/2 -translate-y-1/2 flex items-center gap-1 transition-all duration-500 ease-out"
-                                style={{ left: `max(2px, ${pos}% - 20px)` }}
-                              >
-                                <span className="text-xl leading-none">
-                                  {CAR_EMOJIS[p.carIndex % CAR_EMOJIS.length]}
-                                </span>
-                                <span
-                                  className={`text-[10px] font-heading font-bold truncate max-w-[52px] ${
-                                    p.isYou ? 'text-amber-800' : 'text-muted-foreground'
-                                  }`}
-                                >
-                                  {p.isYou ? 'You' : p.name}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="w-6 text-right text-xs font-heading font-bold text-foreground">
-                              {p.score}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                  <div className="flex justify-between mt-1.5 text-[10px] font-heading font-bold text-amber-700">
-                    <span>Start</span>
-                    <span>Finish 🏁</span>
-                  </div>
-                </div>
+                      <span>{p.score}</span>
+                    </div>
+                  ))}
               </div>
-            )}
-          </>
-        ) : (
-          <div className="rounded-2xl border-2 border-border bg-card p-12 text-center">
-            <p className="font-heading font-semibold text-muted-foreground">Loading next puzzle…</p>
+            </div>
           </div>
         )}
       </div>

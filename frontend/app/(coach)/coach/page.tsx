@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { Plus, TrendingUp, Target, Trophy, Users } from 'lucide-react';
+import { Plus, TrendingUp, Target, Trophy, Users, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { coachAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -83,7 +83,7 @@ export default function CoachDashboard() {
       </div>
 
       {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-4 mb-6">
+        <div className="grid md:grid-cols-4 gap-4 mb-6">
           <Link
             href="/coach/puzzles/create"
             className="bg-gradient-to-r from-primary-500 to-purple-600 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
@@ -125,6 +125,21 @@ export default function CoachDashboard() {
               <div>
                 <h3 className="text-xl font-bold text-gray-800">Manage Students</h3>
                 <p className="text-sm text-gray-600">View and track student progress</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link
+            href="/coach/batches"
+            className="bg-white p-6 rounded-2xl shadow-lg border-4 border-amber-200 hover:border-amber-400 transition-all hover:shadow-xl cursor-pointer"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                <Layers className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">Manage Batches</h3>
+                <p className="text-sm text-gray-600">Classes, payments & groups</p>
               </div>
             </div>
           </Link>

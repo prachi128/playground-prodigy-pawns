@@ -10,6 +10,7 @@ class UserRole(str, enum.Enum):
     student = "student"
     coach = "coach"
     admin = "admin"
+    parent = "parent"
 
 class CaseInsensitiveEnum(TypeDecorator):
     """A TypeDecorator that handles case-insensitive enum conversion.
@@ -89,6 +90,11 @@ class User(Base):
     achievements = relationship("UserAchievement", back_populates="user")
     daily_challenges = relationship("DailyChallengeAttempt", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
+
+    # Parent-Student relationships
+    children = relationship("ParentStudent", back_populates="parent", foreign_keys="ParentStudent.parent_id")
+    parents = relationship("ParentStudent", back_populates="student", foreign_keys="ParentStudent.student_id")
+    coached_batches = relationship("Batch", back_populates="coach", foreign_keys="Batch.coach_id")
 
 # Game Model
 class Game(Base):
@@ -319,3 +325,111 @@ class GameInvite(Base):
     inviter = relationship("User", foreign_keys=[inviter_id])
     invitee = relationship("User", foreign_keys=[invitee_id])
     game = relationship("Game", foreign_keys=[game_id])
+
+
+# Parent-Student Link Model
+class ParentStudent(Base):
+    __tablename__ = "parent_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    parent = relationship("User", back_populates="children", foreign_keys=[parent_id])
+    student = relationship("User", back_populates="parents", foreign_keys=[student_id])
+
+
+# Batch/Group Model
+class Batch(Base):
+    __tablename__ = "batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    schedule = Column(String)  # e.g., "Mon/Wed/Fri 4-5PM"
+    coach_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    monthly_fee = Column(Integer, default=0)  # in cents
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    coach = relationship("User", back_populates="coached_batches", foreign_keys=[coach_id])
+    students = relationship("StudentBatch", back_populates="batch")
+    class_sessions = relationship("ClassSession", back_populates="batch")
+    announcements = relationship("Announcement", back_populates="batch")
+    payments = relationship("Payment", back_populates="batch")
+
+
+# Student-Batch Assignment Model
+class StudentBatch(Base):
+    __tablename__ = "student_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    batch_id = Column(Integer, ForeignKey("batches.id"), nullable=False)
+    payment_status = Column(String, default="pending")  # paid, pending, overdue
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+    # Relationships
+    student = relationship("User", foreign_keys=[student_id])
+    batch = relationship("Batch", back_populates="students")
+
+
+# Class Session Model
+class ClassSession(Base):
+    __tablename__ = "class_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(Integer, ForeignKey("batches.id"), nullable=False)
+    date = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, default=60)
+    topic = Column(String)
+    meeting_link = Column(String)
+    notes = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    batch = relationship("Batch", back_populates="class_sessions")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+# Announcement Model
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(Integer, ForeignKey("batches.id"), nullable=True)  # null = global
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    batch = relationship("Batch", back_populates="announcements")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+# Payment Model
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    batch_id = Column(Integer, ForeignKey("batches.id"), nullable=False)
+    amount = Column(Integer, nullable=False)  # in cents
+    currency = Column(String, default="usd")
+    billing_month = Column(String, nullable=False)  # "YYYY-MM"
+    status = Column(String, default="pending")  # pending, completed, failed
+    stripe_checkout_session_id = Column(String, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    parent = relationship("User", foreign_keys=[parent_id])
+    student = relationship("User", foreign_keys=[student_id])
+    batch = relationship("Batch", back_populates="payments")

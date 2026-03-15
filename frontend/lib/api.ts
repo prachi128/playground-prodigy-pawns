@@ -149,6 +149,17 @@ export const authAPI = {
     return response.data;
   },
 
+  signupParent: async (data: {
+    email: string;
+    username: string;
+    full_name: string;
+    password: string;
+    child_emails: string[];
+  }): Promise<LoginResponse> => {
+    const response = await api.post('/api/auth/signup/parent', data);
+    return response.data;
+  },
+
   getCurrentUser: async (): Promise<User> => {
     const response = await api.get('/api/auth/me');
     return response.data;
@@ -403,6 +414,187 @@ export const gameAPI = {
 
   getBotMove: async (gameId: number): Promise<Game> => {
     const response = await api.post(`/api/games/${gameId}/bot-move`);
+    return response.data;
+  },
+};
+
+// ==================== PARENT DASHBOARD TYPES & API ====================
+
+export interface Batch {
+  id: number;
+  name: string;
+  description?: string;
+  schedule?: string;
+  coach_id: number;
+  monthly_fee: number;
+  is_active: boolean;
+  created_at: string;
+  student_count?: number;
+}
+
+export interface ClassSession {
+  id: number;
+  batch_id: number;
+  date: string;
+  duration_minutes: number;
+  topic?: string;
+  meeting_link?: string;
+  notes?: string;
+  created_at: string;
+  batch_name?: string;
+}
+
+export interface AnnouncementItem {
+  id: number;
+  batch_id?: number;
+  title: string;
+  message: string;
+  created_by: number;
+  created_at: string;
+  batch_name?: string;
+  coach_name?: string;
+}
+
+export interface PaymentRecord {
+  id: number;
+  parent_id: number;
+  student_id: number;
+  batch_id: number;
+  amount: number;
+  currency: string;
+  billing_month: string;
+  status: string;
+  paid_at?: string;
+  created_at: string;
+  student_name?: string;
+  batch_name?: string;
+}
+
+export interface ChildInfo {
+  id: number;
+  full_name: string;
+  username: string;
+  avatar_url: string;
+  rating: number;
+  level: number;
+  level_category?: string;
+  total_xp: number;
+  batch_name?: string;
+  batch_id?: number;
+  payment_status?: string;
+}
+
+export interface ParentDashboard {
+  parent_name: string;
+  children: ChildInfo[];
+  upcoming_classes: ClassSession[];
+  announcements: AnnouncementItem[];
+  current_month: string;
+  payment_deadline_day: number;
+}
+
+export const parentAPI = {
+  getDashboard: async (): Promise<ParentDashboard> => {
+    const response = await api.get('/api/parent/dashboard');
+    return response.data;
+  },
+  getChildren: async (): Promise<ChildInfo[]> => {
+    const response = await api.get('/api/parent/children');
+    return response.data;
+  },
+  getClasses: async (): Promise<ClassSession[]> => {
+    const response = await api.get('/api/parent/classes');
+    return response.data;
+  },
+  getAnnouncements: async (): Promise<AnnouncementItem[]> => {
+    const response = await api.get('/api/parent/announcements');
+    return response.data;
+  },
+  createCheckout: async (data: { student_id: number; batch_id: number; billing_month: string }): Promise<{ checkout_url: string; session_id: string }> => {
+    const response = await api.post('/api/parent/payments/create-checkout', data);
+    return response.data;
+  },
+  getPaymentHistory: async (): Promise<PaymentRecord[]> => {
+    const response = await api.get('/api/parent/payments/history');
+    return response.data;
+  },
+};
+
+// Batch Management API (Coach)
+export interface StudentBatchInfo {
+  student_id: number;
+  student_name: string;
+  student_username: string;
+  batch_id: number;
+  payment_status: string;
+  joined_at: string;
+  is_active: boolean;
+}
+
+export interface PaymentStatusOverview {
+  batch_id: number;
+  batch_name: string;
+  billing_month: string;
+  is_past_deadline: boolean;
+  students: Array<{
+    student_id: number;
+    student_name: string;
+    student_username: string;
+    payment_status: string;
+    billing_month: string;
+    is_overdue: boolean;
+  }>;
+  total_students: number;
+  paid_count: number;
+  overdue_count: number;
+}
+
+export const batchAPI = {
+  create: async (data: { name: string; description?: string; schedule?: string; monthly_fee?: number }): Promise<Batch> => {
+    const response = await api.post('/api/batches', data);
+    return response.data;
+  },
+  list: async (): Promise<Batch[]> => {
+    const response = await api.get('/api/batches');
+    return response.data;
+  },
+  get: async (id: number): Promise<Batch> => {
+    const response = await api.get(`/api/batches/${id}`);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<Batch>): Promise<Batch> => {
+    const response = await api.put(`/api/batches/${id}`, data);
+    return response.data;
+  },
+  addStudent: async (batchId: number, studentId: number): Promise<StudentBatchInfo> => {
+    const response = await api.post(`/api/batches/${batchId}/students`, { student_id: studentId });
+    return response.data;
+  },
+  listStudents: async (batchId: number): Promise<StudentBatchInfo[]> => {
+    const response = await api.get(`/api/batches/${batchId}/students`);
+    return response.data;
+  },
+  removeStudent: async (batchId: number, studentId: number): Promise<void> => {
+    await api.delete(`/api/batches/${batchId}/students/${studentId}`);
+  },
+  createClass: async (batchId: number, data: { date: string; duration_minutes?: number; topic?: string; meeting_link?: string; notes?: string }): Promise<ClassSession> => {
+    const response = await api.post(`/api/batches/${batchId}/classes`, data);
+    return response.data;
+  },
+  listClasses: async (batchId: number): Promise<ClassSession[]> => {
+    const response = await api.get(`/api/batches/${batchId}/classes`);
+    return response.data;
+  },
+  createAnnouncement: async (batchId: number, data: { title: string; message: string }): Promise<AnnouncementItem> => {
+    const response = await api.post(`/api/batches/${batchId}/announcements`, data);
+    return response.data;
+  },
+  listAnnouncements: async (batchId: number): Promise<AnnouncementItem[]> => {
+    const response = await api.get(`/api/batches/${batchId}/announcements`);
+    return response.data;
+  },
+  getPaymentStatus: async (batchId: number): Promise<PaymentStatusOverview> => {
+    const response = await api.get(`/api/batches/${batchId}/payment-status`);
     return response.data;
   },
 };

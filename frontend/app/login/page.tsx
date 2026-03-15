@@ -40,6 +40,8 @@ export default function LoginPage() {
       }, 100);
       const redirectPath = response.user.role === 'coach' || response.user.role === 'admin'
         ? '/coach'
+        : response.user.role === 'parent'
+        ? '/parent'
         : '/dashboard';
       router.push(redirectPath);
     } catch (error: any) {
