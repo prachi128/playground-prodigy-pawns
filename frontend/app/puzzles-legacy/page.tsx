@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, getThemeEmoji } from '@/lib/utils';
+import { getDifficultyColor, getThemeEmoji, parseThemeList } from '@/lib/utils';
 import { Puzzle as PuzzleIcon, Loader2, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -108,7 +108,7 @@ export default function PuzzlesLegacyPage() {
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 pr-2">
                   <h3 className="text-base font-bold text-gray-800 mb-1">
-                    {getThemeEmoji(puzzle.theme)} {puzzle.title}
+                    {getThemeEmoji(parseThemeList(puzzle.theme)[0])} {puzzle.title}
                   </h3>
                   <p className="text-xs text-gray-600">{puzzle.description}</p>
                 </div>
@@ -118,15 +118,15 @@ export default function PuzzlesLegacyPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold border-2 ${getDifficultyColor(puzzle.difficulty)}`}>
                   {puzzle.difficulty}
                 </span>
-                {puzzle.theme && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border-2 border-blue-300">
-                    {puzzle.theme}
+                {parseThemeList(puzzle.theme).map((t) => (
+                  <span key={t} className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border-2 border-blue-300 capitalize">
+                    {t}
                   </span>
-                )}
+                ))}
               </div>
 
               <div className="flex items-center justify-between text-xs text-gray-600 mb-3">

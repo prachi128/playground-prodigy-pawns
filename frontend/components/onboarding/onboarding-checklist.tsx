@@ -13,7 +13,6 @@ export function OnboardingChecklist() {
     { key: 'threePuzzles' as const, label: 'Solve 3 puzzles', emoji: '🧩' },
     { key: 'firstGame' as const, label: 'Win your first game', emoji: '🏆' },
     { key: 'firstBadge' as const, label: 'Earn your first badge', emoji: '🎖️' },
-    { key: 'threeStreaks' as const, label: 'Maintain a 3-day streak', emoji: '🔥' },
   ]
 
   return (

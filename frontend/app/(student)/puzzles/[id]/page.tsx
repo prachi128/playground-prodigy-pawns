@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor } from '@/lib/utils';
+import { getDifficultyColor, parseThemeList } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { Lightbulb, RotateCcw, Check, X, Trophy } from 'lucide-react';
@@ -99,8 +99,7 @@ export default function PuzzleSolvePage() {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
         if (user) {
           const newXP = user.total_xp + result.xp_earned;
-          const newLevel = Math.floor(newXP / 100) + 1;
-          updateUser({ total_xp: newXP, level: newLevel });
+          updateUser({ total_xp: newXP });
         }
       } else {
         toast.error('Not quite right. Try again!');
@@ -239,12 +238,16 @@ export default function PuzzleSolvePage() {
                   {puzzle.difficulty}
                 </span>
               </div>
-              {puzzle.theme && (
+              {parseThemeList(puzzle.theme).length > 0 && (
                 <div>
                   <p className="font-sans text-xs text-muted-foreground mb-0.5">Theme</p>
-                  <span className="inline-block px-2 py-0.5 rounded-full text-xs font-heading font-bold bg-blue-100 text-blue-800 border-2 border-blue-300">
-                    {puzzle.theme}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {parseThemeList(puzzle.theme).map((t) => (
+                      <span key={t} className="inline-block px-2 py-0.5 rounded-full text-xs font-heading font-bold bg-blue-100 text-blue-800 border-2 border-blue-300 capitalize">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="flex justify-between items-center">

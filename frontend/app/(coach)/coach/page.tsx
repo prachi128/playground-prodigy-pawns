@@ -1,4 +1,4 @@
-// app/coach/page.tsx - Coach Dashboard Main Page
+// app/(coach)/coach/page.tsx - Coach Dashboard Main Page
 
 'use client';
 
@@ -65,7 +65,7 @@ export default function CoachDashboard() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 flex items-center justify-center">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600 font-semibold">Loading dashboard...</p>
@@ -75,20 +75,15 @@ export default function CoachDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50">
-      <div className="max-w-7xl mx-auto px-8 lg:px-12 py-6">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            👨‍🏫 Coach Dashboard
-          </h1>
-          <p className="text-gray-600">
-            Manage puzzles and track student progress
-          </p>
-        </div>
+    <div>
+      <div className="mb-6">
+        <p className="text-gray-600">
+          Manage puzzles and track student progress
+        </p>
+      </div>
 
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
+      {/* Quick Actions */}
+        <div className="grid md:grid-cols-3 gap-4 mb-6">
           <Link
             href="/coach/puzzles/create"
             className="bg-gradient-to-r from-primary-500 to-purple-600 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
@@ -115,6 +110,21 @@ export default function CoachDashboard() {
               <div>
                 <h3 className="text-xl font-bold text-gray-800">Manage Puzzles</h3>
                 <p className="text-sm text-gray-600">Edit, delete, or revalidate</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link
+            href="/coach/students"
+            className="bg-white p-6 rounded-2xl shadow-lg border-4 border-blue-200 hover:border-blue-400 transition-all hover:shadow-xl cursor-pointer"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <Users className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">Manage Students</h3>
+                <p className="text-sm text-gray-600">View and track student progress</p>
               </div>
             </div>
           </Link>
@@ -194,10 +204,9 @@ export default function CoachDashboard() {
                   </div>
                 ))}
               </div>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -35,6 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       } catch {
         // ignore network errors; still clear state
       }
+      localStorage.removeItem('sidebar-collapsed');
     }
     set({ user: null, isAuthenticated: false, isLoading: false });
   },

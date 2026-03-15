@@ -5,7 +5,6 @@ import Link from "next/link"
 import {
   Trophy,
   Target,
-  Flame,
   Swords,
   Clock,
   ChevronRight,
@@ -136,30 +135,6 @@ export function DashboardContent() {
   const [completingTaskId, setCompletingTaskId] = useState<number | null>(null)
   const [timeRemaining, setTimeRemaining] = useState({ hours: 6, minutes: 23 })
   const [tasks, setTasks] = useState(dailyTasks)
-  const [streakData, setStreakData] = useState({
-    days: 7,
-    freezeCount: 2,
-    bestStreak: 12,
-    isOnFire: true,
-    weekDays: [true, true, true, true, true, true, false], // M-S completion
-  })
-  const [showMilestoneModal, setShowMilestoneModal] = useState(false)
-  const [showStreakLostModal, setShowStreakLostModal] = useState(false)
-
-  const getMilestoneText = useCallback((days: number) => {
-    if (days === 3) return { emoji: "🔥", text: "Getting Warm" }
-    if (days === 7) return { emoji: "🔥🔥", text: "On Fire!" }
-    if (days === 14) return { emoji: "🔥🔥🔥", text: "Blazing!" }
-    if (days === 30) return { emoji: "🔥🔥🔥🔥", text: "Legendary!" }
-    if (days === 100) return { emoji: "👑🔥", text: "Immortal Flame!" }
-    return null
-  }, [])
-
-  const classAverage = useMemo(() => 4, [])
-  const userStreakComparison = useMemo(() => 
-    streakData.days > classAverage ? "higher" : "lower", 
-    [streakData.days, classAverage]
-  )
 
   // Simulate time counting down
   useEffect(() => {
@@ -193,7 +168,7 @@ export function DashboardContent() {
   const progressPercent = Math.round((completedTasks / totalTasks) * 100)
 
   return (
-    <div className="mx-auto max-w-6xl pt-6">
+    <div className="mx-auto min-w-0 w-full max-w-6xl pt-6">
       {/* Mascot Speech Bubble */}
       <section className="mb-5">
         <div className="flex items-start gap-3">
@@ -214,7 +189,7 @@ export function DashboardContent() {
 
       {/* Action Cards - Vibrant gradient backgrounds */}
       <section className="mb-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           {actionCards.map((card, idx) => (
             <Link
               key={card.title}
@@ -223,7 +198,7 @@ export function DashboardContent() {
               style={{ animationDelay: `${idx * 120}ms` }}
             >
               {/* Illustration - gradient placeholder */}
-              <div className={`relative h-40 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-44 transition-transform duration-300 group-hover:scale-105`}>
+              <div className={`relative h-32 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 md:h-44 transition-transform duration-300 group-hover:scale-105`}>
               <img
                   src={card.image}
                   alt={card.title}
@@ -235,8 +210,8 @@ export function DashboardContent() {
                 </div>
               </div>
               {/* Gradient button label */}
-              <div className={`bg-gradient-to-r ${card.gradient} px-4 py-4 text-center`}>
-                <span className="font-heading text-xl font-bold text-white drop-shadow-sm">
+              <div className={`bg-gradient-to-r ${card.gradient} px-3 py-3 text-center sm:px-4 sm:py-4`}>
+                <span className="font-heading text-lg font-bold text-white drop-shadow-sm sm:text-xl">
                   {card.title}
                 </span>
                 <p className="mt-0.5 text-xs font-semibold text-white/80">
@@ -251,15 +226,15 @@ export function DashboardContent() {
       {/* Campaign Progress Strip */}
       <CampaignStrip />
 
-      {/* Level Card - wired to auth user when available */}
+      {/* Level Card - level from rating, XP for hints/rewards */}
       <LevelCard
         currentLevel={user?.level ?? 4}
-        currentXP={user?.total_xp ?? 640}
-        totalXPNeeded={1000}
+        rating={user?.rating ?? 100}
+        totalXP={user?.total_xp ?? 0}
         userName={user?.full_name ?? "Player"}
       />
 
-      {/* Daily Tasks + Streak Row */}
+      {/* Daily Tasks Row */}
       <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Daily Tasks - Enhanced */}
         <div className="relative overflow-hidden rounded-3xl border-2 border-orange-200 bg-card shadow-sm lg:col-span-2">
@@ -366,137 +341,8 @@ export function DashboardContent() {
           </div>
         </div>
 
-        {/* Streak + Stats */}
+        {/* Stars earned */}
         <div className="flex flex-col gap-4">
-          {/* ENHANCED Streak Counter with Milestones */}
-          <div className="relative overflow-hidden rounded-3xl border-2 border-orange-200 bg-card shadow-sm">
-            {/* Milestone celebration modal backdrop */}
-            {showMilestoneModal && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                <div className="relative rounded-2xl bg-white p-8 text-center animate-milestone">
-                  <p className="text-5xl">🎉</p>
-                  <p className="mt-2 font-heading text-3xl font-bold text-orange-600">
-                    {getMilestoneText(streakData.days)?.text}
-                  </p>
-                  <p className="mt-1 text-lg">
-                    {getMilestoneText(streakData.days)?.emoji}
-                  </p>
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    You've reached {streakData.days} days!
-                  </p>
-                  <button
-                    onClick={() => setShowMilestoneModal(false)}
-                    className="mt-4 rounded-lg bg-orange-500 px-6 py-2 font-bold text-white"
-                  >
-                    Awesome!
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-gradient-to-r from-orange-500 via-red-400 to-orange-500 px-5 py-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading text-lg font-bold text-white">
-                  Streak
-                </h3>
-                {streakData.freezeCount > 0 && (
-                  <div className="rounded-full bg-white/20 px-3 py-1 backdrop-blur-sm">
-                    <span className="text-xs font-bold text-white">
-                      🛡️ {streakData.freezeCount} freeze
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-5">
-              {/* Big Flame + Number Display */}
-              <div className="flex items-center justify-center gap-4 mb-6">
-                <Flame className="h-16 w-16 animate-flame text-orange-500 shrink-0" />
-                <div>
-                  <p className="font-heading text-6xl font-bold text-orange-600 leading-tight">
-                    {streakData.days}
-                  </p>
-                  <p className="font-heading text-xl font-bold text-orange-400">
-                    Day Streak!
-                  </p>
-                </div>
-              </div>
-
-              {/* Week calendar with circles */}
-              <div className="mb-5 flex gap-2">
-                {["M", "T", "W", "T", "F", "S", "S"].map((day, i) => (
-                  <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-                    <div
-                      className={`relative flex h-9 w-9 items-center justify-center rounded-full font-heading text-sm font-bold transition-all ${
-                        i === 6
-                          ? "animate-pulse-ring border-2 border-orange-500 bg-orange-50 text-orange-600"
-                          : streakData.weekDays[i]
-                          ? "bg-orange-500 text-white shadow-md"
-                          : "border-2 border-orange-200 bg-transparent text-orange-200"
-                      }`}
-                    >
-                      {streakData.weekDays[i] ? "✓" : ""}
-                    </div>
-                    <span className="text-xs font-bold text-muted-foreground">{day}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Milestone progress */}
-              {getMilestoneText(streakData.days) && (
-                <div className="mb-4 rounded-xl bg-gradient-to-r from-orange-50 to-red-50 p-3 border-2 border-orange-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">
-                      {getMilestoneText(streakData.days)?.emoji}
-                    </span>
-                    <div>
-                      <p className="font-heading text-sm font-bold text-orange-600">
-                        {getMilestoneText(streakData.days)?.text}
-                      </p>
-                      <p className="text-xs text-orange-500">
-                        Milestone reached!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Competition section */}
-              <div className="rounded-xl bg-gradient-to-r from-blue-50 to-cyan-50 p-3 border-2 border-blue-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-blue-600">Your Streak</p>
-                    <p className="font-heading text-lg font-bold text-blue-900">
-                      {streakData.days} days
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-blue-600">Class Average</p>
-                    <p className="font-heading text-lg font-bold text-blue-900">
-                      {classAverage} days
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs font-bold text-blue-600">
-                  {userStreakComparison === "higher"
-                    ? `🚀 You're ${streakData.days - classAverage} days ahead!`
-                    : `Keep pushing! ${classAverage - streakData.days} days to match the class average`}
-                </p>
-              </div>
-
-              {/* Streak protection info */}
-              {streakData.freezeCount > 0 && (
-                <div className="mt-4 rounded-lg bg-green-50 p-2 border border-green-200">
-                  <p className="text-xs font-bold text-green-700">
-                    Streak Freeze active - You're protected!
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Stars earned */}
           <div className="overflow-hidden rounded-3xl border-2 border-yellow-200 bg-card shadow-sm">
             <div className="bg-gradient-to-r from-yellow-400 to-amber-500 px-5 py-3">
               <h3 className="font-heading text-lg font-bold text-white">
@@ -589,7 +435,6 @@ export function DashboardContent() {
             {[
               { title: "First Win!", icon: Trophy, bg: "bg-gradient-to-br from-yellow-100 to-amber-100", color: "text-yellow-600", earned: true, rarity: "Common", rarityColor: "bg-slate-100 text-slate-600" },
               { title: "Puzzle Pro!", icon: Target, bg: "bg-gradient-to-br from-cyan-100 to-blue-100", color: "text-cyan-600", earned: true, rarity: "Rare", rarityColor: "bg-blue-100 text-blue-600" },
-              { title: "7-Day Streak!", icon: Flame, bg: "bg-gradient-to-br from-orange-100 to-red-100", color: "text-orange-600", earned: true, rarity: "Epic", rarityColor: "bg-purple-100 text-purple-600" },
               { title: "100 Games", icon: Swords, bg: "bg-gradient-to-br from-pink-100 to-rose-100", color: "text-pink-600", earned: false, rarity: "Epic", rarityColor: "bg-purple-100 text-purple-600" },
               { title: "Star Scholar", icon: Star, bg: "bg-gradient-to-br from-purple-100 to-indigo-100", color: "text-purple-600", earned: false, rarity: "Legendary", rarityColor: "bg-amber-100 text-amber-700" },
               { title: "Grandmaster", icon: GraduationCap, bg: "bg-gradient-to-br from-emerald-100 to-green-100", color: "text-emerald-600", earned: false, rarity: "Legendary", rarityColor: "bg-amber-100 text-amber-700" },

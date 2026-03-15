@@ -75,7 +75,7 @@ class User(Base):
     avatar_url = Column(String, default="/avatars/default.png")
     total_xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
-    rating = Column(Integer, default=400)
+    rating = Column(Integer, default=100)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -130,6 +130,7 @@ class Puzzle(Base):
     __tablename__ = "puzzles"
     
     id = Column(Integer, primary_key=True, index=True)
+    lichess_id = Column(String, unique=True, index=True, nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text)
     

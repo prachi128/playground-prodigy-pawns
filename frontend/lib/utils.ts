@@ -7,18 +7,44 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Calculate XP needed for next level (100 XP per level)
+// Level is determined by rating only (matches backend main.py)
+const RATING_THRESHOLDS = [300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900];
+const LEVEL_MAX = 15;
+
+/** Get rating band for a level: { min, max } (max is null for level 15 = 2900+). */
+export function getRatingBandForLevel(level: number): { min: number; max: number | null } {
+  if (level <= 1) return { min: 100, max: 299 };
+  if (level >= LEVEL_MAX) return { min: RATING_THRESHOLDS[LEVEL_MAX - 2], max: null };
+  const min = RATING_THRESHOLDS[level - 2];
+  const max = RATING_THRESHOLDS[level - 1] - 1;
+  return { min, max };
+}
+
+/** Progress within current level (0–100). For level 15, returns 100. */
+export function getRatingProgressToNextLevel(rating: number, level: number): number {
+  const band = getRatingBandForLevel(level);
+  if (band.max == null) return 100; // max level
+  const range = band.max - band.min + 1;
+  const into = Math.max(0, rating - band.min);
+  return Math.min(100, Math.round((into / range) * 100));
+}
+
+/** Rating needed for next level (for display). */
+export function getRatingForNextLevel(level: number): number | null {
+  if (level >= LEVEL_MAX) return null;
+  return RATING_THRESHOLDS[level - 1];
+}
+
+// Legacy XP helpers (XP is for hints/rewards only, not for level)
 export function getXPForNextLevel(currentLevel: number): number {
   return currentLevel * 100;
 }
 
-// Calculate progress percentage to next level
 export function getXPProgress(totalXP: number, currentLevel: number): number {
   const xpForCurrentLevel = (currentLevel - 1) * 100;
   const xpForNextLevel = currentLevel * 100;
   const xpInCurrentLevel = totalXP - xpForCurrentLevel;
   const xpNeededForLevel = xpForNextLevel - xpForCurrentLevel;
-  
   return Math.min(100, (xpInCurrentLevel / xpNeededForLevel) * 100);
 }
 
@@ -73,6 +99,12 @@ export function getThemeEmoji(theme?: string): string {
   };
   
   return themeMap[theme.toLowerCase()] || '♟️';
+}
+
+/** Split space-separated theme string into array of theme labels (e.g. "fork endgame" → ["fork", "endgame"]). */
+export function parseThemeList(theme?: string | null): string[] {
+  if (!theme || typeof theme !== 'string') return [];
+  return theme.trim().split(/\s+/).filter(Boolean);
 }
 
 // Calculate accuracy percentage

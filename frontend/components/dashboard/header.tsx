@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import {
   Menu,
   Bell,
-  Flame,
   Star,
   Zap,
   Trophy,
@@ -207,32 +206,29 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
   const totalXP = user?.total_xp ?? 0
+  const rating = user?.rating ?? 0
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 bg-gradient-to-r from-emerald-600 to-green-500 px-4 shadow-md lg:px-6">
+    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-gradient-to-r from-emerald-600 to-green-500 px-3 shadow-md sm:gap-3 sm:px-4 lg:px-6">
       <button onClick={onMenuClick} className="rounded-xl p-2.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white lg:hidden" aria-label="Open sidebar">
         <Menu className="h-6 w-6" />
       </button>
 
-      <div className="flex items-center gap-2">
-        <span className="animate-mascot-bounce text-2xl" role="img" aria-label="wave">👋</span>
-        <h2 className="hidden font-heading text-xl font-bold text-white sm:block">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="animate-mascot-bounce text-2xl shrink-0" role="img" aria-label="wave">👋</span>
+        <h2 className="hidden truncate font-heading text-xl font-bold text-white sm:block">
           Hey {displayName}! Let&apos;s play!
         </h2>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
         <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 transition-transform hover:scale-105">
           <Zap className="h-4 w-4 text-amber-300" />
           <span className="hidden font-heading text-sm font-bold text-white sm:inline">{totalXP} XP</span>
         </div>
         <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 transition-transform hover:scale-105">
-          <Flame className="h-5 w-5 animate-flame text-orange-300" />
-          <span className="hidden font-heading text-sm font-bold text-white sm:inline">0</span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 transition-transform hover:scale-105">
           <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
-          <span className="hidden font-heading text-sm font-bold text-white sm:inline">0</span>
+          <span className="hidden font-heading text-sm font-bold text-white sm:inline">{rating}</span>
         </div>
 
         <button

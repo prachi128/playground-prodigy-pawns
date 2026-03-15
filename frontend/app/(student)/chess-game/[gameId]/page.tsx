@@ -348,6 +348,10 @@ export default function ChessGamePage() {
             try {
               newChess = new Chess();
               newChess.loadPgn(normalizePgnForChessJs(gameData.pgn));
+              // If server sent final_fen and it differs from PGN result, trust final_fen for board position
+              if (gameData.final_fen && newChess.fen() !== gameData.final_fen) {
+                newChess = new Chess(gameData.final_fen);
+              }
             } catch {
               newChess = new Chess(fenToUse);
             }
@@ -420,12 +424,18 @@ export default function ChessGamePage() {
           const isBotTurn = (isWhite && !isWhiteTurn) || (isBlack && isWhiteTurn);
           
           if (isBotTurn && !updatedGame.result) {
+            const movesBeforeBot = updatedGame.total_moves ?? 0;
             // Wait 1.5 seconds so player can see their move, then trigger bot move
             setTimeout(async () => {
               try {
-                const botGame = await gameAPI.getBotMove(gameId);
-                updateGameState(botGame);
-                toast('Bot made a move!');
+                await gameAPI.getBotMove(gameId);
+                // Always refetch so we have the latest board state (avoids board not updating)
+                const latestGame = await gameAPI.getGame(gameId);
+                updateGameState(latestGame);
+                const movesAfter = latestGame.total_moves ?? 0;
+                if (movesAfter > movesBeforeBot) {
+                  toast('Bot made a move!');
+                }
               } catch (error) {
                 console.error('Failed to get bot move:', error);
                 // Refresh game state as fallback
@@ -472,7 +482,7 @@ export default function ChessGamePage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl pt-6 flex items-center justify-center min-h-[60vh]">
+      <div className="mx-auto max-w-6xl pt-0 flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
           <p className="font-heading font-semibold text-muted-foreground">Loading game...</p>
@@ -483,7 +493,7 @@ export default function ChessGamePage() {
 
   if (!game || !chess) {
     return (
-      <div className="mx-auto max-w-6xl pt-6">
+      <div className="mx-auto max-w-6xl pt-0 -mx-2 -mt-3 lg:-mx-4 lg:-mt-4">
         <div className="rounded-xl border-2 border-red-200 bg-red-50 p-6 text-center">
           <p className="font-heading font-bold text-red-700">Game not found</p>
           <Link href="/chess-game" className="mt-4 inline-block text-blue-600 hover:underline">
@@ -499,43 +509,43 @@ export default function ChessGamePage() {
   const isBlack = game.black_player_id === user?.id;
 
   return (
-    <div className="mx-auto max-w-6xl pt-6">
+    <div className="mx-auto max-w-6xl pt-0 -mx-2 -mt-3 lg:-mx-4 lg:-mt-4">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
         <div className="lg:col-span-2">
-          <div className="rounded-3xl border-2 border-border bg-card p-6 shadow-xl">
+          <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-xl">
             {/* Player Info - Black (top) */}
-            <div className="mb-4 flex items-center justify-between rounded-xl border-2 border-gray-800 bg-gray-900 p-4">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-full text-2xl ${
+            <div className="mb-2 flex items-center justify-between rounded-lg border-2 border-gray-800 bg-gray-900 p-2.5">
+              <div className="flex items-center gap-2">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
                   blackPlayer?.isBot 
                     ? 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg' 
                     : 'bg-gray-700'
                 } text-white`}>
                   {blackPlayer?.isBot ? botAvatar : (blackPlayer?.full_name?.charAt(0) || 'B')}
                 </div>
-                <div>
-                  <p className="font-heading font-bold text-white">
+                <div className="min-w-0">
+                  <p className="font-heading text-sm font-bold text-white truncate">
                     {isBlack ? 'You (Black)' : (blackPlayer?.isBot ? `${botName} (Black)` : 'Opponent (Black)')}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {isBlack && !isMyTurn ? 'Your turn' : isBlack && isMyTurn ? 'Waiting...' : (blackPlayer?.isBot ? 'Bot thinking...' : 'Opponent')}
+                    {isBlack && isMyTurn ? 'Your turn' : isBlack && !isMyTurn ? 'Waiting...' : (blackPlayer?.isBot ? (isMyTurn ? 'Waiting...' : 'Bot thinking...') : 'Opponent')}
                   </p>
                 </div>
               </div>
               {isBlack && (
-                <div className="rounded-lg bg-gray-700 px-3 py-1">
-                  <span className="font-heading text-sm font-bold text-white">You</span>
+                <div className="rounded bg-gray-700 px-2 py-0.5 shrink-0">
+                  <span className="font-heading text-xs font-bold text-white">You</span>
                 </div>
               )}
             </div>
 
             {/* Chess Board */}
             <div className="flex justify-center">
-              <div className="w-full max-w-[500px] relative">
+              <div className="w-full max-w-[320px] relative">
                 {isMakingMove && (
-                  <div className="absolute inset-0 bg-black/20 rounded-xl flex items-center justify-center z-10">
-                    <Loader2 className="w-8 h-8 text-white animate-spin" />
+                  <div className="absolute inset-0 bg-black/20 rounded-lg flex items-center justify-center z-10">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
                   </div>
                 )}
                 {/* @ts-expect-error - react-chessboard types are incomplete */}
@@ -554,7 +564,7 @@ export default function ChessGamePage() {
                     boardOrientation: isWhite ? 'white' : 'black',
                     arePiecesDraggable: isMyTurn && !isMakingMove,
                     boardStyle: {
-                      borderRadius: '12px',
+                      borderRadius: '8px',
                       boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
                       opacity: isMakingMove ? 0.7 : 1,
                     },
@@ -576,35 +586,35 @@ export default function ChessGamePage() {
             </div>
 
             {/* Player Info - White (bottom) */}
-            <div className="mt-4 flex items-center justify-between rounded-xl border-2 border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-full text-2xl ${
+            <div className="mt-2 flex items-center justify-between rounded-lg border-2 border-gray-200 bg-white p-2.5">
+              <div className="flex items-center gap-2">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
                   whitePlayer?.isBot 
                     ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg' 
                     : 'bg-gray-100'
                 } text-gray-800`}>
                   {whitePlayer?.isBot ? botAvatar : (whitePlayer?.full_name?.charAt(0) || 'W')}
                 </div>
-                <div>
-                  <p className="font-heading font-bold text-gray-900">
+                <div className="min-w-0">
+                  <p className="font-heading text-sm font-bold text-gray-900 truncate">
                     {isWhite ? 'You (White)' : (whitePlayer?.isBot ? `${botName} (White)` : 'Opponent (White)')}
                   </p>
                   <p className="text-xs text-gray-600">
-                    {isWhite && isMyTurn ? 'Your turn' : isWhite && !isMyTurn ? 'Waiting...' : (whitePlayer?.isBot ? 'Bot thinking...' : 'Opponent')}
+                    {isWhite && isMyTurn ? 'Your turn' : isWhite && !isMyTurn ? 'Waiting...' : (whitePlayer?.isBot ? (isMyTurn ? 'Waiting...' : 'Bot thinking...') : 'Opponent')}
                   </p>
                 </div>
               </div>
               {isWhite && (
-                <div className="rounded-lg bg-orange-100 px-3 py-1">
-                  <span className="font-heading text-sm font-bold text-orange-700">You</span>
+                <div className="rounded bg-orange-100 px-2 py-0.5 shrink-0">
+                  <span className="font-heading text-xs font-bold text-orange-700">You</span>
                 </div>
               )}
             </div>
 
             {/* Game Status */}
             {gameStatus && (
-              <div className="mt-4 rounded-xl bg-gradient-to-r from-blue-50 to-cyan-50 p-4 text-center border-2 border-blue-200">
-                <p className="font-heading font-bold text-blue-900">{gameStatus}</p>
+              <div className="mt-2 rounded-lg bg-gradient-to-r from-blue-50 to-cyan-50 p-2.5 text-center border-2 border-blue-200">
+                <p className="font-heading text-sm font-bold text-blue-900">{gameStatus}</p>
               </div>
             )}
           </div>

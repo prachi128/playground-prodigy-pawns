@@ -9,7 +9,6 @@ export interface OnboardingState {
     threePuzzles: boolean
     firstGame: boolean
     firstBadge: boolean
-    threeStreaks: boolean
   }
   tooltipsSeen: Set<string>
 }
@@ -22,7 +21,6 @@ export function useOnboarding() {
       threePuzzles: false,
       firstGame: false,
       firstBadge: false,
-      threeStreaks: false,
     },
     tooltipsSeen: new Set(),
   })
