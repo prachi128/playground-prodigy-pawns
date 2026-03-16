@@ -8,6 +8,7 @@ import { CoachGuidance, useCoachPrompts } from "@/components/onboarding/coach-gu
 
 interface DashboardLayoutProps {
   children: React.ReactNode
+  hideHeader?: boolean
 }
 
 const MemoizedSidebar = memo(Sidebar)
@@ -24,7 +25,7 @@ function getInitialSidebarCollapsed(): boolean {
   return window.innerWidth < 1024
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => getInitialSidebarCollapsed())
   const [theme, setTheme] = useState<"light" | "dark">("light")
@@ -84,11 +85,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       />
 
       <div className={`flex min-w-0 flex-1 flex-col overflow-x-hidden transition-all duration-300 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"}`}>
-        <MemoizedHeader
-          onMenuClick={handleMenuClick}
-          theme={theme}
-          onThemeToggle={handleToggleTheme}
-        />
+        {!hideHeader && (
+          <MemoizedHeader
+            onMenuClick={handleMenuClick}
+            theme={theme}
+            onThemeToggle={handleToggleTheme}
+          />
+        )}
 
         <main className="content-green min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
           {children}

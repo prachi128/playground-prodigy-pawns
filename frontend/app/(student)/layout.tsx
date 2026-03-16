@@ -45,9 +45,11 @@ export default function StudentLayout({
 
   if (!isAuthenticated) return null;
 
+  const hideHeader = pathname?.startsWith('/puzzles') ?? false;
+
   return (
     <div className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>
-      <DashboardLayout>{children}</DashboardLayout>
+      <DashboardLayout hideHeader={hideHeader}>{children}</DashboardLayout>
     </div>
   );
 }

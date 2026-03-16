@@ -16,7 +16,6 @@ import {
   Check,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
-import { CampaignStrip } from "./campaign-strip"
 import { StarShopPreview } from "./star-shop"
 import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
 import { LevelCard } from "./level-card"
@@ -222,9 +221,6 @@ export function DashboardContent() {
           ))}
         </div>
       </section>
-
-      {/* Campaign Progress Strip */}
-      <CampaignStrip />
 
       {/* Level Card - level from rating, XP for hints/rewards */}
       <LevelCard

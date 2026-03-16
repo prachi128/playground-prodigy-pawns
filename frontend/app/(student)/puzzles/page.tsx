@@ -28,7 +28,7 @@ const puzzleOptions = [
 
 export default function PuzzlesLandingPage() {
   return (
-    <div className="mx-auto max-w-6xl pt-6">
+    <div className="mx-auto max-w-6xl pt-2">
       {/* Intro */}
       <section className="mb-8">
         <div className="flex items-start gap-3">

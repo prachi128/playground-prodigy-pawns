@@ -175,7 +175,7 @@ export default function PuzzlesSolvePage() {
           className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm mb-2"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Puzzles
+          Back to Puzzle Games
         </Link>
       </div>
 

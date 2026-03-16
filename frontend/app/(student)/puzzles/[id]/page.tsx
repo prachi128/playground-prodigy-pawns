@@ -26,7 +26,6 @@ export default function PuzzleSolvePage() {
   const [movesMade, setMovesMade] = useState<string[]>([]);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [startTime, setStartTime] = useState<number>(0);
-  const [hintsUsed, setHintsUsed] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [userXP, setUserXP] = useState(user?.total_xp ?? 0);
 
@@ -92,7 +91,6 @@ export default function PuzzleSolvePage() {
         is_solved: solved,
         moves_made: moves.join(' '),
         time_taken: timeTaken,
-        hints_used: hintsUsed,
       });
 
       if (solved) {
@@ -110,16 +108,33 @@ export default function PuzzleSolvePage() {
     }
   };
 
-  const showHint = () => {
+  const goToNextPuzzleInSameDifficulty = async () => {
     if (!puzzle) return;
-    const solutionMoves = puzzle.moves.split(' ');
-    if (movesMade.length < solutionMoves.length) {
-      const nextMove = solutionMoves[movesMade.length];
-      toast(`Hint: Try moving from ${nextMove.substring(0, 2)} to ${nextMove.substring(2, 4)}`, {
-        icon: '💡',
-        duration: 5000,
+
+    try {
+      const referenceRating = user?.rating ?? puzzle.rating ?? 400;
+      // Fetch a pool of puzzles in the same difficulty band
+      const list = await puzzleAPI.getAll(puzzle.difficulty, undefined, 0, 50);
+      const candidates = list.filter((p) => p.id !== puzzle.id);
+
+      if (candidates.length === 0) {
+        // Fallback: go back to the solve list
+        router.push('/puzzles/solve');
+        return;
+      }
+
+      // Pick the puzzle whose rating is closest to the player's rating
+      const sortedByCloseness = [...candidates].sort((a, b) => {
+        const da = Math.abs((a.rating ?? referenceRating) - referenceRating);
+        const db = Math.abs((b.rating ?? referenceRating) - referenceRating);
+        return da - db;
       });
-      setHintsUsed(hintsUsed + 1);
+
+      const nextPuzzle = sortedByCloseness[0];
+      router.push(`/puzzles/${nextPuzzle.id}`);
+    } catch (error) {
+      console.error('Failed to load next puzzle:', error);
+      router.push('/puzzles/solve');
     }
   };
 
@@ -130,7 +145,6 @@ export default function PuzzleSolvePage() {
       setMovesMade([]);
       setIsCorrect(null);
       setStartTime(Date.now());
-      setHintsUsed(0);
     }
   };
 
@@ -224,13 +238,14 @@ export default function PuzzleSolvePage() {
               </div>
               
               {isCorrect && (
-                <Link
-                  href="/puzzles"
+                <button
+                  type="button"
+                  onClick={goToNextPuzzleInSameDifficulty}
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
                 >
                   <Trophy className="w-3 h-3" />
                   Next Puzzle
-                </Link>
+                </button>
               )}
             </div>
           )}
@@ -278,14 +293,6 @@ export default function PuzzleSolvePage() {
 
           <div className="space-y-2">
             <button
-              onClick={showHint}
-              disabled={isCorrect !== null}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-heading font-bold py-1.5 px-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-lg text-xs"
-            >
-              <Lightbulb className="w-3 h-3" />
-              Hint (-2 XP)
-            </button>
-            <button
               onClick={resetPuzzle}
               disabled={isCorrect !== null}
               className="w-full bg-muted hover:bg-muted/80 text-muted-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-lg text-xs"
@@ -301,10 +308,6 @@ export default function PuzzleSolvePage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Moves:</span>
                 <span className="font-heading font-bold text-foreground">{movesMade.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Hints:</span>
-                <span className="font-heading font-bold text-foreground">{hintsUsed}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Time:</span>

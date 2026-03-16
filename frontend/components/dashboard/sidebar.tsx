@@ -15,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Settings,
+  User,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 
@@ -25,6 +27,8 @@ const navItems = [
   { label: "Puzzles", icon: Puzzle, href: "/puzzles", color: "text-cyan-400", badge: "3 new", progress: 64 },
   { label: "Learn", icon: GraduationCap, href: "/learn", color: "text-pink-400", badge: "1 new", progress: 45 },
   { label: "Progress", icon: TrendingUp, href: "/progress", color: "text-emerald-300", badge: null, progress: 87 },
+  { label: "Settings", icon: Settings, href: "/settings", color: "text-blue-300", badge: null, progress: null },
+  { label: "Profile", icon: User, href: "/profile", color: "text-purple-300", badge: null, progress: null },
 ]
 
 interface SidebarProps {
