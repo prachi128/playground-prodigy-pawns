@@ -9,7 +9,7 @@ import { puzzleAPI, Puzzle } from '@/lib/api';
 import { getDifficultyColor, parseThemeList } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { Lightbulb, RotateCcw, Check, X, Trophy } from 'lucide-react';
+import { Lightbulb, RotateCcw, Check, X, Trophy, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
@@ -147,6 +147,16 @@ export default function PuzzleSolvePage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <div className="mb-4">
+        <Link
+          href="/puzzles/solve"
+          className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Puzzles
+        </Link>
+      </div>
+
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2">

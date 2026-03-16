@@ -298,6 +298,8 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
         full_name=user.full_name,
         hashed_password=hashed_password,
         age=user.age,
+        gender=user.gender,
+        avatar_url=user.avatar_url or "/avatars/default.png",
         role=UserRole.student
     )
     new_user.level = level_from_rating(new_user.rating or 100)

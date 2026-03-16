@@ -5,9 +5,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { puzzleAPI, Puzzle } from '@/lib/api';
+import { puzzleAPI, Puzzle, userAPI } from '@/lib/api';
 import { getDifficultyColor, getThemeEmoji, parseThemeList } from '@/lib/utils';
-import { Puzzle as PuzzleIcon, Loader2, Star, ArrowLeft } from 'lucide-react';
+import { Puzzle as PuzzleIcon, Loader2, Zap, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DIFFICULTIES = [
@@ -18,6 +18,16 @@ const DIFFICULTIES = [
   { value: 'expert', label: 'Expert' },
 ];
 
+function getDifficultyForRating(
+  rating: number | null | undefined
+): '' | 'beginner' | 'intermediate' | 'advanced' | 'expert' {
+  if (rating == null) return '';
+  if (rating < 550) return 'beginner';
+  if (rating < 850) return 'intermediate';
+  if (rating < 1100) return 'advanced';
+  return 'expert';
+}
+
 export default function PuzzlesSolvePage() {
   const router = useRouter();
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
@@ -25,6 +35,7 @@ export default function PuzzlesSolvePage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
+  const [isInitialized, setIsInitialized] = useState(false);
   const selectedDifficultyRef = useRef(selectedDifficulty);
   selectedDifficultyRef.current = selectedDifficulty;
   // Cache per difficulty for instant tab switching
@@ -69,6 +80,8 @@ export default function PuzzlesSolvePage() {
 
   // When tab changes: show cached data immediately, then fetch if missing or refresh in background
   useEffect(() => {
+    if (!isInitialized) return;
+
     const key = selectedDifficulty || '__all__';
     const cached = cacheRef.current[key];
 
@@ -86,10 +99,38 @@ export default function PuzzlesSolvePage() {
     setPuzzles([]);
     setHasMore(true);
     loadPuzzles(selectedDifficulty, false, []);
-  }, [selectedDifficulty]);
+  }, [selectedDifficulty, isInitialized, loadPuzzles]);
+
+  // Initialize selected difficulty from student rating
+  useEffect(() => {
+    let cancelled = false;
+
+    const initFromRating = async () => {
+      try {
+        const stats = await userAPI.getStats();
+        if (cancelled) return;
+        const difficulty = getDifficultyForRating(stats.rating);
+        setSelectedDifficulty(difficulty);
+      } catch (error) {
+        console.error('Failed to load user stats for difficulty selection:', error);
+      } finally {
+        if (!cancelled) {
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    initFromRating();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Prefetch other difficulties after initial load so tab switches are instant
   useEffect(() => {
+    if (!isInitialized) return;
+
     const key = selectedDifficulty || '__all__';
     if (!cacheRef.current[key]) return;
     DIFFICULTIES.forEach(({ value }) => {
@@ -106,7 +147,7 @@ export default function PuzzlesSolvePage() {
           .catch(() => {});
       }
     });
-  }, [selectedDifficulty]);
+  }, [selectedDifficulty, isInitialized]);
 
   const loadMore = useCallback(() => {
     if (!isLoadingMore && hasMore) {
@@ -164,7 +205,7 @@ export default function PuzzlesSolvePage() {
           <div
             key={puzzle.id}
             onClick={() => router.push(`/puzzles/${puzzle.id}`)}
-            className="bg-card rounded-xl p-4 shadow-lg border-2 border-border hover:border-primary/50 transition-all hover:shadow-xl cursor-pointer transform hover:scale-[1.02]"
+            className="bg-card rounded-xl p-4 shadow-lg border-2 border-border hover:border-primary/50 transition-all hover:shadow-xl cursor-pointer transform hover:scale-[1.02] flex flex-col h-full"
           >
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1 pr-2">
@@ -174,7 +215,7 @@ export default function PuzzlesSolvePage() {
                 <p className="font-sans text-xs text-muted-foreground">{puzzle.description}</p>
               </div>
               <div className="flex items-center gap-1 text-amber-500 flex-shrink-0">
-                <Star className="w-3.5 h-3.5 fill-current" />
+                <Zap className="w-3.5 h-3.5" />
                 <span className="font-heading font-bold text-xs">{puzzle.xp_reward}</span>
               </div>
             </div>
@@ -197,7 +238,7 @@ export default function PuzzlesSolvePage() {
               </span>
             </div>
 
-            <button className="w-full bg-gradient-to-r from-primary to-accent text-primary-foreground font-heading font-bold py-1.5 px-3 rounded-lg hover:opacity-90 transition-all text-xs">
+            <button className="mt-auto w-full bg-gradient-to-r from-primary to-accent text-primary-foreground font-heading font-bold py-1.5 px-3 rounded-lg hover:opacity-90 transition-all text-xs">
               Solve Puzzle →
             </button>
           </div>

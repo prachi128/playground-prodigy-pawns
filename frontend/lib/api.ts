@@ -70,6 +70,7 @@ export interface User {
   full_name: string;
   role: string;
   age?: number;
+  gender?: string;
   avatar_url: string;
   total_xp: number;
   level: number;
@@ -152,6 +153,8 @@ export const authAPI = {
     full_name: string;
     password: string;
     age?: number;
+    gender?: string;
+    avatar_url?: string;
   }): Promise<LoginResponse> => {
     const response = await api.post('/api/auth/signup', data);
     return response.data;

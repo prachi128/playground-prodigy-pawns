@@ -8,9 +8,18 @@ import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles, X, Plus } from 'lucide-react';
+import { Sparkles, X, Plus, User } from 'lucide-react';
 
 type SignupMode = 'student' | 'parent';
+
+// Avatar options for signup (paths under public/ - add images to public/avatars/)
+const AVATAR_OPTIONS = [
+  { value: '/avatars/default.png', label: 'Default' },
+  { value: '/avatars/girl1.png', label: 'Avatar 1' },
+  { value: '/avatars/girl2.png', label: 'Avatar 2' },
+  { value: '/avatars/boy1.png', label: 'Avatar 3' },
+  { value: '/avatars/boy2.png', label: 'Avatar 4' },
+] as const;
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,6 +32,8 @@ export default function SignupPage() {
     full_name: '',
     password: '',
     age: '',
+    gender: '' as '' | 'girl' | 'boy',
+    avatar_url: '/avatars/default.png',
   });
   const [childEmails, setChildEmails] = useState(['']);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,6 +90,8 @@ export default function SignupPage() {
         response = await authAPI.signup({
           ...formData,
           age: formData.age ? parseInt(formData.age) : undefined,
+          gender: formData.gender || undefined,
+          avatar_url: formData.avatar_url || undefined,
         });
       }
 
@@ -212,6 +225,82 @@ export default function SignupPage() {
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                   placeholder="10"
                 />
+              </div>
+            )}
+
+            {/* Gender (Student only) - I am a girl / boy */}
+            {mode === 'student' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  I am a
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, gender: 'girl' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 transition ${
+                      formData.gender === 'girl'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-300 text-gray-600 hover:border-primary-300 hover:bg-primary-50/50'
+                    }`}
+                  >
+                    Girl
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, gender: 'boy' })}
+                    className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 transition ${
+                      formData.gender === 'boy'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-300 text-gray-600 hover:border-primary-300 hover:bg-primary-50/50'
+                    }`}
+                  >
+                    Boy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Choose Avatar (Student only) */}
+            {mode === 'student' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Choose your avatar
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  {AVATAR_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, avatar_url: opt.value })}
+                      className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden transition shrink-0 ${
+                        formData.avatar_url === opt.value
+                          ? 'border-primary-500 ring-2 ring-primary-200'
+                          : 'border-gray-300 hover:border-primary-300'
+                      }`}
+                      title={opt.label}
+                    >
+                      <img
+                        src={opt.value}
+                        alt={opt.label}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                          const fallback = target.nextElementSibling;
+                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                        }}
+                      />
+                      <span
+                        className="absolute inset-0 hidden items-center justify-center bg-gray-100 text-gray-400"
+                        style={{ display: 'none' }}
+                        aria-hidden
+                      >
+                        <User className="w-6 h-6" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

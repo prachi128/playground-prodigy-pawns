@@ -11,6 +11,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
     age: Optional[int] = None
+    gender: Optional[str] = None  # 'girl' | 'boy' for students
+    avatar_url: Optional[str] = None  # e.g. /avatars/girl1.png
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -20,6 +22,7 @@ class UserResponse(UserBase):
     id: int
     role: str
     age: Optional[int]
+    gender: Optional[str] = None
     avatar_url: str
     total_xp: int
     level: int

@@ -73,6 +73,7 @@ class User(Base):
     
     # Student specific fields
     age = Column(Integer)
+    gender = Column(String, nullable=True)  # 'girl' | 'boy' for students
     avatar_url = Column(String, default="/avatars/default.png")
     total_xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
