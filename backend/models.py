@@ -106,7 +106,7 @@ class Game(Base):
     
     # Game details
     pgn = Column(Text)
-    result = Column(Enum(GameResult))
+    result = Column(String(20), nullable=True)  # PGN result: "1-0", "0-1", "1/2-1/2"
     winner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Game metadata
@@ -126,7 +126,8 @@ class Game(Base):
     # Timestamps
     started_at = Column(DateTime, default=datetime.utcnow)
     ended_at = Column(DateTime)
-    
+    last_move_at = Column(DateTime, nullable=True)  # when the last move was made (for auto-resign timeout)
+
     # Relationships
     white_player = relationship("User", back_populates="games_as_white", foreign_keys=[white_player_id])
     black_player = relationship("User", back_populates="games_as_black", foreign_keys=[black_player_id])

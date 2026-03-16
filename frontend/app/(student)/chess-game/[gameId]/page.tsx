@@ -5,10 +5,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { gameAPI, Game } from '@/lib/api';
+import { gameAPI, Game, User, usersAPI } from '@/lib/api';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { Loader2, Trophy, Users } from 'lucide-react';
+import { Loader2, Trophy, Users, Flag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -23,15 +23,24 @@ export default function ChessGamePage() {
   const [chess, setChess] = useState<Chess | null>(null);
   const [chessFen, setChessFen] = useState<string>('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   const [isLoading, setIsLoading] = useState(true);
-  const [whitePlayer, setWhitePlayer] = useState<any>(null);
-  const [blackPlayer, setBlackPlayer] = useState<any>(null);
+  const [whitePlayer, setWhitePlayer] = useState<User | { id: number; full_name?: string; avatar_url?: string; isBot?: boolean } | null>(null);
+  const [blackPlayer, setBlackPlayer] = useState<User | { id: number; full_name?: string; avatar_url?: string; isBot?: boolean } | null>(null);
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [gameStatus, setGameStatus] = useState<string>('');
   const [isMakingMove, setIsMakingMove] = useState(false);
+  const [isResigning, setIsResigning] = useState(false);
   const [isBotGame, setIsBotGame] = useState(false);
   const [botName, setBotName] = useState<string>('Pawny');
   const [botAvatar, setBotAvatar] = useState<string>('♟️');
-  
+  const [opponentAvatarError, setOpponentAvatarError] = useState(false);
+  const [myAvatarError, setMyAvatarError] = useState(false);
+
+  // Reset avatar error state when game or players change
+  useEffect(() => {
+    setOpponentAvatarError(false);
+    setMyAvatarError(false);
+  }, [gameId, whitePlayer?.id, blackPlayer?.id]);
+
   // Map bot difficulty to friendly name and avatar
   const getBotInfo = (difficulty: string | null | undefined): { name: string; avatar: string } => {
     if (!difficulty) return { name: 'Pawny', avatar: '♟️' };
@@ -123,23 +132,34 @@ export default function ChessGamePage() {
         setBotAvatar(botInfo.avatar);
       }
       
-      // Load player info - mark bot players
+      // Load player info - include names/avatars when available, and mark bot player
       if (isBotGameCheck) {
-        // We need to check which player is the bot
-        // The bot user has username "__BOT__"
-        // For now, we'll check by trying to load player data or use a heuristic
-        // Since we can't easily check here, we'll mark based on game structure
-        // The bot will be the player that's not the current user
+        // One player is the current user, the other is the bot
         if (gameData.white_player_id === user?.id) {
-          setWhitePlayer({ id: gameData.white_player_id });
-          setBlackPlayer({ id: gameData.black_player_id, full_name: botName, isBot: true });
+          setWhitePlayer(user as User);
+          setBlackPlayer({ id: gameData.black_player_id, full_name: botName, avatar_url: '', isBot: true });
+        } else if (gameData.black_player_id === user?.id) {
+          setBlackPlayer(user as User);
+          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, avatar_url: '', isBot: true });
         } else {
-          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, isBot: true });
+          // Fallback: treat non-current user as bot
+          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, avatar_url: '', isBot: true });
           setBlackPlayer({ id: gameData.black_player_id });
         }
       } else {
-        setWhitePlayer({ id: gameData.white_player_id });
-        setBlackPlayer({ id: gameData.black_player_id });
+        // Human vs human: fetch full user profiles so we have names and avatars
+        try {
+          const [whiteUser, blackUser] = await Promise.all([
+            usersAPI.getById(gameData.white_player_id),
+            usersAPI.getById(gameData.black_player_id),
+          ]);
+          setWhitePlayer(whiteUser);
+          setBlackPlayer(blackUser);
+        } catch {
+          // Fallback to minimal info if fetching users fails
+          setWhitePlayer((prev) => prev ?? { id: gameData.white_player_id });
+          setBlackPlayer((prev) => prev ?? { id: gameData.black_player_id });
+        }
       }
       
       // Set game status
@@ -480,6 +500,24 @@ export default function ChessGamePage() {
     }
   };
 
+  const handleResign = async () => {
+    if (!game || game.result || isResigning) return;
+    if (!confirm('Are you sure you want to resign? Your opponent will win.')) return;
+    try {
+      setIsResigning(true);
+      const updatedGame = await gameAPI.resign(gameId);
+      setGame(updatedGame);
+      setGameStatus(`Game Over: ${updatedGame.result} (You resigned)`);
+      setIsMyTurn(false);
+      toast('You resigned');
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Failed to resign';
+      toast.error(message);
+    } finally {
+      setIsResigning(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-6xl pt-0 flex items-center justify-center min-h-[60vh]">
@@ -507,6 +545,10 @@ export default function ChessGamePage() {
   const isBotGameCheck = !!game.bot_difficulty;
   const isWhite = game.white_player_id === user?.id;
   const isBlack = game.black_player_id === user?.id;
+  const myColor = isWhite ? 'white' : 'black';
+  const opponentColor = isWhite ? 'black' : 'white';
+  const myPlayer = isWhite ? whitePlayer : blackPlayer;
+  const opponentPlayer = isWhite ? blackPlayer : whitePlayer;
 
   return (
     <div className="mx-auto max-w-6xl pt-0 -mx-2 -mt-3 lg:-mx-4 lg:-mt-4">
@@ -514,35 +556,52 @@ export default function ChessGamePage() {
         {/* Chess Board */}
         <div className="lg:col-span-2">
           <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-xl">
-            {/* Player Info - Black (top) */}
-            <div className="mb-2 flex items-center justify-between rounded-lg border-2 border-gray-800 bg-gray-900 p-2.5">
-              <div className="flex items-center gap-2">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
-                  blackPlayer?.isBot 
-                    ? 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg' 
-                    : 'bg-gray-700'
-                } text-white`}>
-                  {blackPlayer?.isBot ? botAvatar : (blackPlayer?.full_name?.charAt(0) || 'B')}
+            {/* Player Info - Opponent (top); style by opponent's piece color (white = light bar, black = dark bar) */}
+            <div className={`mb-1.5 flex items-center justify-between rounded-lg border-2 p-1.5 ${
+              opponentColor === 'white'
+                ? 'border-gray-200 bg-white'
+                : 'border-gray-800 bg-gray-900'
+            }`}>
+              <div className="flex items-center gap-1.5">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
+                  (opponentPlayer as any)?.isBot
+                    ? opponentColor === 'white'
+                      ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
+                      : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
+                    : opponentColor === 'white'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-gray-700 text-white'
+                }`}>
+                  {(opponentPlayer as any)?.isBot
+                    ? botAvatar
+                    : (opponentPlayer as User | null)?.avatar_url && String((opponentPlayer as User).avatar_url).trim() && !opponentAvatarError
+                      ? (
+                        <img
+                          src={(opponentPlayer as User).avatar_url}
+                          alt=""
+                          className="h-7 w-7 rounded-full object-cover"
+                          onError={() => setOpponentAvatarError(true)}
+                        />
+                      )
+                      : ((opponentPlayer as any)?.full_name?.charAt(0)?.toUpperCase() || (opponentPlayer as User)?.username?.charAt(0)?.toUpperCase() || (opponentColor === 'white' ? 'W' : 'B'))}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-heading text-sm font-bold text-white truncate">
-                    {isBlack ? 'You (Black)' : (blackPlayer?.isBot ? `${botName} (Black)` : 'Opponent (Black)')}
+                  <p className={`font-heading text-xs font-bold truncate ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'}`}>
+                    {((opponentPlayer as any)?.full_name || (opponentPlayer as any)?.username || 'Opponent')}{' '}
+                    ({opponentColor === 'white' ? 'White' : 'Black'})
                   </p>
-                  <p className="text-xs text-gray-400">
-                    {isBlack && isMyTurn ? 'Your turn' : isBlack && !isMyTurn ? 'Waiting...' : (blackPlayer?.isBot ? (isMyTurn ? 'Waiting...' : 'Bot thinking...') : 'Opponent')}
+                  <p className={opponentColor === 'white' ? 'text-[10px] text-gray-600' : 'text-[10px] text-gray-400'}>
+                    {(opponentPlayer as any)?.isBot
+                      ? (isMyTurn ? 'Waiting...' : 'Bot thinking...')
+                      : (isMyTurn ? 'Waiting...' : 'Their turn')}
                   </p>
                 </div>
               </div>
-              {isBlack && (
-                <div className="rounded bg-gray-700 px-2 py-0.5 shrink-0">
-                  <span className="font-heading text-xs font-bold text-white">You</span>
-                </div>
-              )}
             </div>
 
             {/* Chess Board */}
             <div className="flex justify-center">
-              <div className="w-full max-w-[320px] relative">
+              <div className="w-full max-w-[420px] relative">
                 {isMakingMove && (
                   <div className="absolute inset-0 bg-black/20 rounded-lg flex items-center justify-center z-10">
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
@@ -585,30 +644,50 @@ export default function ChessGamePage() {
               </div>
             </div>
 
-            {/* Player Info - White (bottom) */}
-            <div className="mt-2 flex items-center justify-between rounded-lg border-2 border-gray-200 bg-white p-2.5">
-              <div className="flex items-center gap-2">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
-                  whitePlayer?.isBot 
-                    ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg' 
-                    : 'bg-gray-100'
-                } text-gray-800`}>
-                  {whitePlayer?.isBot ? botAvatar : (whitePlayer?.full_name?.charAt(0) || 'W')}
+            {/* Player Info - You (bottom); style by your piece color (white = light bar, black = dark bar) */}
+            <div className={`mt-1.5 flex items-center justify-between rounded-lg border-2 p-1.5 ${
+              myColor === 'white'
+                ? 'border-gray-200 bg-white'
+                : 'border-gray-800 bg-gray-900'
+            }`}>
+              <div className="flex items-center gap-1.5">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
+                  (myPlayer as any)?.isBot
+                    ? myColor === 'white'
+                      ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
+                      : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
+                    : myColor === 'white'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-gray-700 text-white'
+                }`}>
+                  {(myPlayer as any)?.isBot
+                    ? botAvatar
+                    : (myPlayer as User | null)?.avatar_url && String((myPlayer as User).avatar_url).trim() && !myAvatarError
+                      ? (
+                        <img
+                          src={(myPlayer as User).avatar_url}
+                          alt=""
+                          className="h-7 w-7 rounded-full object-cover"
+                          onError={() => setMyAvatarError(true)}
+                        />
+                      )
+                      : ((myPlayer as any)?.full_name?.charAt(0)?.toUpperCase() || (myPlayer as User)?.username?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || (myColor === 'white' ? 'W' : 'B'))}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-heading text-sm font-bold text-gray-900 truncate">
-                    {isWhite ? 'You (White)' : (whitePlayer?.isBot ? `${botName} (White)` : 'Opponent (White)')}
+                  <p className={`font-heading text-xs font-bold truncate ${myColor === 'white' ? 'text-gray-900' : 'text-white'}`}>
+                    {((myPlayer as any)?.full_name || user?.full_name || 'You')}{' '}
+                    ({myColor === 'white' ? 'White' : 'Black'})
                   </p>
-                  <p className="text-xs text-gray-600">
-                    {isWhite && isMyTurn ? 'Your turn' : isWhite && !isMyTurn ? 'Waiting...' : (whitePlayer?.isBot ? (isMyTurn ? 'Waiting...' : 'Bot thinking...') : 'Opponent')}
+                  <p className={myColor === 'white' ? 'text-[10px] text-gray-600' : 'text-[10px] text-gray-400'}>
+                    {(myPlayer as any)?.isBot
+                      ? (isMyTurn ? 'Your turn' : 'Bot thinking...')
+                      : (isMyTurn ? 'Your turn' : 'Waiting...')}
                   </p>
                 </div>
               </div>
-              {isWhite && (
-                <div className="rounded bg-orange-100 px-2 py-0.5 shrink-0">
-                  <span className="font-heading text-xs font-bold text-orange-700">You</span>
-                </div>
-              )}
+              <div className={`rounded px-1.5 py-0.5 shrink-0 ${myColor === 'white' ? 'bg-orange-100' : 'bg-gray-700'}`}>
+                <span className={`font-heading text-[10px] font-bold ${myColor === 'white' ? 'text-orange-700' : 'text-white'}`}>You</span>
+              </div>
             </div>
 
             {/* Game Status */}
@@ -670,6 +749,23 @@ export default function ChessGamePage() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Resign - visible always; disabled when game is over or resigning */}
+          <div className="rounded-3xl border-2 border-border bg-card p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={handleResign}
+              disabled={!!game.result || isResigning}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-2.5 font-heading text-sm font-bold text-red-700 transition-colors hover:bg-red-100 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isResigning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Flag className="h-4 w-4" />
+              )}
+              {isResigning ? 'Resigning...' : 'Resign'}
+            </button>
           </div>
 
           {/* Move History */}

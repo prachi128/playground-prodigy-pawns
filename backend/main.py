@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,9 +9,11 @@ from pydantic import BaseModel
 from typing import List, Optional
 import io
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
 # Import models and utilities
 from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification, ParentStudent
-from database import get_db
+from database import get_db, SessionLocal
 from auth import (
     get_password_hash,
     verify_password,
@@ -127,11 +130,82 @@ def update_ratings_after_game(game: Game, db: Session) -> None:
     black.level = level_from_rating(black.rating)
 
 
+# Auto-resign: if no move within this many seconds, the player whose turn it is loses
+AUTO_RESIGN_SECONDS = int(2.5 * 60)  # 2.5 minutes
+
+
+def check_auto_resign_timeout(game: Game, db: Session) -> None:
+    """If the player whose turn it is has exceeded the timeout, end the game (they lose)."""
+    try:
+        if game.result:
+            return
+        # When did the current turn start?
+        if (game.total_moves or 0) == 0:
+            turn_started = game.started_at
+        else:
+            turn_started = getattr(game, "last_move_at", None) or game.started_at
+        if not turn_started:
+            return
+        elapsed = (datetime.utcnow() - turn_started).total_seconds()
+        if elapsed < AUTO_RESIGN_SECONDS:
+            return
+        # Whose turn is it? (FEN second token is side to move: "w" or "b")
+        fen = (game.final_fen or game.starting_fen or "").strip()
+        parts = fen.split()
+        turn_token = parts[1] if len(parts) > 1 else "w"
+        white_to_move = turn_token.lower() == "w"
+        # Timed-out player loses: white to move timed out -> 0-1, black to move timed out -> 1-0
+        if white_to_move:
+            game.result = "0-1"
+            game.winner_id = game.black_player_id
+        else:
+            game.result = "1-0"
+            game.winner_id = game.white_player_id
+        game.ended_at = datetime.utcnow()
+        if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+            game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
+        update_ratings_after_game(game, db)
+        db.commit()
+        db.refresh(game)
+    except Exception:
+        db.rollback()
+        try:
+            db.refresh(game)
+        except Exception:
+            pass
+        # Don't re-raise: allow get_game to return the game so the frontend doesn't 500/loop
+
+
+def run_auto_resign_for_all_games() -> None:
+    """Background job: find all ongoing games that have exceeded the turn timeout and end them."""
+    db = SessionLocal()
+    try:
+        games = (
+            db.query(Game)
+            .filter(Game.result.is_(None), Game.ended_at.is_(None))
+            .all()
+        )
+        for game in games:
+            check_auto_resign_timeout(game, db)
+    finally:
+        db.close()
+
+
 # FastAPI app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(run_auto_resign_for_all_games, "interval", minutes=1)
+    scheduler.start()
+    yield
+    scheduler.shutdown(wait=False)
+
+
 app = FastAPI(
     title="Prodigy Pawns Student Portal API",
     description="Chess Academy Portal for Students - Play, Learn, and Grow!",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware (include both localhost and 127.0.0.1 so it works either way)
@@ -753,7 +827,9 @@ def get_game(
     # Check if user is part of this game
     if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
         raise HTTPException(status_code=403, detail="You are not part of this game")
-    
+
+    check_auto_resign_timeout(game, db)
+
     return game
 
 @app.post("/api/games", response_model=GameResponse)
@@ -936,7 +1012,9 @@ def make_move(
     game.pgn = str(pgn_game.accept(exporter)).strip()
     if not game.pgn.endswith(("*", "1-0", "0-1", "1/2-1/2")):
         game.pgn = game.pgn + " *"
-    
+
+    game.last_move_at = datetime.utcnow()
+
     # Check for game end conditions
     if board.is_checkmate():
         game.result = "1-0" if is_current_user_white else "0-1"
@@ -961,6 +1039,37 @@ def make_move(
     # This ensures the player sees their move first before bot responds
     
     return game
+
+
+@app.post("/api/games/{game_id}/resign", response_model=GameResponse)
+def resign_game(
+    game_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Resign the current game. Opponent wins."""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+    if game.result:
+        raise HTTPException(status_code=400, detail="Game has already ended")
+    is_current_user_white = game.white_player_id == current_user_id
+    if is_current_user_white:
+        game.result = "0-1"
+        game.winner_id = game.black_player_id
+    else:
+        game.result = "1-0"
+        game.winner_id = game.white_player_id
+    game.ended_at = datetime.utcnow()
+    if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+        game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
+    update_ratings_after_game(game, db)
+    db.commit()
+    db.refresh(game)
+    return game
+
 
 # ==================== BOT GAME ENDPOINTS ====================
 
@@ -1217,7 +1326,9 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     game.pgn = str(pgn_game.accept(exporter)).strip()
     if not game.pgn.endswith(("*", "1-0", "0-1", "1/2-1/2")):
         game.pgn = game.pgn + " *"
-    
+
+    game.last_move_at = datetime.utcnow()
+
     # Check for game end conditions
     if board.is_checkmate():
         # Bot wins if it's bot's color turn (meaning bot just made winning move)

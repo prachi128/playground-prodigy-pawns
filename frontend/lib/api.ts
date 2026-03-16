@@ -122,6 +122,14 @@ export interface LeaderboardEntry {
   level: number;
 }
 
+// Users API
+export const usersAPI = {
+  getById: async (userId: number): Promise<User> => {
+    const response = await api.get(`/api/users/${userId}`);
+    return response.data;
+  },
+};
+
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string): Promise<LoginResponse> => {
@@ -326,8 +334,8 @@ export interface Game {
 }
 
 export const gameAPI = {
-  getGames: async (): Promise<Game[]> => {
-    const response = await api.get('/api/games');
+  getGames: async (params?: { user_id?: number; skip?: number; limit?: number }): Promise<Game[]> => {
+    const response = await api.get('/api/games', { params: params ?? {} });
     return response.data;
   },
 
@@ -404,6 +412,11 @@ export const gameAPI = {
       to_square: move.to,
       promotion: move.promotion || undefined,
     });
+    return response.data;
+  },
+
+  resign: async (gameId: number): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/resign`);
     return response.data;
   },
 

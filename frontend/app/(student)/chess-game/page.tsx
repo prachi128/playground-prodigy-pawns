@@ -6,7 +6,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI, User } from '@/lib/api';
-import { Search, UserPlus, Loader2, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
+import Link from 'next/link';
+import { Search, UserPlus, Loader2, Users, CheckCircle, XCircle, Clock, Swords } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ChessGamePage() {
@@ -19,6 +20,33 @@ export default function ChessGamePage() {
   const [isLoadingInvites, setIsLoadingInvites] = useState(true);
   const [hasSentInvites, setHasSentInvites] = useState(false);
   const handledInviteIds = useRef<Set<number>>(new Set());
+
+  // Track ongoing game for "Resume" banner (no auto-redirect so user can stay on lobby)
+  const [ongoingGame, setOngoingGame] = useState<{ id: number } | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const games = await gameAPI.getGames({ user_id: user.id, limit: 50 });
+        const ongoing = (games || []).filter((g) => {
+          const hasResult = g.result != null && String(g.result).trim() !== '';
+          const hasEnded = g.ended_at != null && String(g.ended_at).trim() !== '';
+          return !hasResult && !hasEnded;
+        });
+        if (!cancelled && ongoing.length > 0) {
+          setOngoingGame({ id: ongoing[0].id });
+        } else {
+          setOngoingGame(null);
+        }
+      } catch {
+        setOngoingGame(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Load pending invites on mount
   useEffect(() => {
@@ -115,6 +143,17 @@ export default function ChessGamePage() {
     }
   }, [user?.id, router]);
 
+  // Poll for new received invites so they appear in real-time without refresh (Student B sees invite when A sends)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const pollInterval = setInterval(() => {
+      loadInvites();
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [user?.id]);
+
   // Poll for invite status changes (check every 2 seconds) - only when user has sent invites
   useEffect(() => {
     if (!hasSentInvites || !user?.id) return;
@@ -208,6 +247,27 @@ export default function ChessGamePage() {
 
   return (
     <div className="mx-auto max-w-4xl pt-6">
+      {/* Ongoing game banner - resume instead of auto-redirect */}
+      {ongoingGame && (
+        <section className="mb-6">
+          <Link
+            href={`/chess-game/${ongoingGame.id}`}
+            className="flex items-center justify-between rounded-2xl border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm transition-all hover:border-amber-300 hover:shadow-md"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100">
+                <Swords className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-heading font-bold text-amber-900">You have an ongoing game</p>
+                <p className="text-sm text-amber-700">Tap to resume</p>
+              </div>
+            </div>
+            <span className="font-heading text-sm font-bold text-amber-600">Resume →</span>
+          </Link>
+        </section>
+      )}
+
       {/* Search Section */}
       <section className="mb-6">
         <div className="rounded-3xl border-2 border-orange-200 bg-card shadow-sm">
