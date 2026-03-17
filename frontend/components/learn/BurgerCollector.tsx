@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useCallback, useMemo } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -298,6 +299,22 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex = 0, onAllComplete }
             </p>
           </div>
         </div>
+        <Link
+          href="/learn/burger-collector"
+          className="group flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+        >
+          <span className="text-xl" aria-hidden>
+            🎲
+          </span>
+          <div className="flex flex-col items-start leading-tight">
+            <span className="font-heading text-base font-bold text-primary-foreground">
+              Pick a different piece
+            </span>
+            <span className="font-heading text-xs font-semibold text-primary-foreground/90">
+              Try another burger-collecting hero!
+            </span>
+          </div>
+        </Link>
       </aside>
     </div>
   )

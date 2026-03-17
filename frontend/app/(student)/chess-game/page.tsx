@@ -18,7 +18,6 @@ export default function ChessGamePage() {
   const [isSearching, setIsSearching] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [isLoadingInvites, setIsLoadingInvites] = useState(true);
-  const [hasSentInvites, setHasSentInvites] = useState(false);
   const handledInviteIds = useRef<Set<number>>(new Set());
 
   // Track ongoing game for "Resume" banner (no auto-redirect so user can stay on lobby)
@@ -52,14 +51,6 @@ export default function ChessGamePage() {
   useEffect(() => {
     loadInvites();
   }, []);
-
-  // Check if user has sent any pending invites
-  useEffect(() => {
-    const sentInvites = pendingInvites.filter(
-      invite => invite.inviter_id === user?.id && invite.status === 'pending'
-    );
-    setHasSentInvites(sentInvites.length > 0);
-  }, [pendingInvites, user?.id]);
 
   // Search users with debounce
   useEffect(() => {
@@ -154,16 +145,16 @@ export default function ChessGamePage() {
     return () => clearInterval(pollInterval);
   }, [user?.id]);
 
-  // Poll for invite status changes (check every 2 seconds) - only when user has sent invites
+  // Poll for invite status changes (check every 2 seconds)
   useEffect(() => {
-    if (!hasSentInvites || !user?.id) return;
+    if (!user?.id) return;
 
     const pollInterval = setInterval(() => {
       checkForAcceptedInvites();
     }, 2000); // Check every 2 seconds
 
     return () => clearInterval(pollInterval);
-  }, [hasSentInvites, user?.id, checkForAcceptedInvites]);
+  }, [user?.id, checkForAcceptedInvites]);
 
   const searchUsers = async () => {
     // Prevent API call if query is too short

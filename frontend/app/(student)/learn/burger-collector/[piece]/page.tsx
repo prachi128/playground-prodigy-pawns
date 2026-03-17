@@ -2,7 +2,6 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import Link from 'next/link'
 import { BurgerCollector } from '@/components/learn/BurgerCollector'
 import toast from 'react-hot-toast'
 import type { PieceTypeCode } from '@/lib/data/basics-levels'
@@ -33,20 +32,12 @@ export default function BurgerCollectorPiecePage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center">
-      <Link
-        href="/learn/burger-collector"
-        className="mb-4 font-heading text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
-      >
-        ← Choose another piece
-      </Link>
-      <BurgerCollector
-        pieceType={pieceType}
-        onAllComplete={() => {
-          toast.success('All levels complete! +50 coins, +100 XP saved. 🍔')
-          router.push('/learn/burger-collector')
-        }}
-      />
-    </div>
+    <BurgerCollector
+      pieceType={pieceType}
+      onAllComplete={() => {
+        toast.success('All levels complete! +50 coins, +100 XP saved. 🍔')
+        router.push('/learn/burger-collector')
+      }}
+    />
   )
 }

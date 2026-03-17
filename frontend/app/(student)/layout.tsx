@@ -45,7 +45,10 @@ export default function StudentLayout({
 
   if (!isAuthenticated) return null;
 
-  const hideHeader = pathname?.startsWith('/puzzles') ?? false;
+  const hideHeader =
+    (pathname?.startsWith('/puzzles') ||
+      pathname?.startsWith('/learn/burger-collector/') ||
+      pathname?.startsWith('/chess-game')) ?? false;
 
   return (
     <div className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>
