@@ -108,6 +108,8 @@ class Game(Base):
     # Game details
     pgn = Column(Text)
     result = Column(String(20), nullable=True)  # PGN result: "1-0", "0-1", "1/2-1/2"
+    # High-level reason for result: "checkmate", "resign", "timeout", "auto_resign", "draw", etc.
+    result_reason = Column(String(32), nullable=True)
     winner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Game metadata
@@ -115,6 +117,9 @@ class Game(Base):
     starting_fen = Column(String, default="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     final_fen = Column(String)
     total_moves = Column(Integer, default=0)
+    # Per-player clocks (ms). Each player has 10 minutes; ticks only on their turn.
+    white_time_ms = Column(Integer, default=600000)   # 10 * 60 * 1000
+    black_time_ms = Column(Integer, default=600000)
     
     # Bot game metadata (optional, only for bot games)
     bot_difficulty = Column(String, nullable=True)

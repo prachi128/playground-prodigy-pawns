@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import io
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -130,8 +130,11 @@ def update_ratings_after_game(game: Game, db: Session) -> None:
     black.level = level_from_rating(black.rating)
 
 
-# Auto-resign: if no move within this many seconds, the player whose turn it is loses
-AUTO_RESIGN_SECONDS = int(2.5 * 60)  # 2.5 minutes
+# Inactivity auto-resign: if the player whose turn it is doesn't move within this many seconds, they lose.
+INACTIVITY_AUTO_RESIGN_SECONDS = int(2.5 * 60)  # 2.5 minutes per turn
+
+# Total clock per player (for display and flag-on-time). Used when deducting time in make_move.
+INITIAL_CLOCK_MS = 10 * 60 * 1000  # 10 minutes
 
 
 def check_auto_resign_timeout(game: Game, db: Session) -> None:
@@ -147,7 +150,7 @@ def check_auto_resign_timeout(game: Game, db: Session) -> None:
         if not turn_started:
             return
         elapsed = (datetime.utcnow() - turn_started).total_seconds()
-        if elapsed < AUTO_RESIGN_SECONDS:
+        if elapsed < INACTIVITY_AUTO_RESIGN_SECONDS:
             return
         # Whose turn is it? (FEN second token is side to move: "w" or "b")
         fen = (game.final_fen or game.starting_fen or "").strip()
@@ -161,6 +164,7 @@ def check_auto_resign_timeout(game: Game, db: Session) -> None:
         else:
             game.result = "1-0"
             game.winner_id = game.white_player_id
+        game.result_reason = "auto_resign"
         game.ended_at = datetime.utcnow()
         if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
             game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
@@ -677,6 +681,23 @@ class PuzzleValidationResponse(BaseModel):
     tactical_theme: str
     message: str
 
+
+class GameAnalysisMove(BaseModel):
+    """Per-move engine evaluation for a game."""
+    ply: int  # 1-based half-move index
+    move_san: str
+    move_uci: str
+    side_to_move: str  # 'white' or 'black' who played this move
+    best_move_uci: Optional[str] = None
+    evaluation: Optional[Dict] = None  # Raw Stockfish eval dict
+    tag: str  # e.g. 'best', 'ok', 'inaccuracy', 'mistake', 'blunder'
+
+
+class GameAnalysisResponse(BaseModel):
+    """Engine analysis for an entire game."""
+    game_id: int
+    moves: List[GameAnalysisMove]
+
 @app.post("/api/puzzles/analyze")
 def analyze_position(request: AnalyzePositionRequest):
     """
@@ -771,6 +792,93 @@ def validate_puzzle(request: ValidatePuzzleRequest):
         "final_evaluation": validation["final_evaluation"]
     }
 
+
+@app.get("/api/games/{game_id}/analysis", response_model=GameAnalysisResponse)
+def analyze_game(
+    game_id: int,
+    depth: int = Query(12, ge=6, le=20),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Run a lightweight engine analysis of a completed game.
+    Returns per-move tags and best moves, similar to lichess/chess.com,
+    but tuned for kid-friendly, high-level feedback.
+    """
+    import chess
+    import chess.pgn
+
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    # Only players in the game can view analysis
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+
+    if not game.pgn:
+        raise HTTPException(status_code=400, detail="Game has no PGN to analyze yet")
+
+    # Parse PGN into a python-chess game
+    try:
+        pgn_io = io.StringIO(game.pgn)
+        pgn_game = chess.pgn.read_game(pgn_io)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not parse game PGN for analysis")
+
+    if pgn_game is None:
+        raise HTTPException(status_code=400, detail="Game PGN is empty or invalid")
+
+    board = pgn_game.board()
+    sf = get_stockfish_service()
+
+    analysis_moves: List[GameAnalysisMove] = []
+
+    # Walk through the mainline, analyzing the position before each move
+    for ply_index, move in enumerate(pgn_game.mainline_moves(), start=1):
+        fen_before = board.fen()
+        try:
+            engine_result = sf.analyze_position(fen_before, depth=depth)
+        except Exception:
+            engine_result = {"success": False}
+
+        best_move_uci = None
+        evaluation: Optional[Dict] = None
+        tag = "unknown"
+
+        if engine_result.get("success"):
+            best_move_uci = engine_result.get("best_move")
+            evaluation = engine_result.get("evaluation")
+
+        # Compute SAN on the current position before pushing; otherwise the move
+        # may no longer be legal in the new position and python-chess asserts.
+        move_san = board.san(move)
+        board.push(move)
+        move_uci = move.uci()
+        side_to_move = "white" if (ply_index % 2 == 1) else "black"
+
+        # Simple tagging based on whether we matched Stockfish's top move.
+        if best_move_uci is None:
+            tag = "ok"
+        elif best_move_uci == move_uci:
+            tag = "best"
+        else:
+            tag = "could_improve"
+
+        analysis_moves.append(
+            GameAnalysisMove(
+                ply=ply_index,
+                move_san=move_san,
+                move_uci=move_uci,
+                side_to_move=side_to_move,
+                best_move_uci=best_move_uci,
+                evaluation=evaluation,
+                tag=tag,
+            )
+        )
+
+    return GameAnalysisResponse(game_id=game.id, moves=analysis_moves)
+
 @app.post("/api/puzzles/auto-solve")
 def auto_solve_puzzle(request: AnalyzePositionRequest):
     """
@@ -852,10 +960,12 @@ def create_game(
     if current_user_id != game_data.white_player_id and current_user_id != game_data.black_player_id:
         raise HTTPException(status_code=403, detail="You can only create games you are part of")
     
+    # If no explicit time control is provided, default to 10+0
+    time_control = game_data.time_control or "10+0"
     new_game = Game(
         white_player_id=game_data.white_player_id,
         black_player_id=game_data.black_player_id,
-        time_control=game_data.time_control
+        time_control=time_control
     )
     db.add(new_game)
     db.commit()
@@ -923,7 +1033,38 @@ def make_move(
     
     if is_white_turn != is_current_user_white:
         raise HTTPException(status_code=400, detail="It's not your turn")
-    
+
+    # Deduct elapsed time from the clock of the player whose turn it is (they are about to move).
+    now = datetime.utcnow()
+    turn_started = game.last_move_at if (game.total_moves or 0) > 0 else game.started_at
+    turn_started = turn_started or game.started_at
+    elapsed_ms = int((now - turn_started).total_seconds() * 1000)
+    white_time = getattr(game, "white_time_ms", None) or INITIAL_CLOCK_MS
+    black_time = getattr(game, "black_time_ms", None) or INITIAL_CLOCK_MS
+    if is_white_turn:
+        white_time = max(0, white_time - elapsed_ms)
+        game.white_time_ms = white_time
+    else:
+        black_time = max(0, black_time - elapsed_ms)
+        game.black_time_ms = black_time
+
+    # Flag on time: if the moving player's clock hit zero, they lose.
+    if white_time <= 0 or black_time <= 0:
+        if white_time <= 0:
+            game.result = "0-1"
+            game.winner_id = game.black_player_id
+        else:
+            game.result = "1-0"
+            game.winner_id = game.white_player_id
+        game.result_reason = "timeout"
+        game.ended_at = now
+        if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+            game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
+        update_ratings_after_game(game, db)
+        db.commit()
+        db.refresh(game)
+        return game
+
     # Create move in UCI format (e.g., "e2e4" or "e7e8q" for promotion)
     # Only add promotion if the move actually requires it (pawn reaching 8th/1st rank)
     from_square = chess.parse_square(move_data.from_square)
@@ -1020,6 +1161,7 @@ def make_move(
     # Check for game end conditions
     if board.is_checkmate():
         game.result = "1-0" if is_current_user_white else "0-1"
+        game.result_reason = "checkmate"
         # For bot games, set winner correctly
         bot_user = get_or_create_bot_user(db)
         if game.white_player_id == bot_user.id or game.black_player_id == bot_user.id:
@@ -1030,6 +1172,7 @@ def make_move(
         game.ended_at = datetime.utcnow()
     elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
         game.result = "1/2-1/2"
+        game.result_reason = "draw"
         game.ended_at = datetime.utcnow()
     
     if game.result:
@@ -1064,6 +1207,7 @@ def resign_game(
     else:
         game.result = "1-0"
         game.winner_id = game.white_player_id
+    game.result_reason = "resign"
     game.ended_at = datetime.utcnow()
     if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
         game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
@@ -1115,11 +1259,11 @@ def create_bot_game(
         white_player_id = bot_user.id
         black_player_id = current_user_id
     
-    # Create game
+    # Create game - for now use a simple "10+0" style label even though bot games don't enforce clocks yet
     new_game = Game(
         white_player_id=white_player_id,
         black_player_id=black_player_id,
-        time_control="Unlimited",
+        time_control="10+0",
         bot_difficulty=bot_data.bot_difficulty,
         bot_depth=bot_data.bot_depth
     )
@@ -1333,7 +1477,7 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
 
     # Check for game end conditions
     if board.is_checkmate():
-        # Bot wins if it's bot's color turn (meaning bot just made winning move)
+        game.result_reason = "checkmate"
         if is_bot_white:
             game.result = "1-0"
             game.winner_id = bot_user_id
@@ -1343,8 +1487,9 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
         game.ended_at = datetime.utcnow()
     elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
         game.result = "1/2-1/2"
+        game.result_reason = "draw"
         game.ended_at = datetime.utcnow()
-    
+
     if game.result:
         update_ratings_after_game(game, db)
     db.commit()
@@ -1465,11 +1610,11 @@ def accept_game_invite(
         db.commit()
         raise HTTPException(status_code=400, detail="Invite has expired")
     
-    # Create the game
+    # Create the game - default to a simple 10+0 time control for now
     new_game = Game(
         white_player_id=invite.inviter_id,
         black_player_id=invite.invitee_id,
-        time_control="unlimited"
+        time_control="10+0"
     )
     db.add(new_game)
     db.commit()

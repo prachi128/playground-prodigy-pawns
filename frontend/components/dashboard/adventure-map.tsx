@@ -505,11 +505,7 @@ export function AdventureMap() {
         />
 
         {showPuzzle && currentPuzzle && (
-          <PuzzleModal
-            puzzle={currentPuzzle}
-            onClose={closePuzzle}
-            onSolve={onPuzzleSolve}
-          />
+          <PuzzleModal puzzle={currentPuzzle} onClose={closePuzzle} onSolve={onPuzzleSolve} />
         )}
       </div>
     </div>

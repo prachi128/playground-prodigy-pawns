@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuthStore } from "@/lib/store"
-import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp } from "lucide-react"
+import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export function ProfileContent() {
@@ -256,7 +256,14 @@ export function ProfileContent() {
 
       {/* Quick Actions */}
       <section>
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <button
+            onClick={() => router.push("/chess-game/history")}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-300 bg-emerald-50 px-6 py-4 font-heading text-base font-bold text-emerald-700 transition-all hover:bg-emerald-100 hover:shadow-sm"
+          >
+            <History className="h-5 w-5" />
+            Past Games
+          </button>
           <button
             onClick={() => router.push("/settings")}
             className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-blue-300 bg-blue-50 px-6 py-4 font-heading text-base font-bold text-blue-700 transition-all hover:bg-blue-100 hover:shadow-sm"

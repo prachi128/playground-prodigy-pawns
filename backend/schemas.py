@@ -111,15 +111,20 @@ class GameResponse(BaseModel):
     white_player_id: int
     black_player_id: int
     result: Optional[str]
+    result_reason: Optional[str] = None
     time_control: str
     total_moves: int
     started_at: datetime
     ended_at: Optional[datetime]
+    last_move_at: Optional[datetime] = None
+    white_time_ms: Optional[int] = None
+    black_time_ms: Optional[int] = None
     pgn: Optional[str] = None
     starting_fen: Optional[str] = None
     final_fen: Optional[str] = None
     bot_difficulty: Optional[str] = None
     bot_depth: Optional[int] = None
+    winner_id: Optional[int] = None
     
     class Config:
         from_attributes = True

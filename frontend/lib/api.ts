@@ -324,16 +324,35 @@ export interface Game {
   white_player_id: number;
   black_player_id: number;
   result?: string;
+  result_reason?: string;
   time_control: string;
   total_moves: number;
   started_at: string;
   ended_at?: string;
+  last_move_at?: string;
+  white_time_ms?: number;
+  black_time_ms?: number;
   pgn?: string;
   starting_fen?: string;
   final_fen?: string;
   winner_id?: number;
   bot_difficulty?: string;
   bot_depth?: number;
+}
+
+export interface GameAnalysisMove {
+  ply: number;
+  move_san: string;
+  move_uci: string;
+  side_to_move: 'white' | 'black';
+  best_move_uci?: string | null;
+  evaluation?: any;
+  tag: 'best' | 'ok' | 'could_improve' | 'unknown' | string;
+}
+
+export interface GameAnalysis {
+  game_id: number;
+  moves: GameAnalysisMove[];
 }
 
 export const gameAPI = {
@@ -430,6 +449,13 @@ export const gameAPI = {
 
   getBotMove: async (gameId: number): Promise<Game> => {
     const response = await api.post(`/api/games/${gameId}/bot-move`);
+    return response.data;
+  },
+
+  getAnalysis: async (gameId: number, depth: number = 12): Promise<GameAnalysis> => {
+    const response = await api.get(`/api/games/${gameId}/analysis`, {
+      params: { depth },
+    });
     return response.data;
   },
 };

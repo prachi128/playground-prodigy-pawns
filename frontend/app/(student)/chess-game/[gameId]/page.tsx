@@ -8,7 +8,7 @@ import { useAuthStore } from '@/lib/store';
 import { gameAPI, Game, User, usersAPI } from '@/lib/api';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { Loader2, Trophy, Users, Flag } from 'lucide-react';
+import { Loader2, Trophy, Users, Flag, X, LogOut } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -26,7 +26,6 @@ export default function ChessGamePage() {
   const [whitePlayer, setWhitePlayer] = useState<User | { id: number; full_name?: string; avatar_url?: string; isBot?: boolean } | null>(null);
   const [blackPlayer, setBlackPlayer] = useState<User | { id: number; full_name?: string; avatar_url?: string; isBot?: boolean } | null>(null);
   const [isMyTurn, setIsMyTurn] = useState(false);
-  const [gameStatus, setGameStatus] = useState<string>('');
   const [isMakingMove, setIsMakingMove] = useState(false);
   const [isResigning, setIsResigning] = useState(false);
   const [isBotGame, setIsBotGame] = useState(false);
@@ -34,6 +33,8 @@ export default function ChessGamePage() {
   const [botAvatar, setBotAvatar] = useState<string>('♟️');
   const [opponentAvatarError, setOpponentAvatarError] = useState(false);
   const [myAvatarError, setMyAvatarError] = useState(false);
+  const [showGameOverModal, setShowGameOverModal] = useState(false);
+  const [clockTick, setClockTick] = useState(0);
 
   // Reset avatar error state when game or players change
   useEffect(() => {
@@ -52,6 +53,13 @@ export default function ChessGamePage() {
     return { name: 'Pawny', avatar: '♟️' };
   };
 
+  // Show game-over modal for auto_resign, timeout, or resign (both players get a clear end screen)
+  const shouldShowGameOverModal = (g: Game | null | undefined): boolean => {
+    if (!g || !g.result) return false;
+    const r = g.result_reason;
+    return r === 'auto_resign' || r === 'timeout' || r === 'resign';
+  };
+
   // chess.js loadPgn expects PGN to end with a game termination (*, 1-0, 0-1, 1/2-1/2). Backend may not send it.
   const normalizePgnForChessJs = (pgn: string): string => {
     const trimmed = pgn.trim();
@@ -62,9 +70,18 @@ export default function ChessGamePage() {
   const lastMoveCountRef = useRef<number>(0);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
 
+  const INITIAL_CLOCK_MS = 10 * 60 * 1000;
+
   useEffect(() => {
     loadGame();
   }, [gameId]);
+
+  // Tick every 500ms so effective clocks (and low-time styling) update smoothly
+  useEffect(() => {
+    if (!game || game.result) return;
+    const id = window.setInterval(() => setClockTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, [game?.id, game?.result]);
 
   // Get last move from chess instance for highlighting
   const getLastMove = useCallback(() => {
@@ -83,7 +100,6 @@ export default function ChessGamePage() {
       setIsLoading(true);
       const gameData = await gameAPI.getGame(gameId);
       setGame(gameData);
-      
       // Initialize chess board: use PGN when available (preserves move history), else FEN
       const startingFen = gameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       const currentFen = gameData.final_fen || startingFen;
@@ -162,15 +178,9 @@ export default function ChessGamePage() {
         }
       }
       
-      // Set game status
-      if (gameData.result) {
-        setGameStatus(`Game Over: ${gameData.result}`);
-      } else if (chessInstance.isCheckmate()) {
-        setGameStatus('Checkmate!');
-      } else if (chessInstance.isCheck()) {
-        setGameStatus('Check!');
-      } else {
-        setGameStatus('Game in progress');
+      // Open auto-resign modal if the game already ended due to auto-resign (no moves were played)
+      if (shouldShowGameOverModal(gameData)) {
+        setShowGameOverModal(true);
       }
 
       // Update last move count for change detection
@@ -192,6 +202,16 @@ export default function ChessGamePage() {
       
       // Check if game state has changed (new moves made)
       const currentMoveCount = updatedGameData.total_moves || 0;
+
+      // Always handle game end/result changes, even if no new moves were made (e.g. auto_resign / timeout).
+      const hadResult = !!game.result;
+      const hasResultNow = !!updatedGameData.result;
+      const resultChanged =
+        hasResultNow &&
+        (!hadResult ||
+          game.result !== updatedGameData.result ||
+          game.result_reason !== updatedGameData.result_reason);
+
       if (currentMoveCount > lastMoveCountRef.current) {
         // Game state has changed - update the board (use PGN when available for move history)
         const startingFen = updatedGameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -253,31 +273,33 @@ export default function ChessGamePage() {
           }
         }
 
-        // Update game status
-        if (updatedGameData.result) {
-          setGameStatus(`Game Over: ${updatedGameData.result}`);
-          if (updatedGameData.winner_id === user.id) {
-            toast.success('You won! 🎉');
-          } else {
-            toast('Game ended');
-          }
-        } else if (newChess) {
+        // Update game status toasts when a move was made (non-terminal)
+        if (!updatedGameData.result && newChess) {
           if (newChess.isCheckmate()) {
-            setGameStatus('Checkmate!');
             toast.success('Checkmate!');
           } else if (newChess.isCheck()) {
-            setGameStatus('Check!');
             toast('Check!');
           } else if (newChess.isDraw()) {
-            setGameStatus('Draw!');
             toast('Game ended in a draw');
           } else {
-            setGameStatus('Game in progress');
             toast('Opponent made a move!');
           }
         } else {
-          setGameStatus('Game in progress');
           toast('Opponent made a move!');
+        }
+      }
+
+      // If the game just ended on the server (auto_resign / timeout / resign / checkmate, etc.),
+      // update state and show the game-over modal, even if no new moves were made.
+      if (resultChanged) {
+        setGame(updatedGameData);
+        if (shouldShowGameOverModal(updatedGameData)) {
+          setShowGameOverModal(true);
+        }
+        if (updatedGameData.winner_id === user.id) {
+          toast.success('You won! 🎉');
+        } else {
+          toast('Game ended');
         }
       }
     } catch (error) {
@@ -285,16 +307,16 @@ export default function ChessGamePage() {
     }
   }, [game, gameId, user?.id]);
 
-  // Poll for game updates when it's not the user's turn
+  // Poll for game updates while the game is in progress (both players).
   useEffect(() => {
-    if (!game || isMyTurn || game.result) return; // Don't poll if game ended or it's user's turn
+    if (!game || game.result) return; // Don't poll if game ended
 
     const pollInterval = setInterval(() => {
       checkForGameUpdates();
     }, 2000); // Check every 2 seconds
 
     return () => clearInterval(pollInterval);
-  }, [game, isMyTurn, checkForGameUpdates]);
+  }, [game, checkForGameUpdates]);
 
   const onDrop = async (sourceSquare: string, targetSquare: string) => {
     if (!chess || !isMyTurn || isMakingMove) return false;
@@ -407,25 +429,22 @@ export default function ChessGamePage() {
           const isWhiteTurn = newChess.turn() === 'w';
           setIsMyTurn((isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn));
           
-          // Check game status
+          // Check game status (toasts only) and open auto-resign modal when relevant
           if (gameData.result) {
-            setGameStatus(`Game Over: ${gameData.result}`);
+            if (shouldShowGameOverModal(gameData)) {
+              setShowGameOverModal(true);
+            }
             if (gameData.winner_id === user?.id) {
               toast.success('You won! 🎉');
             } else {
               toast('Game ended');
             }
           } else if (newChess.isCheckmate()) {
-            setGameStatus('Checkmate!');
             toast.success('Checkmate!');
           } else if (newChess.isDraw()) {
-            setGameStatus('Draw!');
             toast('Game ended in a draw');
           } else if (newChess.isCheck()) {
-            setGameStatus('Check!');
             toast('Check!');
-          } else {
-            setGameStatus('Game in progress');
           }
         };
 
@@ -550,9 +569,130 @@ export default function ChessGamePage() {
   const myPlayer = isWhite ? whitePlayer : blackPlayer;
   const opponentPlayer = isWhite ? blackPlayer : whitePlayer;
 
+  // Parse backend datetimes as UTC so client clock matches server clock.
+  const toUtcMs = (value: string | Date | null | undefined): number => {
+    if (!value) return Date.now();
+    if (value instanceof Date) return value.getTime();
+    const str = String(value);
+    const iso = str.endsWith('Z') || str.includes('+') ? str : `${str}Z`;
+    return new Date(iso).getTime();
+  };
+
+  // Effective clocks: only the side to move ticks; the other is paused (stored value only).
+  // For move 0 we use the server's game.started_at; after that we use last_move_at, just like major sites.
+  const noMovesYet = (game.total_moves ?? 0) === 0;
+  const turnStartedMs =
+    !noMovesYet && game.last_move_at
+      ? toUtcMs(game.last_move_at as any)
+      : toUtcMs(game.started_at as any);
+  const elapsedMs = Date.now() - turnStartedMs;
+  const fenParts = (game.final_fen || game.starting_fen || '').trim().split(/\s/);
+  const whiteToMove = (fenParts[1] || 'w').toLowerCase() === 'w';
+  const whiteStored = game.white_time_ms ?? INITIAL_CLOCK_MS;
+  const blackStored = game.black_time_ms ?? INITIAL_CLOCK_MS;
+  const effectiveWhiteMs = Math.max(0, whiteStored - (whiteToMove ? elapsedMs : 0));
+  const effectiveBlackMs = Math.max(0, blackStored - (!whiteToMove ? elapsedMs : 0));
+
+  const formatClock = (ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60).toString().padStart(2, '0');
+    const s = (total % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+  const clockClass = (ms: number) =>
+    ms <= 10 * 1000 ? 'text-red-600 font-bold' : ms <= 60 * 1000 ? 'text-orange-600 font-semibold' : '';
+
+  const getGameOverCopy = (
+    g: Game,
+    currentUserId?: number
+  ): { title: string; subtitle: string; badge: string; badgeTone: 'win' | 'loss' | 'draw' } => {
+    const isWinner = currentUserId != null && g.winner_id === currentUserId;
+    const reason = g.result_reason || '';
+
+    // Auto-resign and timeout feel like "lost on time" to one person, "won on time" to the other.
+    if (reason === 'auto_resign' || reason === 'timeout') {
+      if (isWinner) {
+        return {
+          title: 'You won on time!',
+          subtitle: 'Great job staying focused and making your moves in time.',
+          badge: 'Victory on Time',
+          badgeTone: 'win',
+        };
+      }
+      return {
+        title: "Time's up this game",
+        subtitle: "You ran out of time, and that's okay—next game, try to play a tiny bit faster.",
+        badge: 'Learn from This Game',
+        badgeTone: 'loss',
+      };
+    }
+
+    if (reason === 'resign') {
+      if (isWinner) {
+        return {
+          title: 'You won the game!',
+          subtitle: 'Your opponent resigned. Nicely played—take a moment to spot what went well.',
+          badge: 'Well Played',
+          badgeTone: 'win',
+        };
+      }
+      return {
+        title: 'You chose to resign',
+        subtitle: 'Every strong player sometimes resigns and learns. You can review this game and come back stronger.',
+        badge: 'Good Sportsmanship',
+        badgeTone: 'loss',
+      };
+    }
+
+    // Checkmate / normal results
+    if (g.result === '1-0' || g.result === '0-1') {
+      if (isWinner) {
+        return {
+          title: 'Checkmate – You win!',
+          subtitle: 'That was a strong finish. See if you can spot your best move from the game.',
+          badge: 'Winner',
+          badgeTone: 'win',
+        };
+      }
+      return {
+        title: 'Checkmated this time',
+        subtitle: "Nice effort—every game is practice. See if you can find where the game started to turn.",
+        badge: 'Keep Going',
+        badgeTone: 'loss',
+      };
+    }
+
+    // Draw or any other result
+    if (g.result === '1/2-1/2') {
+      return {
+        title: "It's a draw!",
+        subtitle: 'You both defended well. Draws mean the game was very balanced—great job.',
+        badge: 'Even Game',
+        badgeTone: 'draw',
+      };
+    }
+
+    return {
+      title: 'Game over',
+      subtitle: 'This game has ended. You can hop into a new game or review this one.',
+      badge: 'Game Finished',
+      badgeTone: 'draw',
+    };
+  };
+
   return (
-    <div className="mx-auto max-w-6xl pt-0 -mx-2 -mt-3 lg:-mx-4 lg:-mt-4">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="relative min-h-screen w-full bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white">
+      <button
+        type="button"
+        onClick={() => router.push('/adventure')}
+        className="fixed left-4 top-4 z-50 inline-flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm font-heading font-semibold text-white shadow-lg backdrop-blur hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+      >
+        <LogOut className="h-4 w-4" />
+        Exit game
+      </button>
+
+      <div className="mx-auto flex min-h-screen max-w-6xl flex-col pt-12 pb-6 px-2 lg:px-4">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
         <div className="lg:col-span-2">
           <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-xl">
@@ -596,6 +736,9 @@ export default function ChessGamePage() {
                       : (isMyTurn ? 'Waiting...' : 'Their turn')}
                   </p>
                 </div>
+              </div>
+              <div className={`shrink-0 font-mono text-sm font-bold tabular-nums ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
+                {formatClock(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
               </div>
             </div>
 
@@ -685,17 +828,16 @@ export default function ChessGamePage() {
                   </p>
                 </div>
               </div>
-              <div className={`rounded px-1.5 py-0.5 shrink-0 ${myColor === 'white' ? 'bg-orange-100' : 'bg-gray-700'}`}>
-                <span className={`font-heading text-[10px] font-bold ${myColor === 'white' ? 'text-orange-700' : 'text-white'}`}>You</span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={`font-mono text-sm font-bold tabular-nums ${myColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
+                  {formatClock(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
+                </span>
+                <div className={`rounded px-1.5 py-0.5 ${myColor === 'white' ? 'bg-orange-100' : 'bg-gray-700'}`}>
+                  <span className={`font-heading text-[10px] font-bold ${myColor === 'white' ? 'text-orange-700' : 'text-white'}`}>You</span>
+                </div>
               </div>
             </div>
 
-            {/* Game Status */}
-            {gameStatus && (
-              <div className="mt-2 rounded-lg bg-gradient-to-r from-blue-50 to-cyan-50 p-2.5 text-center border-2 border-blue-200">
-                <p className="font-heading text-sm font-bold text-blue-900">{gameStatus}</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -813,6 +955,94 @@ export default function ChessGamePage() {
           </div>
         </div>
       </div>
+
+      {/* Close inner layout wrapper */}
+      </div>
+
+      {/* Game over modal (auto_resign, timeout, resign, checkmate, draw) */}
+      {showGameOverModal && game && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          {(() => {
+            const { title, subtitle, badge, badgeTone } = getGameOverCopy(game, user?.id);
+            const badgeClasses =
+              badgeTone === 'win'
+                ? 'bg-green-100 text-green-800 border-green-200'
+                : badgeTone === 'loss'
+                  ? 'bg-red-100 text-red-800 border-red-200'
+                  : 'bg-blue-100 text-blue-800 border-blue-200';
+
+            return (
+              <div className="relative max-w-sm rounded-3xl border border-border bg-gradient-to-b from-white via-slate-50 to-slate-100 px-6 py-7 text-center shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGameOverModal(false);
+                    router.push('/play');
+                  }}
+                  className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/5 text-slate-500 hover:bg-black/10 hover:text-slate-700"
+                  aria-label="Close game over dialog"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="mb-4 flex flex-col items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-heading font-bold uppercase tracking-wide ${badgeClasses}`}
+                  >
+                    {badge}
+                  </span>
+                  <h2 className="font-heading text-2xl font-extrabold text-card-foreground">
+                    {title}
+                  </h2>
+                  <p className="mx-auto max-w-xs text-xs font-heading font-semibold text-muted-foreground">
+                    {subtitle}
+                  </p>
+                </div>
+
+                {(() => {
+                  const isWinner = user?.id != null && game.winner_id === user.id;
+                  const isDraw = game.result === '1/2-1/2';
+                  const label = isDraw
+                    ? 'You Drew!'
+                    : isWinner
+                      ? '🎉 You Won!'
+                      : '😔 You Lost';
+
+                  return (
+                    <div className="mb-5">
+                      <p className="font-heading text-xl font-extrabold text-slate-900">
+                        {label}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGameOverModal(false);
+                      router.push(`/chess-game/${game.id}/analysis`);
+                    }}
+                    className="w-full rounded-full bg-emerald-500 px-4 py-2.5 font-heading text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-600 sm:w-auto"
+                  >
+                    Learn from this game
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGameOverModal(false);
+                      router.push('/chess-game');
+                    }}
+                    className="w-full rounded-full border border-border bg-muted px-4 py-2.5 font-heading text-sm font-bold text-card-foreground transition-colors hover:bg-muted/80 sm:w-auto"
+                  >
+                    Play again
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
