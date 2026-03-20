@@ -116,7 +116,7 @@ export default function BeatTheBotPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl pt-6">
+    <div className="mx-auto max-w-6xl pt-2">
       {/* Page title - dashboard theme */}
       <section className="mb-5">
         <div className="flex items-start gap-3">

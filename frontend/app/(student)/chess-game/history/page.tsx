@@ -128,7 +128,7 @@ export default function PastGamesPage() {
               onClick={() => router.push('/play')}
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-5 py-2.5 font-heading text-sm font-bold text-white shadow-sm transition-colors hover:from-orange-500 hover:to-pink-600"
             >
-              <Gamepad2 className="h-4 w-4" />
+              <Swords className="h-4 w-4" />
               Go to Play
             </button>
           </div>

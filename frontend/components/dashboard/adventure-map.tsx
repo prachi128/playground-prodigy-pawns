@@ -41,7 +41,7 @@ import { GameHUD } from "./adventure/GameHUD"
 /*  MAIN COMPONENT                                                     */
 /* ================================================================== */
 
-export function AdventureMap() {
+export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<GameState | null>(null)

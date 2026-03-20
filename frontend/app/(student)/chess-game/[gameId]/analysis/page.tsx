@@ -49,7 +49,10 @@ export default function GameAnalysisPage() {
     const moves = analysis.moves.slice(0, ply);
     for (const m of moves) {
       try {
-        c.move(m.move_uci, { sloppy: true });
+        const from = m.move_uci.substring(0, 2);
+        const to = m.move_uci.substring(2, 4);
+        const promotion = m.move_uci.length > 4 ? m.move_uci[4] : undefined;
+        c.move({ from, to, promotion });
       } catch {
         break;
       }
@@ -110,13 +113,11 @@ export default function GameAnalysisPage() {
 
           <div className="flex justify-center">
             <div className="relative w-full max-w-[380px]">
-              {/* @ts-expect-error - react-chessboard types are incomplete */}
               <Chessboard
                 key={chess.fen() + currentPly}
                 options={{
                   position: chess.fen(),
                   boardOrientation: 'white',
-                  arePiecesDraggable: false,
                   boardStyle: {
                     borderRadius: '8px',
                     boxShadow: '0 10px 30px rgba(0,0,0,0.2)',

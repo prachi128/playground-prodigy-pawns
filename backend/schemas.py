@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_serializer
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 
 # User Schemas
@@ -365,3 +365,39 @@ class StudentBatchResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==================== PUZZLE RACER (MULTIPLAYER ROOM) SCHEMAS ====================
+
+class PuzzleRaceRoomState(BaseModel):
+    id: str
+    host_user_id: int
+    status: Literal["waiting", "countdown", "racing", "finished"]
+    created_at: datetime
+    participants: List[int]
+    countdown_start_at: Optional[datetime] = None
+    race_end_at: Optional[datetime] = None
+    car_assignments: dict[int, int] = {}
+    racer_names: dict[int, str] = {}
+    scores: dict[int, int] = {}
+
+
+class PuzzleRaceRoomCreate(BaseModel):
+    difficulty: Optional[str] = "beginner"
+    puzzle_count: Optional[int] = 20
+
+
+class PuzzleRaceRoomJoin(BaseModel):
+    pass
+
+
+class PuzzleRaceRoomStart(BaseModel):
+    pass
+
+
+class PuzzleRaceCarSelect(BaseModel):
+    car_index: int
+
+
+class PuzzleRaceNameSet(BaseModel):
+    name: str

@@ -323,3 +323,25 @@
 @keyframes question-block-shine { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.2); } }
 .animate-question-block-shine { animation: question-block-shine 1.5s ease-in-out infinite; }
 .mario-pipe-glow { box-shadow: 0 0 20px rgba(48, 168, 48, 0.6), 0 0 40px rgba(48, 168, 48, 0.3); }
+
+/* Puzzle Racer - moving road track */
+@keyframes race-road-scroll {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: -40px;
+  }
+}
+
+.race-road {
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.3) 0,
+    rgba(255, 255, 255, 0.3) 20px,
+    transparent 20px,
+    transparent 40px
+  );
+  background-size: 40px 100%;
+  animation: race-road-scroll 1.2s linear infinite;
+}

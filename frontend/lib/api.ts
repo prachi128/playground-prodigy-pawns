@@ -256,6 +256,71 @@ export const leaderboardAPI = {
   },
 };
 
+// Puzzle Racer Multiplayer Rooms API
+export interface PuzzleRaceRoomState {
+  id: string;
+  host_user_id: number;
+  status: 'waiting' | 'countdown' | 'racing' | 'finished';
+  created_at: string;
+  participants: number[];
+  countdown_start_at: string | null;
+  race_end_at: string | null;
+  car_assignments: Record<number, number>;
+  racer_names: Record<number, string>;
+  scores: Record<number, number>;
+}
+
+export const puzzleRacerRoomsAPI = {
+  create: async (options?: { difficulty?: string; puzzle_count?: number }): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post('/api/puzzle-racer/rooms', options ?? {});
+    return response.data;
+  },
+
+  get: async (roomId: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.get(`/api/puzzle-racer/rooms/${roomId}`);
+    return response.data;
+  },
+
+  join: async (roomId: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/join`);
+    return response.data;
+  },
+
+  start: async (roomId: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/start`);
+    return response.data;
+  },
+
+  selectCar: async (roomId: string, carIndex: number): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/select-car`, { car_index: carIndex });
+    return response.data;
+  },
+
+  setName: async (roomId: string, name: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/set-name`, { name });
+    return response.data;
+  },
+
+  reset: async (roomId: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/reset`);
+    return response.data;
+  },
+
+  getServerTime: async (): Promise<string> => {
+    const response = await api.get('/api/server-time');
+    return response.data.now;
+  },
+
+  updateScore: async (roomId: string): Promise<PuzzleRaceRoomState> => {
+    const response = await api.post(`/api/puzzle-racer/rooms/${roomId}/update-score`);
+    return response.data;
+  },
+
+  leave: async (roomId: string): Promise<void> => {
+    await api.post(`/api/puzzle-racer/rooms/${roomId}/leave`);
+  },
+};
+
 // Achievements API
 export const achievementAPI = {
   getAll: async () => {

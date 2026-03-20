@@ -6,8 +6,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 import io
+import random
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -45,6 +46,10 @@ from schemas import (
     NotificationResponse,
     NotificationMarkRead,
     ParentSignup,
+    PuzzleRaceRoomState,
+    PuzzleRaceRoomCreate,
+    PuzzleRaceCarSelect,
+    PuzzleRaceNameSet,
 )
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
@@ -136,6 +141,15 @@ INACTIVITY_AUTO_RESIGN_SECONDS = int(2.5 * 60)  # 2.5 minutes per turn
 # Total clock per player (for display and flag-on-time). Used when deducting time in make_move.
 INITIAL_CLOCK_MS = 10 * 60 * 1000  # 10 minutes
 
+# Puzzle Racer countdown length (seconds) – must match frontend COUNTDOWN_SECONDS
+PUZZLE_RACER_COUNTDOWN_SECONDS = 10
+
+# Total number of car emojis available – must match frontend CAR_EMOJIS.length
+PUZZLE_RACER_TOTAL_CARS = 7
+PUZZLE_RACER_COUNTDOWN_SECONDS = 10
+PUZZLE_RACER_RACE_DURATION_SECONDS = 150
+PUZZLE_RACER_TOTAL_RACE_SECONDS = PUZZLE_RACER_COUNTDOWN_SECONDS + PUZZLE_RACER_RACE_DURATION_SECONDS
+
 
 def check_auto_resign_timeout(game: Game, db: Session) -> None:
     """If the player whose turn it is has exceeded the timeout, end the game (they lose)."""
@@ -195,6 +209,63 @@ def run_auto_resign_for_all_games() -> None:
         db.close()
 
 
+# ==================== IN-MEMORY PUZZLE RACER ROOMS (MULTIPLAYER) ====================
+
+_puzzle_race_rooms: Dict[str, Dict] = {}
+
+
+def _get_puzzle_race_room(room_id: str) -> Optional[Dict]:
+    return _puzzle_race_rooms.get(room_id)
+
+
+def _pick_random_available_car(room: Dict) -> int:
+    """Return a random car index not already taken by another participant."""
+    taken = set(room.get("car_assignments", {}).values())
+    available = [i for i in range(PUZZLE_RACER_TOTAL_CARS) if i not in taken]
+    if not available:
+        return random.randint(0, PUZZLE_RACER_TOTAL_CARS - 1)
+    return random.choice(available)
+
+
+def _create_puzzle_race_room(room_id: str, host_user_id: int) -> Dict:
+    car_index = random.randint(0, PUZZLE_RACER_TOTAL_CARS - 1)
+    room = {
+        "id": room_id,
+        "host_user_id": host_user_id,
+        "status": "waiting",
+        "created_at": datetime.utcnow(),
+        "participants": {host_user_id},
+        "countdown_start_at": None,
+        "car_assignments": {host_user_id: car_index},
+        "racer_names": {},
+    }
+    _puzzle_race_rooms[room_id] = room
+    return room
+
+
+def _maybe_finish_race(room: Dict) -> None:
+    """Auto-transition to finished if the race time has elapsed."""
+    if room["status"] == "racing" and room.get("race_end_at"):
+        if datetime.utcnow() >= room["race_end_at"]:
+            room["status"] = "finished"
+
+
+def _serialize_puzzle_race_room(room: Dict) -> PuzzleRaceRoomState:
+    _maybe_finish_race(room)
+    return PuzzleRaceRoomState(
+        id=room["id"],
+        host_user_id=room["host_user_id"],
+        status=room["status"],
+        created_at=room["created_at"],
+        participants=sorted(list(room.get("participants", set()))),
+        countdown_start_at=room.get("countdown_start_at"),
+        race_end_at=room.get("race_end_at"),
+        car_assignments=room.get("car_assignments", {}),
+        racer_names=room.get("racer_names", {}),
+        scores=room.get("scores", {}),
+    )
+
+
 # FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -233,6 +304,12 @@ app.include_router(parent_router)
 app.include_router(batch_router)
 
 
+@app.get("/api/server-time")
+def get_server_time():
+    """Return current server UTC time (ISO-8601) for client clock-sync."""
+    return {"now": datetime.utcnow().isoformat() + "Z"}
+
+
 # Cookie settings for auth (Cookie-Based Session Auth)
 def _cookie_attrs():
     return {
@@ -254,6 +331,202 @@ def read_root():
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "database": "connected"}
+
+
+@app.post("/api/puzzle-racer/rooms", response_model=PuzzleRaceRoomState)
+def create_puzzle_race_room(
+    payload: PuzzleRaceRoomCreate,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Create a new puzzle racer room for the current user.
+    Returns the room state and an ID that frontend uses in the URL.
+    """
+    room_id = f"{current_user_id}-{int(datetime.utcnow().timestamp())}"
+    room = _create_puzzle_race_room(room_id, current_user_id)
+    return _serialize_puzzle_race_room(room)
+
+
+@app.get("/api/puzzle-racer/rooms/{room_id}", response_model=PuzzleRaceRoomState)
+def get_puzzle_race_room(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Get current state of a puzzle racer room.
+    Used by all participants to poll room status and participants.
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/join", response_model=PuzzleRaceRoomState)
+def join_puzzle_race_room(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Join an existing puzzle racer room. Only adds the current user as a participant.
+    Automatically assigns a random available car.
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if room["status"] in ("racing", "countdown"):
+        raise HTTPException(status_code=409, detail="Race is ongoing. You cannot join until it ends.")
+    participants: Set[int] = room.setdefault("participants", set())
+    is_new = current_user_id not in participants
+    participants.add(current_user_id)
+    car_assignments: Dict[int, int] = room.setdefault("car_assignments", {})
+    if is_new and current_user_id not in car_assignments:
+        car_assignments[current_user_id] = _pick_random_available_car(room)
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/start", response_model=PuzzleRaceRoomState)
+def start_puzzle_race_room(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Mark room as started. Only host can start. (For current testing, solo races are allowed.)
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if room["host_user_id"] != current_user_id:
+        raise HTTPException(status_code=403, detail="Only the host can start the race")
+    participants: Set[int] = room.setdefault("participants", set())
+    if room.get("countdown_start_at") is None:
+        now = datetime.utcnow()
+        room["countdown_start_at"] = now
+        room["race_end_at"] = now + timedelta(seconds=PUZZLE_RACER_TOTAL_RACE_SECONDS)
+    room["status"] = "racing"
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/select-car", response_model=PuzzleRaceRoomState)
+def select_puzzle_race_car(
+    room_id: str,
+    payload: PuzzleRaceCarSelect,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Change the current user's car in a puzzle racer room.
+    Only allows selecting a car that isn't already taken by another participant.
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if current_user_id not in room.get("participants", set()):
+        raise HTTPException(status_code=403, detail="You are not in this room")
+    if room["status"] == "racing":
+        raise HTTPException(status_code=400, detail="Cannot change car during a race")
+    car_index = payload.car_index
+    if car_index < 0 or car_index >= PUZZLE_RACER_TOTAL_CARS:
+        raise HTTPException(status_code=400, detail="Invalid car index")
+    car_assignments: Dict[int, int] = room.setdefault("car_assignments", {})
+    for uid, cidx in car_assignments.items():
+        if cidx == car_index and uid != current_user_id:
+            raise HTTPException(status_code=409, detail="Car already taken by another player")
+    car_assignments[current_user_id] = car_index
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/set-name", response_model=PuzzleRaceRoomState)
+def set_puzzle_race_name(
+    room_id: str,
+    payload: PuzzleRaceNameSet,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Set the current user's display name in a puzzle racer room.
+    Visible to all participants via room state polling.
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if current_user_id not in room.get("participants", set()):
+        raise HTTPException(status_code=403, detail="You are not in this room")
+    name = payload.name.strip()[:16]
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    racer_names: Dict[str, str] = room.setdefault("racer_names", {})
+    racer_names[current_user_id] = name
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/update-score", response_model=PuzzleRaceRoomState)
+def update_puzzle_race_score(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """Increment the current user's score by 1 (called on each correct puzzle solve)."""
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if current_user_id not in room.get("participants", set()):
+        raise HTTPException(status_code=403, detail="You are not in this room")
+    scores: Dict[int, int] = room.setdefault("scores", {})
+    scores[current_user_id] = scores.get(current_user_id, 0) + 1
+    return _serialize_puzzle_race_room(room)
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/leave")
+def leave_puzzle_race_room(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Remove a non-host participant from the room.
+    Host cannot leave (they own the room).
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        return {"ok": True}
+    if room["host_user_id"] == current_user_id:
+        return {"ok": True}
+    participants: set = room.get("participants", set())
+    participants.discard(current_user_id)
+    car_assignments: Dict[int, int] = room.get("car_assignments", {})
+    car_assignments.pop(current_user_id, None)
+    racer_names = room.get("racer_names", {})
+    racer_names.pop(current_user_id, None)
+    scores = room.get("scores", {})
+    scores.pop(current_user_id, None)
+    return {"ok": True}
+
+
+@app.post("/api/puzzle-racer/rooms/{room_id}/reset", response_model=PuzzleRaceRoomState)
+def reset_puzzle_race_room(
+    room_id: str,
+    current_user_id: int = Depends(get_current_user),
+):
+    """
+    Reset a room back to waiting state.
+    Any current or former participant can call this.
+    First caller resets the room; all callers are (re-)added as participants.
+    """
+    room = _get_puzzle_race_room(room_id)
+    if room is None:
+        raise HTTPException(status_code=404, detail="Race room not found")
+    if room["status"] != "waiting":
+        room["status"] = "waiting"
+        room["countdown_start_at"] = None
+        room["race_end_at"] = None
+        room["scores"] = {}
+        # Clear participants — each player re-joins by calling reset
+        room["participants"] = set()
+    # Add the caller as a participant
+    participants: set = room.setdefault("participants", set())
+    participants.add(current_user_id)
+    # Preserve their car and name
+    car_assignments: Dict[int, int] = room.setdefault("car_assignments", {})
+    if current_user_id not in car_assignments:
+        car_assignments[current_user_id] = _pick_random_available_car(room)
+    return _serialize_puzzle_race_room(room)
 
 
 @app.get("/api/levels")

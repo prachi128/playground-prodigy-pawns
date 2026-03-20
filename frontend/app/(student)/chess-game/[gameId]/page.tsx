@@ -526,7 +526,6 @@ export default function ChessGamePage() {
       setIsResigning(true);
       const updatedGame = await gameAPI.resign(gameId);
       setGame(updatedGame);
-      setGameStatus(`Game Over: ${updatedGame.result} (You resigned)`);
       setIsMyTurn(false);
       toast('You resigned');
     } catch (error: any) {
@@ -682,15 +681,6 @@ export default function ChessGamePage() {
 
   return (
     <div className="relative min-h-screen w-full bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white">
-      <button
-        type="button"
-        onClick={() => router.push('/adventure')}
-        className="fixed left-4 top-4 z-50 inline-flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm font-heading font-semibold text-white shadow-lg backdrop-blur hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-      >
-        <LogOut className="h-4 w-4" />
-        Exit game
-      </button>
-
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col pt-12 pb-6 px-2 lg:px-4">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
@@ -750,7 +740,6 @@ export default function ChessGamePage() {
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
                   </div>
                 )}
-                {/* @ts-expect-error - react-chessboard types are incomplete */}
                 <Chessboard
                   key={chessFen}
                   options={{
@@ -764,7 +753,6 @@ export default function ChessGamePage() {
                       return true; // Optimistically return true, actual validation happens in onDrop
                     },
                     boardOrientation: isWhite ? 'white' : 'black',
-                    arePiecesDraggable: isMyTurn && !isMakingMove,
                     boardStyle: {
                       borderRadius: '8px',
                       boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
@@ -772,7 +760,7 @@ export default function ChessGamePage() {
                     },
                     darkSquareStyle: { backgroundColor: '#769656' },
                     lightSquareStyle: { backgroundColor: '#eeeed2' },
-                    customSquareStyles: lastMove ? {
+                    squareStyles: lastMove ? {
                       [lastMove.from]: {
                         backgroundColor: 'rgba(255, 255, 0, 0.4)',
                         borderRadius: '4px',
@@ -958,7 +946,6 @@ export default function ChessGamePage() {
 
       {/* Close inner layout wrapper */}
       </div>
-
       {/* Game over modal (auto_resign, timeout, resign, checkmate, draw) */}
       {showGameOverModal && game && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
