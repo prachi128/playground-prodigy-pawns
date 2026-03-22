@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { Trophy, TrendingUp, Zap, Target } from 'lucide-react';
+import { Trophy, TrendingUp, Zap, Target, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 
@@ -87,78 +87,76 @@ export default function LeaderboardPage() {
     return rank;
   };
 
-  const getRankColor = (rank: number) => {
-    if (rank === 1) return 'bg-gradient-to-r from-yellow-400 to-yellow-500';
-    if (rank === 2) return 'bg-gradient-to-r from-gray-300 to-gray-400';
-    if (rank === 3) return 'bg-gradient-to-r from-orange-400 to-orange-500';
-    return 'bg-gray-100';
+  /** Rank badge in table: coach HSL tokens + readable text for ranks 4+. */
+  const getRankBadgeClass = (rank: number) => {
+    if (rank === 1) {
+      return 'border border-[hsl(var(--gold-medium))]/50 bg-[hsl(var(--gold-light))]/90 text-[hsl(var(--gold-dark))]';
+    }
+    if (rank === 2) {
+      return 'border border-border bg-muted text-card-foreground';
+    }
+    if (rank === 3) {
+      return 'border border-[hsl(var(--orange-medium))]/45 bg-[hsl(var(--orange-very-light))] text-[hsl(var(--orange-dark))]';
+    }
+    return 'border border-border bg-card text-muted-foreground';
   };
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[min(50vh,400px)] items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Loading leaderboard…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[min(70vh,520px)]">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8">
-        <div className="mb-6">
-          <h1 className="font-heading mb-2 flex items-center gap-3 text-3xl font-bold text-foreground sm:text-4xl">
-            <Trophy className="h-9 w-9 shrink-0 text-[hsl(var(--gold-medium))] sm:h-10 sm:w-10" />
-            Class leaderboard
-          </h1>
-          <p className="text-lg text-muted-foreground">Top performers in your class</p>
-        </div>
+    <div className="relative min-h-[min(70vh,520px)]">
+      <div className="mb-6">
+        <h1 className="font-heading flex items-center gap-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15 sm:h-11 sm:w-11">
+            <Trophy className="h-5 w-5 sm:h-6 sm:w-6" />
+          </span>
+          Class leaderboard
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Top performers across your students—sort by XP, puzzles solved, or success rate.
+        </p>
+      </div>
 
-        <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="mb-3 text-sm font-semibold text-foreground">Sort by</p>
-          <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <p className="mb-3 text-sm font-semibold text-foreground">Sort by</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+          {(
+            [
+              { key: 'xp' as const, label: 'Total XP', Icon: Zap },
+              { key: 'puzzles' as const, label: 'Puzzles solved', Icon: Target },
+              { key: 'success' as const, label: 'Success rate', Icon: TrendingUp },
+            ] as const
+          ).map(({ key, label, Icon }) => (
             <button
+              key={key}
               type="button"
-              onClick={() => setSortBy('xp')}
-              className={`flex-1 rounded-xl py-3 px-4 font-bold transition-all ${
-                sortBy === 'xp'
-                  ? 'bg-primary text-primary-foreground shadow-md'
-                  : 'bg-muted text-foreground hover:bg-muted/80'
+              onClick={() => setSortBy(key)}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+                sortBy === key
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'
               }`}
             >
-              <Zap className="mr-2 inline h-5 w-5" />
-              Total XP
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
             </button>
-            <button
-              type="button"
-              onClick={() => setSortBy('puzzles')}
-              className={`flex-1 rounded-xl py-3 px-4 font-bold transition-all ${
-                sortBy === 'puzzles'
-                  ? 'bg-primary text-primary-foreground shadow-md'
-                  : 'bg-muted text-foreground hover:bg-muted/80'
-              }`}
-            >
-              <Target className="mr-2 inline h-5 w-5" />
-              Puzzles solved
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortBy('success')}
-              className={`flex-1 rounded-xl py-3 px-4 font-bold transition-all ${
-                sortBy === 'success'
-                  ? 'bg-primary text-primary-foreground shadow-md'
-                  : 'bg-muted text-foreground hover:bg-muted/80'
-              }`}
-            >
-              <TrendingUp className="mr-2 inline h-5 w-5" />
-              Success rate
-            </button>
-          </div>
+          ))}
         </div>
+      </div>
 
-        {leaderboard.length >= 3 && (
-          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="order-2 pt-0 md:order-1 md:pt-12">
-              <div className="rounded-2xl border border-border bg-muted/40 p-6 text-center shadow-sm">
+      {leaderboard.length >= 3 && (
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="order-2 pt-0 md:order-1 md:pt-12">
+            <div className="rounded-xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:border-primary/20">
                 <div className="mb-3 text-5xl">🥈</div>
                 <p className="mb-1 text-xl font-bold text-foreground">{leaderboard[1].username}</p>
                 <div className="mt-3 flex items-center justify-center gap-2">
@@ -181,9 +179,11 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="order-1 md:order-2">
-              <div className="relative rounded-2xl border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/50 p-6 text-center shadow-md">
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 transform">
-                  <Trophy className="h-10 w-10 text-[hsl(var(--gold-dark))]" />
+              <div className="relative rounded-xl border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/60 p-6 text-center shadow-sm ring-1 ring-[hsl(var(--gold-medium))]/15">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-card shadow-md ring-2 ring-[hsl(var(--gold-medium))]/30">
+                    <Trophy className="h-6 w-6 text-[hsl(var(--gold-dark))]" />
+                  </span>
                 </div>
                 <div className="mb-3 mt-2 text-6xl">🥇</div>
                 <p className="mb-1 text-2xl font-bold text-foreground">{leaderboard[0].username}</p>
@@ -207,7 +207,7 @@ export default function LeaderboardPage() {
             </div>
 
             <div className="order-3 pt-0 md:pt-12">
-              <div className="rounded-2xl border border-border bg-muted/40 p-6 text-center shadow-sm">
+              <div className="rounded-xl border border-border bg-card p-6 text-center shadow-sm transition-all hover:border-primary/20">
                 <div className="mb-3 text-5xl">🥉</div>
                 <p className="mb-1 text-xl font-bold text-foreground">{leaderboard[2].username}</p>
                 <div className="mt-3 flex items-center justify-center gap-2">
@@ -232,13 +232,13 @@ export default function LeaderboardPage() {
         )}
 
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="bg-[hsl(var(--sidebar-background))] p-4 text-sidebar-foreground">
-            <h2 className="font-heading text-xl font-bold">Complete rankings</h2>
+          <div className="border-b border-border bg-primary px-4 py-3 sm:px-5">
+            <h2 className="font-heading text-lg font-bold text-primary-foreground">Complete rankings</h2>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-muted/50">
+              <thead className="border-b border-border bg-muted/40">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Rank</th>
                   <th className="px-4 py-3 text-left text-sm font-bold text-foreground">Student</th>
@@ -251,13 +251,15 @@ export default function LeaderboardPage() {
                 {leaderboard.map((entry, index) => (
                   <tr
                     key={entry.id}
-                    className={`border-t border-border transition-colors hover:bg-muted/40 ${
-                      index % 2 === 0 ? 'bg-card' : 'bg-muted/20'
+                    className={`border-b border-border transition-colors last:border-b-0 hover:bg-muted/40 ${
+                      index % 2 === 1 ? 'bg-muted/15' : ''
                     }`}
                   >
                     <td className="px-4 py-4">
                       <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-full font-bold text-white shadow-sm ${getRankColor(entry.rank)}`}
+                        className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold shadow-sm ${getRankBadgeClass(
+                          entry.rank,
+                        )}`}
                       >
                         {getMedalIcon(entry.rank)}
                       </div>
@@ -296,11 +298,12 @@ export default function LeaderboardPage() {
 
           {leaderboard.length === 0 && (
             <div className="py-12 text-center">
-              <p className="text-muted-foreground">No students yet</p>
+              <Trophy className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="font-heading text-sm font-semibold text-card-foreground">No students yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">Students will appear here once they are in your roster.</p>
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }

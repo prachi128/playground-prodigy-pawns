@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI, User } from '@/lib/api';
+import { usernameInitial } from '@/lib/avatar';
 import Link from 'next/link';
 import { Search, UserPlus, Loader2, Users, CheckCircle, XCircle, Clock, Swords } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -292,7 +293,7 @@ export default function ChessGamePage() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-pink-500 text-xl font-bold text-white">
-                        {result.full_name.charAt(0).toUpperCase()}
+                        {usernameInitial(result.username)}
                       </div>
                       <div>
                         <p className="font-heading font-bold text-card-foreground">
@@ -342,7 +343,7 @@ export default function ChessGamePage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-emerald-500 text-xl font-bold text-white">
-                      {invite.inviter?.full_name?.charAt(0).toUpperCase() || '?'}
+                      {usernameInitial(invite.inviter?.username)}
                     </div>
                     <div>
                       <p className="font-heading font-bold text-card-foreground">
@@ -393,7 +394,7 @@ export default function ChessGamePage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 text-xl font-bold text-white">
-                      {invite.invitee?.full_name?.charAt(0).toUpperCase() || '?'}
+                      {usernameInitial(invite.invitee?.username)}
                     </div>
                     <div>
                       <p className="font-heading font-bold text-card-foreground">

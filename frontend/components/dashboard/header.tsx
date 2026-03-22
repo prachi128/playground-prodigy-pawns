@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
+import { usernameInitial } from "@/lib/avatar"
 import { useRouter } from "next/navigation"
 import { notificationsAPI, type ApiNotification } from "@/lib/api"
 
@@ -340,7 +341,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           aria-label="View profile"
         >
           <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-lg font-bold text-white">
-            {displayName.charAt(0).toUpperCase()}
+            {usernameInitial(user?.username)}
           </div>
         </button>
       </div>

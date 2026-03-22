@@ -1,6 +1,7 @@
 "use client"
 
 import { useAuthStore } from "@/lib/store"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from "@/lib/avatar"
 import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -53,14 +54,14 @@ export function ProfileContent() {
               {/* Avatar */}
               <div className="relative">
                 <div className="h-32 w-32 overflow-hidden rounded-full ring-4 ring-white/50 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-4xl font-bold text-white shadow-xl">
-                  {user.avatar_url ? (
+                  {getAvatarDisplayUrl(user.avatar_url) && !isDefaultOrEmptyAvatar(user.avatar_url) ? (
                     <img 
-                      src={user.avatar_url} 
+                      src={getAvatarDisplayUrl(user.avatar_url)} 
                       alt={user.full_name || "Avatar"} 
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <span>{displayName.charAt(0).toUpperCase()}</span>
+                    <span>{usernameInitial(user.username)}</span>
                   )}
                 </div>
                 <div className="absolute -bottom-2 -right-2 h-10 w-10 bg-yellow-400 rounded-full flex items-center justify-center font-bold text-purple-800 text-lg shadow-lg ring-4 ring-white">

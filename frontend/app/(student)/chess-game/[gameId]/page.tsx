@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI, Game, User, usersAPI } from '@/lib/api';
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from '@/lib/avatar';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { Loader2, Trophy, Users, Flag, X, LogOut } from 'lucide-react';
@@ -704,16 +705,22 @@ export default function ChessGamePage() {
                 }`}>
                   {(opponentPlayer as any)?.isBot
                     ? botAvatar
-                    : (opponentPlayer as User | null)?.avatar_url && String((opponentPlayer as User).avatar_url).trim() && !opponentAvatarError
+                    : getAvatarDisplayUrl((opponentPlayer as User | null)?.avatar_url) &&
+                        !isDefaultOrEmptyAvatar((opponentPlayer as User | null)?.avatar_url) &&
+                        !opponentAvatarError
                       ? (
                         <img
-                          src={(opponentPlayer as User).avatar_url}
+                          src={getAvatarDisplayUrl((opponentPlayer as User).avatar_url)}
                           alt=""
                           className="h-7 w-7 rounded-full object-cover"
                           onError={() => setOpponentAvatarError(true)}
                         />
                       )
-                      : ((opponentPlayer as any)?.full_name?.charAt(0)?.toUpperCase() || (opponentPlayer as User)?.username?.charAt(0)?.toUpperCase() || (opponentColor === 'white' ? 'W' : 'B'))}
+                      : (opponentPlayer as User)?.username?.trim()
+                        ? usernameInitial((opponentPlayer as User).username)
+                        : opponentColor === 'white'
+                          ? 'W'
+                          : 'B'}
                 </div>
                 <div className="min-w-0">
                   <p className={`font-heading text-xs font-bold truncate ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'}`}>
@@ -793,16 +800,24 @@ export default function ChessGamePage() {
                 }`}>
                   {(myPlayer as any)?.isBot
                     ? botAvatar
-                    : (myPlayer as User | null)?.avatar_url && String((myPlayer as User).avatar_url).trim() && !myAvatarError
+                    : getAvatarDisplayUrl((myPlayer as User | null)?.avatar_url) &&
+                        !isDefaultOrEmptyAvatar((myPlayer as User | null)?.avatar_url) &&
+                        !myAvatarError
                       ? (
                         <img
-                          src={(myPlayer as User).avatar_url}
+                          src={getAvatarDisplayUrl((myPlayer as User).avatar_url)}
                           alt=""
                           className="h-7 w-7 rounded-full object-cover"
                           onError={() => setMyAvatarError(true)}
                         />
                       )
-                      : ((myPlayer as any)?.full_name?.charAt(0)?.toUpperCase() || (myPlayer as User)?.username?.charAt(0)?.toUpperCase() || user?.full_name?.charAt(0)?.toUpperCase() || (myColor === 'white' ? 'W' : 'B'))}
+                      : (myPlayer as User)?.username?.trim() || user?.username?.trim()
+                        ? usernameInitial(
+                            (myPlayer as User)?.username ?? user?.username,
+                          )
+                        : myColor === 'white'
+                          ? 'W'
+                          : 'B'}
                 </div>
                 <div className="min-w-0">
                   <p className={`font-heading text-xs font-bold truncate ${myColor === 'white' ? 'text-gray-900' : 'text-white'}`}>

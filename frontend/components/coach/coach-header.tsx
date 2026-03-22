@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
-import { ChevronDown, LayoutDashboard, LogOut, Menu } from "lucide-react";
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from "@/lib/avatar";
+import { ChevronDown, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
 
 interface CoachHeaderProps {
   onMenuClick: () => void;
@@ -14,9 +16,19 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const displayName = user?.full_name?.split(" ")[0] ?? "Coach";
+  const avatarSrc = getAvatarDisplayUrl(user?.avatar_url);
+  const showAvatarImage =
+    Boolean(avatarSrc) &&
+    !isDefaultOrEmptyAvatar(user?.avatar_url) &&
+    !avatarLoadFailed;
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [user?.avatar_url]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -69,8 +81,27 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
           aria-expanded={userMenuOpen}
           aria-haspopup="true"
         >
-          <div className="sidebar-avatar flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#FCD34D] bg-white/10 text-sm font-bold text-sidebar-foreground">
-            {displayName.charAt(0).toUpperCase()}
+          <div className="sidebar-avatar relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#FCD34D] bg-white/10 text-sm font-bold text-sidebar-foreground">
+            {showAvatarImage && avatarSrc.startsWith("/") ? (
+              <Image
+                src={avatarSrc}
+                alt=""
+                width={36}
+                height={36}
+                className="h-full w-full object-cover"
+                onError={() => setAvatarLoadFailed(true)}
+              />
+            ) : showAvatarImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- uploaded avatar on API host
+              <img
+                src={avatarSrc}
+                alt=""
+                className="h-full w-full object-cover"
+                onError={() => setAvatarLoadFailed(true)}
+              />
+            ) : (
+              usernameInitial(user?.username)
+            )}
           </div>
           <span className="hidden max-w-[140px] truncate text-sm font-semibold text-sidebar-foreground lg:block">
             {displayName}
@@ -88,6 +119,14 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
               </p>
               <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
             </div>
+            <Link
+              href="/coach/settings"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted/80"
+              onClick={() => setUserMenuOpen(false)}
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              Settings
+            </Link>
             <button
               type="button"
               onClick={handleLogout}

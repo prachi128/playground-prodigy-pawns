@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { parentAPI, ChildInfo, PaymentRecord } from '@/lib/api';
+import { usernameInitial } from '@/lib/avatar';
 import { Loader2, CreditCard, CheckCircle, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -112,7 +113,7 @@ export default function ParentPaymentsPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-lg font-bold text-primary-700">
-                    {child.full_name.charAt(0)}
+                    {usernameInitial(child.username)}
                   </div>
                   <div>
                     <p className="font-bold text-gray-800">{child.full_name}</p>

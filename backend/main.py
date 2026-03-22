@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Request, status, Query
+from pathlib import Path
+
+from fastapi import FastAPI, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -77,6 +80,12 @@ from assignment_endpoints import router as assignment_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
+
+# Uploaded avatars (served under /uploads/avatars/)
+_BACKEND_ROOT = Path(__file__).resolve().parent
+_UPLOAD_ROOT = _BACKEND_ROOT / "uploads"
+_AVATAR_UPLOAD_DIR = _UPLOAD_ROOT / "avatars"
+_MAX_AVATAR_BYTES = 2 * 1024 * 1024
 # Rating thresholds: level 2 starts at 300, level 3 at 500, ..., level 15 at 2900+
 _RATING_THRESHOLDS = [300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900]
 
@@ -312,6 +321,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_UPLOAD_ROOT)), name="uploads")
 
 # Include routers
 app.include_router(coach_router)
@@ -857,6 +869,52 @@ def update_profile(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@app.post("/api/users/me/avatar", response_model=UserResponse)
+async def upload_my_avatar(
+    request: Request,
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a profile image; replaces any previous upload for this user."""
+    ct = (file.content_type or "").lower()
+    if not ct.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Image file required")
+
+    contents = await file.read()
+    if len(contents) > _MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 2MB or smaller")
+
+    suffix = ".jpg"
+    if "png" in ct:
+        suffix = ".png"
+    elif "webp" in ct:
+        suffix = ".webp"
+    elif "gif" in ct:
+        suffix = ".gif"
+
+    for old in _AVATAR_UPLOAD_DIR.glob(f"{user_id}.*"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+    out_path = _AVATAR_UPLOAD_DIR / f"{user_id}{suffix}"
+    with open(out_path, "wb") as f:
+        f.write(contents)
+
+    current_user = db.query(User).filter(User.id == user_id).first()
+    if not current_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    base = str(request.base_url).rstrip("/")
+    current_user.avatar_url = f"{base}/uploads/avatars/{user_id}{suffix}"
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
 
 # ==================== PUZZLE ENDPOINTS ====================
 

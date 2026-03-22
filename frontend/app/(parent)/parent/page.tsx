@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { parentAPI, ParentDashboard } from '@/lib/api';
+import { usernameInitial } from '@/lib/avatar';
 import { Loader2, Calendar, CreditCard, Megaphone, Users, ExternalLink, AlertTriangle, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -84,7 +85,7 @@ export default function ParentDashboardPage() {
             <div key={child.id} className="bg-white rounded-xl border-2 border-gray-200 p-5 hover:shadow-md transition">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center text-lg">
-                  {child.full_name.charAt(0)}
+                  {usernameInitial(child.username)}
                 </div>
                 <div>
                   <p className="font-bold text-gray-800">{child.full_name}</p>

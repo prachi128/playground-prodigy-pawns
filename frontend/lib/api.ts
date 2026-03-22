@@ -204,6 +204,14 @@ export const userAPI = {
     const response = await api.put('/api/users/me', data);
     return response.data;
   },
+
+  /** Upload profile image; returns updated user (avatar_url points at API /uploads/...). */
+  uploadAvatar: async (file: File): Promise<User> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/users/me/avatar', form);
+    return response.data;
+  },
 };
 
 // Puzzle API

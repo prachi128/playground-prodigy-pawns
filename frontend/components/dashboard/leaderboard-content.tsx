@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Trophy, Medal, Star, Zap, Crown, TrendingUp } from "lucide-react"
 import { leaderboardAPI, LeaderboardEntry } from "@/lib/api"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from "@/lib/avatar"
 import { useAuthStore } from "@/lib/store"
 import toast from "react-hot-toast"
 
@@ -198,14 +199,15 @@ export function LeaderboardContent() {
                           isTopThree ? getRankColor(rank) : "from-slate-300 to-slate-400"
                         } flex items-center justify-center text-white font-heading font-bold text-lg shadow-md`}
                       >
-                        {entry.avatar_url ? (
+                        {getAvatarDisplayUrl(entry.avatar_url) &&
+                        !isDefaultOrEmptyAvatar(entry.avatar_url) ? (
                           <img
-                            src={entry.avatar_url}
+                            src={getAvatarDisplayUrl(entry.avatar_url)}
                             alt={entry.full_name}
                             className="h-full w-full rounded-full object-cover"
                           />
                         ) : (
-                          entry.full_name.charAt(0).toUpperCase()
+                          usernameInitial(entry.username)
                         )}
                       </div>
                       {isCurrentUser && (
