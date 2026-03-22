@@ -2,12 +2,23 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CoachLayout as CoachShell } from '@/components/coach/coach-layout';
+import axios from 'axios';
+import { coachAPI } from '@/lib/api';
+import { CoachStatsContext, type CoachStatsData } from '@/contexts/coach-stats-context';
+import { Inter } from 'next/font/google';
+
+/** Clean geometric sans (bold titles) — matches coach dashboard reference */
+const coachFont = Inter({
+  subsets: ['latin'],
+  variable: '--font-coach',
+  display: 'swap',
+});
 
 export default function CoachLayout({
   children,
@@ -16,9 +27,33 @@ export default function CoachLayout({
 }) {
   const router = useRouter();
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
+  const [coachStats, setCoachStats] = useState<CoachStatsData | null>(null);
+  const [coachStatsLoading, setCoachStatsLoading] = useState(true);
 
   useEffect(() => {
-    useAuthStore.getState().loadSession();
+    let cancelled = false;
+    (async () => {
+      try {
+        const { user: u, stats } = await coachAPI.bootstrap();
+        if (cancelled) return;
+        useAuthStore.getState().login(u);
+        setCoachStats(stats as CoachStatsData);
+      } catch (e) {
+        if (cancelled) return;
+        if (axios.isAxiosError(e) && e.response?.status === 403) {
+          toast.error('Access denied. Coach privileges required.');
+          await useAuthStore.getState().loadSession();
+          router.push('/dashboard');
+          return;
+        }
+        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+      } finally {
+        if (!cancelled) setCoachStatsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -36,10 +71,14 @@ export default function CoachLayout({
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 flex items-center justify-center">
+      <div
+        className={`${coachFont.variable} coach-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50/80 via-slate-100 to-slate-200/90 backdrop-blur-md`}
+        aria-busy="true"
+        aria-label="Loading"
+      >
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 font-semibold">Loading...</p>
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+          <p className="font-semibold text-foreground/90">Loading…</p>
         </div>
       </div>
     );
@@ -48,5 +87,11 @@ export default function CoachLayout({
   if (!isAuthenticated) return null;
   if (user && user.role !== 'coach' && user.role !== 'admin') return null;
 
-  return <CoachShell>{children}</CoachShell>;
+  return (
+    <CoachStatsContext.Provider value={{ stats: coachStats, statsLoading: coachStatsLoading }}>
+      <div className={`${coachFont.variable} coach-fonts antialiased`}>
+        <CoachShell>{children}</CoachShell>
+      </div>
+    </CoachStatsContext.Provider>
+  );
 }

@@ -21,8 +21,12 @@ encoded_password = quote_plus(DB_PASSWORD)
 # Create database URL
 DATABASE_URL = f"postgresql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Database setup
-engine = create_engine(DATABASE_URL)
+# Database setup — pool_pre_ping avoids long hangs on stale connections; connect_timeout caps wait
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"connect_timeout": 10},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Create all tables

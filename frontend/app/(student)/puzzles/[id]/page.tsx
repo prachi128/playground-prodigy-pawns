@@ -2,8 +2,8 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
 import { getDifficultyColor, parseThemeList } from '@/lib/utils';
@@ -14,10 +14,17 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
 
-export default function PuzzleSolvePage() {
+function PuzzleSolvePageContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const puzzleId = parseInt(params.id as string);
+  const assignmentIdRaw = searchParams.get('assignment_id');
+  const assignmentIdForApi = (() => {
+    if (assignmentIdRaw == null || assignmentIdRaw === '') return null;
+    const n = parseInt(assignmentIdRaw, 10);
+    return Number.isNaN(n) ? null : n;
+  })();
   
   const { user, updateUser } = useAuthStore();
   
@@ -87,11 +94,17 @@ export default function PuzzleSolvePage() {
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
     try {
-      const result = await puzzleAPI.submitAttempt(puzzle!.id, {
-        is_solved: solved,
-        moves_made: moves.join(' '),
-        time_taken: timeTaken,
-      });
+      const result = await puzzleAPI.submitAttempt(
+        puzzle!.id,
+        {
+          is_solved: solved,
+          moves_made: moves.join(' '),
+          time_taken: timeTaken,
+        },
+        assignmentIdForApi != null
+          ? { assignmentId: assignmentIdForApi }
+          : undefined
+      );
 
       if (solved) {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
@@ -131,7 +144,9 @@ export default function PuzzleSolvePage() {
       });
 
       const nextPuzzle = sortedByCloseness[0];
-      router.push(`/puzzles/${nextPuzzle.id}`);
+      const q =
+        assignmentIdForApi != null ? `?assignment_id=${assignmentIdForApi}` : '';
+      router.push(`/puzzles/${nextPuzzle.id}${q}`);
     } catch (error) {
       console.error('Failed to load next puzzle:', error);
       router.push('/puzzles/solve');
@@ -163,11 +178,15 @@ export default function PuzzleSolvePage() {
     <div className="mx-auto max-w-6xl">
       <div className="mb-4">
         <Link
-          href="/puzzles/solve"
+          href={
+            assignmentIdForApi != null
+              ? `/assignments/${assignmentIdForApi}`
+              : '/puzzles/solve'
+          }
           className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Puzzles
+          {assignmentIdForApi != null ? 'Back to assignment' : 'Back to Puzzles'}
         </Link>
       </div>
 
@@ -320,5 +339,22 @@ export default function PuzzleSolvePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PuzzleSolvePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-6xl flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="font-heading font-semibold text-muted-foreground">Loading puzzle...</p>
+          </div>
+        </div>
+      }
+    >
+      <PuzzleSolvePageContent />
+    </Suspense>
   );
 }

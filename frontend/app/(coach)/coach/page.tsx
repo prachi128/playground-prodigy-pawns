@@ -2,36 +2,28 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { Plus, TrendingUp, Target, Trophy, Users, Layers } from 'lucide-react';
+import { BarChart3, TrendingUp, Target, Trophy, Users, Layers, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { coachAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useCoachStats } from '@/contexts/coach-stats-context';
 
-interface CoachStats {
-  total_puzzles: number;
-  active_puzzles: number;
-  inactive_puzzles: number;
-  difficulty_distribution: {
-    [key: string]: number;
-  };
-  total_attempts: number;
-  total_success: number;
-  overall_success_rate: number;
+function formatStat(n: number): string {
+  return n.toLocaleString('en-US');
 }
+
+const cardBase =
+  'group rounded-xl border border-border bg-card p-6 shadow-sm transition-all duration-200 hover:border-primary/25 hover:shadow-md';
+
+const statCard =
+  'rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md';
 
 export default function CoachDashboard() {
   const router = useRouter();
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
-  
-  const [stats, setStats] = useState<CoachStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    useAuthStore.getState().loadSession();
-  }, []);
+  const { stats, statsLoading } = useCoachStats();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -39,188 +31,179 @@ export default function CoachDashboard() {
       return;
     }
 
-    // Check if user is coach or admin
     if (user && user.role !== 'coach' && user.role !== 'admin') {
       toast.error('Access denied. Coach privileges required.');
       router.push('/dashboard');
       return;
     }
-
-    if (isAuthenticated) {
-      loadStats();
-    }
   }, [isAuthenticated, authLoading, user, router]);
 
-  const loadStats = async () => {
-    try {
-      const data = await coachAPI.getStats();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-      toast.error('Failed to load statistics');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (authLoading || isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-semibold">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <div className="mb-6">
-        <p className="text-gray-600">
-          Manage puzzles and track student progress
-        </p>
-      </div>
+    <div className="relative min-h-[min(70vh,520px)]">
+      <div
+        className={
+          statsLoading ? 'pointer-events-none select-none blur-[2px] transition-[filter] duration-300' : ''
+        }
+      >
+        <div className="mb-4 border-b border-border/80 pb-4">
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            Overview
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Manage your puzzle library, cohorts, and assignments—aligned with the same experience your
+            students see, tuned for instruction and reporting.
+          </p>
+        </div>
 
-      {/* Quick Actions */}
-        <div className="grid md:grid-cols-4 gap-4 mb-6">
-          <Link
-            href="/coach/puzzles/create"
-            className="bg-gradient-to-r from-primary-500 to-purple-600 text-white p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                <Plus className="w-6 h-6" />
+        <div className="mb-8 grid gap-4 md:grid-cols-3">
+          <Link href="/coach/puzzles" className={cardBase}>
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/15">
+                <Target className="h-6 w-6 text-primary" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold">Create New Puzzle</h3>
-                <p className="text-sm text-white/80">Use Stockfish to validate</p>
+              <div className="min-w-0">
+                <h3 className="font-heading text-lg font-bold text-card-foreground">Manage puzzles</h3>
+                <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                  Create, validate with Stockfish, and curate your library.
+                </p>
               </div>
             </div>
           </Link>
 
-          <Link
-            href="/coach/puzzles"
-            className="bg-white p-6 rounded-2xl shadow-lg border-4 border-gray-200 hover:border-primary-400 transition-all hover:shadow-xl cursor-pointer"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                <Target className="w-6 h-6 text-primary-600" />
+          <Link href="/coach/students" className={cardBase}>
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--blue-light))] ring-1 ring-border">
+                <Users className="h-6 w-6 text-[hsl(var(--blue-dark))]" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Manage Puzzles</h3>
-                <p className="text-sm text-gray-600">Edit, delete, or revalidate</p>
-              </div>
-            </div>
-          </Link>
-
-          <Link
-            href="/coach/students"
-            className="bg-white p-6 rounded-2xl shadow-lg border-4 border-blue-200 hover:border-blue-400 transition-all hover:shadow-xl cursor-pointer"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Manage Students</h3>
-                <p className="text-sm text-gray-600">View and track student progress</p>
+              <div className="min-w-0">
+                <h3 className="font-heading text-lg font-bold text-card-foreground">Students</h3>
+                <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                  View rosters and track progress over time.
+                </p>
               </div>
             </div>
           </Link>
 
-          <Link
-            href="/coach/batches"
-            className="bg-white p-6 rounded-2xl shadow-lg border-4 border-amber-200 hover:border-amber-400 transition-all hover:shadow-xl cursor-pointer"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
-                <Layers className="w-6 h-6 text-amber-600" />
+          <Link href="/coach/batches" className={cardBase}>
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gold-light))] ring-1 ring-border">
+                <Layers className="h-6 w-6 text-[hsl(var(--gold-dark))]" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Manage Batches</h3>
-                <p className="text-sm text-gray-600">Classes, payments & groups</p>
+              <div className="min-w-0">
+                <h3 className="font-heading text-lg font-bold text-card-foreground">Batches</h3>
+                <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                  Classes, groups, and billing in one place.
+                </p>
               </div>
             </div>
           </Link>
         </div>
 
-        {/* Statistics Cards */}
-        {stats && (
+        <div className="mb-4 flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-primary" aria-hidden />
+          <h2 className="font-heading text-xl font-bold text-foreground">Statistics</h2>
+        </div>
+
+        {statsLoading && (
+          <div className="min-h-[280px] rounded-xl border border-transparent" aria-hidden />
+        )}
+
+        {!statsLoading && stats && (
           <>
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">📊 Statistics</h2>
-            
-            <div className="grid md:grid-cols-4 gap-4 mb-6">
-              {/* Total Puzzles */}
-              <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-purple-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <Target className="w-5 h-5 text-purple-600" />
+            <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className={statCard}>
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--purple-light))]/80">
+                    <Target className="h-5 w-5 text-[hsl(var(--purple-dark))]" />
                   </div>
-                  <h3 className="font-bold text-gray-700">Total Puzzles</h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground">Total puzzles</h3>
                 </div>
-                <p className="text-3xl font-bold text-purple-600">{stats.total_puzzles}</p>
-                <p className="text-xs text-gray-600 mt-1">
-                  {stats.active_puzzles} active, {stats.inactive_puzzles} inactive
+                <p className="font-heading text-3xl font-bold text-[hsl(var(--purple-dark))]">
+                  {formatStat(stats.total_puzzles)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatStat(stats.active_puzzles)} active · {formatStat(stats.inactive_puzzles)} inactive
                 </p>
               </div>
 
-              {/* Total Attempts */}
-              <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-blue-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Users className="w-5 h-5 text-blue-600" />
+              <div className={statCard}>
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--blue-light))]">
+                    <Users className="h-5 w-5 text-[hsl(var(--blue-dark))]" />
                   </div>
-                  <h3 className="font-bold text-gray-700">Attempts</h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground">Attempts</h3>
                 </div>
-                <p className="text-3xl font-bold text-blue-600">{stats.total_attempts}</p>
-                <p className="text-xs text-gray-600 mt-1">
-                  {stats.total_success} successful
+                <p className="font-heading text-3xl font-bold text-[hsl(var(--blue-dark))]">
+                  {formatStat(stats.total_attempts)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatStat(stats.total_success)} successful
                 </p>
               </div>
 
-              {/* Success Rate */}
-              <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-green-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-green-600" />
+              <div className={statCard}>
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--green-very-light))]">
+                    <TrendingUp className="h-5 w-5 text-[hsl(var(--green-medium))]" />
                   </div>
-                  <h3 className="font-bold text-gray-700">Success Rate</h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground">Success rate</h3>
                 </div>
-                <p className="text-3xl font-bold text-green-600">
-                  {stats.overall_success_rate.toFixed(1)}%
+                <p className="font-heading text-3xl font-bold text-[hsl(var(--green-medium))]">
+                  {stats.overall_success_rate.toLocaleString('en-US', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  %
                 </p>
-                <p className="text-xs text-gray-600 mt-1">Overall performance</p>
+                <p className="mt-1 text-xs text-muted-foreground">Overall performance</p>
               </div>
 
-              {/* Active Puzzles */}
-              <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-yellow-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                    <Trophy className="w-5 h-5 text-yellow-600" />
+              <div className={statCard}>
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--gold-light))]">
+                    <Trophy className="h-5 w-5 text-[hsl(var(--gold-dark))]" />
                   </div>
-                  <h3 className="font-bold text-gray-700">Active</h3>
+                  <h3 className="text-sm font-semibold text-muted-foreground">Active</h3>
                 </div>
-                <p className="text-3xl font-bold text-yellow-600">{stats.active_puzzles}</p>
-                <p className="text-xs text-gray-600 mt-1">Available to students</p>
+                <p className="font-heading text-3xl font-bold text-[hsl(var(--gold-dark))]">
+                  {formatStat(stats.active_puzzles)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Available to students</p>
               </div>
             </div>
 
-            {/* Difficulty Distribution */}
-            <div className="bg-white p-6 rounded-2xl shadow-lg border-4 border-gray-200">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">
-                📈 Difficulty Distribution
+            <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+              <h3 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
+                <TrendingUp className="h-5 w-5 text-primary" aria-hidden />
+                Difficulty distribution
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {Object.entries(stats.difficulty_distribution).map(([difficulty, count]) => (
-                  <div key={difficulty} className="text-center p-4 bg-gray-50 rounded-xl">
-                    <p className="text-2xl font-bold text-primary-600">{count}</p>
-                    <p className="text-sm text-gray-600 capitalize">{difficulty}</p>
+                  <div
+                    key={difficulty}
+                    className="rounded-lg border border-border/80 bg-muted/40 px-3 py-4 text-center"
+                  >
+                    <p className="font-heading text-2xl font-bold text-primary">{formatStat(Number(count))}</p>
+                    <p className="mt-1 text-xs font-medium capitalize text-muted-foreground">{difficulty}</p>
                   </div>
                 ))}
               </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {statsLoading && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-background/40 backdrop-blur-md"
+          aria-busy="true"
+          aria-label="Loading statistics"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card/95 px-10 py-8 shadow-lg">
+            <Loader2 className="h-11 w-11 animate-spin text-primary" />
+            <p className="text-sm font-semibold text-foreground">Loading statistics…</p>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

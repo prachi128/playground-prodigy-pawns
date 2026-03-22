@@ -11,7 +11,7 @@ export default function ConditionalNavbar() {
   const pathname = usePathname();
   
   // Routes that use the dashboard theme (sidebar + header)
-  const studentAppRoutes = ['/dashboard', '/play', '/leaderboard', '/adventure', '/learn', '/progress', '/settings', '/puzzles', '/chess-game', '/profile', '/beat-the-bot'];
+  const studentAppRoutes = ['/dashboard', '/play', '/leaderboard', '/adventure', '/learn', '/progress', '/settings', '/puzzles', '/assignments', '/chess-game', '/profile', '/beat-the-bot'];
   // Coach app has its own header — hide main Navbar there too
   const coachAppRoutes = ['/coach'];
 

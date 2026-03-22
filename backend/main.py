@@ -13,7 +13,23 @@ import random
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Import models and utilities
-from models import User, Game, Puzzle, PuzzleAttempt, Achievement, DailyChallenge, PuzzleRace, UserRole, GameInvite, Notification, ParentStudent
+from models import (
+    User,
+    Game,
+    Puzzle,
+    PuzzleAttempt,
+    Achievement,
+    DailyChallenge,
+    PuzzleRace,
+    UserRole,
+    GameInvite,
+    Notification,
+    ParentStudent,
+    Assignment,
+    AssignmentPuzzle,
+    AssignmentCompletion,
+    StudentBatch,
+)
 from database import get_db, SessionLocal
 from auth import (
     get_password_hash,
@@ -57,7 +73,7 @@ from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router
 from parent_endpoints import router as parent_router
 from batch_endpoints import router as batch_router
-
+from assignment_endpoints import router as assignment_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
@@ -302,6 +318,7 @@ app.include_router(coach_router)
 app.include_router(student_router)
 app.include_router(parent_router)
 app.include_router(batch_router)
+app.include_router(assignment_router)
 
 
 @app.get("/api/server-time")
@@ -872,12 +889,70 @@ def get_puzzle(puzzle_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Puzzle not found")
     return puzzle
 
+
+def _record_assignment_completion_if_eligible(
+    db: Session,
+    student_id: int,
+    assignment_id: int,
+    puzzle_id: int,
+) -> None:
+    """If the student may access the assignment and the puzzle belongs to it, insert completion (idempotent)."""
+    batch_ids = [
+        sb.batch_id
+        for sb in db.query(StudentBatch).filter(
+            StudentBatch.student_id == student_id,
+            StudentBatch.is_active == True,
+        ).all()
+    ]
+    a = (
+        db.query(Assignment)
+        .filter(Assignment.id == assignment_id, Assignment.is_active == True)
+        .first()
+    )
+    if not a:
+        return
+    if not (
+        a.student_id == student_id
+        or (a.batch_id is not None and a.batch_id in batch_ids)
+    ):
+        return
+    ap = (
+        db.query(AssignmentPuzzle)
+        .filter(
+            AssignmentPuzzle.assignment_id == assignment_id,
+            AssignmentPuzzle.puzzle_id == puzzle_id,
+        )
+        .first()
+    )
+    if not ap:
+        return
+    existing = (
+        db.query(AssignmentCompletion)
+        .filter(
+            AssignmentCompletion.assignment_id == assignment_id,
+            AssignmentCompletion.student_id == student_id,
+            AssignmentCompletion.puzzle_id == puzzle_id,
+        )
+        .first()
+    )
+    if existing:
+        return
+    db.add(
+        AssignmentCompletion(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            puzzle_id=puzzle_id,
+        )
+    )
+
+
 @app.post("/api/puzzles/{puzzle_id}/attempt", response_model=PuzzleAttemptResponse)
 def submit_puzzle_attempt(
     puzzle_id: int,
     attempt: PuzzleAttemptCreate,
     user_id: int = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    assignment_id: Optional[int] = Query(None, description="When set, record completion for this assignment if eligible"),
+    db: Session = Depends(get_db),
 ):
     """Submit a puzzle attempt and award XP"""
     current_user = db.query(User).filter(User.id == user_id).first()
@@ -923,6 +998,10 @@ def submit_puzzle_attempt(
             "Puzzle solved!",
             f"You earned {xp_earned} XP. Great work!",
             link_url=f"/puzzles/{puzzle_id}",
+        )
+    if assignment_id is not None and attempt.is_solved:
+        _record_assignment_completion_if_eligible(
+            db, current_user.id, assignment_id, puzzle_id
         )
     db.commit()
     db.refresh(puzzle_attempt)

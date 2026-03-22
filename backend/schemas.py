@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, field_serializer
+from pydantic import BaseModel, EmailStr, Field, field_serializer, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 
@@ -401,3 +401,125 @@ class PuzzleRaceCarSelect(BaseModel):
 
 class PuzzleRaceNameSet(BaseModel):
     name: str
+
+# ─────────────────────────────────────────────────────────────
+# Assignment Engine Schemas  (append to the bottom of schemas.py)
+# ─────────────────────────────────────────────────────────────
+
+
+# ── Request schemas ──────────────────────────────────────────
+
+class AssignmentCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    puzzle_ids: List[int]           # ordered list of puzzle IDs
+    batch_id: Optional[int] = None
+    student_id: Optional[int] = None
+    due_date: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def check_target(self) -> "AssignmentCreate":
+        if self.batch_id is None and self.student_id is None:
+            raise ValueError("Either batch_id or student_id must be provided")
+        return self
+
+
+class AssignmentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+
+# ── Small nested schemas ─────────────────────────────────────
+
+class AssignmentPuzzleInfo(BaseModel):
+    puzzle_id: int
+    position: int
+    title: str
+    difficulty: str
+    xp_reward: int
+
+    class Config:
+        from_attributes = True
+
+
+class StudentProgress(BaseModel):
+    student_id: int
+    username: str
+    full_name: str
+    puzzles_completed: int
+    total_puzzles: int
+    completion_pct: float           # 0-100
+    is_complete: bool
+    last_completed_at: Optional[datetime] = None
+
+
+# ── Response schemas ─────────────────────────────────────────
+
+class AssignmentResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    coach_id: int
+    batch_id: Optional[int]
+    batch_name: Optional[str]       # resolved from batch
+    student_id: Optional[int]
+    student_name: Optional[str]     # resolved from student
+    due_date: Optional[datetime]
+    is_active: bool
+    created_at: datetime
+    puzzle_count: int
+    puzzles: List[AssignmentPuzzleInfo] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AssignmentProgressResponse(BaseModel):
+    assignment_id: int
+    title: str
+    total_puzzles: int
+    total_students: int
+    overall_completion_pct: float
+    students: List[StudentProgress]
+
+    class Config:
+        from_attributes = True
+
+
+# ── Student-facing schema (what a student sees) ──────────────
+
+class StudentAssignmentResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    due_date: Optional[datetime]
+    puzzle_count: int
+    puzzles_completed: int
+    completion_pct: float
+    is_complete: bool
+    is_overdue: bool
+
+    class Config:
+        from_attributes = True
+
+
+class StudentAssignmentPuzzleRow(BaseModel):
+    puzzle_id: int
+    position: int
+    title: str
+    difficulty: str
+    xp_reward: int
+    completed: bool
+
+
+class StudentAssignmentDetailResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    due_date: Optional[datetime]
+    puzzles: List[StudentAssignmentPuzzleRow] = []
+
+    class Config:
+        from_attributes = True

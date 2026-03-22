@@ -3,10 +3,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from models import Puzzle, User, DifficultyLevel, UserRole
+from schemas import UserResponse
 from auth import get_current_user
 from database import get_db
 from stockfish_service import get_stockfish_service
@@ -43,11 +44,19 @@ class PuzzleWithAnalysis(BaseModel):
     rating: int
     theme: Optional[str]
     xp_reward: int
-    attempts_count: int
-    success_count: int
-    created_at: datetime
+    attempts_count: Optional[int] = 0
+    success_count: Optional[int] = 0
+    created_at: Optional[datetime] = None
     is_active: bool
-    
+
+    @field_serializer("attempts_count", "success_count")
+    def serialize_count(self, v):
+        return v if v is not None else 0
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, v):
+        return v if v is not None else datetime.min
+
     class Config:
         from_attributes = True
 
@@ -297,35 +306,34 @@ def revalidate_puzzle(
         }
 
 
-@router.get("/stats")
-def get_coach_stats(
-    user: User = Depends(require_coach),
-    db: Session = Depends(get_db)
-):
-    """Get statistics for coach dashboard"""
-    total_puzzles = db.query(Puzzle).count()
-    active_puzzles = db.query(Puzzle).filter(Puzzle.is_active == True).count()
-    
-    # Count by difficulty
-    difficulty_counts = {}
-    for diff in DifficultyLevel:
-        count = db.query(Puzzle).filter(
-            Puzzle.difficulty == diff,
-            Puzzle.is_active == True
-        ).count()
-        difficulty_counts[diff.value] = count
-    
-    # Total attempts and success rate
-    total_attempts = db.query(Puzzle).with_entities(
-        func.sum(Puzzle.attempts_count)
-    ).scalar() or 0
-    
-    total_success = db.query(Puzzle).with_entities(
-        func.sum(Puzzle.success_count)
-    ).scalar() or 0
-    
+def _compute_coach_stats(db: Session) -> dict:
+    """Aggregated puzzle stats (two SQL queries)."""
+    totals = db.query(
+        func.count(Puzzle.id),
+        func.coalesce(
+            func.sum(case((Puzzle.is_active == True, 1), else_=0)),
+            0,
+        ),
+        func.coalesce(func.sum(Puzzle.attempts_count), 0),
+        func.coalesce(func.sum(Puzzle.success_count), 0),
+    ).one()
+
+    total_puzzles = int(totals[0] or 0)
+    active_puzzles = int(totals[1] or 0)
+    total_attempts = int(totals[2] or 0)
+    total_success = int(totals[3] or 0)
+
+    diff_rows = (
+        db.query(Puzzle.difficulty, func.count(Puzzle.id))
+        .filter(Puzzle.is_active == True)
+        .group_by(Puzzle.difficulty)
+        .all()
+    )
+    diff_map = {diff.value: int(cnt) for diff, cnt in diff_rows}
+    difficulty_counts = {diff.value: diff_map.get(diff.value, 0) for diff in DifficultyLevel}
+
     success_rate = (total_success / total_attempts * 100) if total_attempts > 0 else 0
-    
+
     return {
         "total_puzzles": total_puzzles,
         "active_puzzles": active_puzzles,
@@ -333,5 +341,34 @@ def get_coach_stats(
         "difficulty_distribution": difficulty_counts,
         "total_attempts": total_attempts,
         "total_success": total_success,
-        "overall_success_rate": round(success_rate, 2)
+        "overall_success_rate": round(success_rate, 2),
     }
+
+
+@router.get("/bootstrap")
+def coach_bootstrap(
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """
+    Single request: session user (same fields as GET /api/auth/me) + dashboard stats.
+    Avoids sequential /api/auth/me + /api/coach/stats and duplicate User lookups.
+    """
+    from main import get_level_category, sync_user_level_from_rating
+
+    sync_user_level_from_rating(user)
+    db.commit()
+    db.refresh(user)
+    user_payload = UserResponse.model_validate(user).model_dump(mode="json")
+    user_payload["level_category"] = get_level_category(user.level)
+    stats = _compute_coach_stats(db)
+    return {"user": user_payload, "stats": stats}
+
+
+@router.get("/stats")
+def get_coach_stats(
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db)
+):
+    """Get statistics for coach dashboard (aggregated in two queries)."""
+    return _compute_coach_stats(db)

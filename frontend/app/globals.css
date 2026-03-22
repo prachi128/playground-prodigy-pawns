@@ -142,6 +142,47 @@
   background-color: hsl(210, 40%, 98%);
 }
 
+/* Coach app: Inter — clean bold titles / UI sans (reference: forest header + white type) */
+.coach-fonts {
+  font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+[data-coach-shell] .font-heading {
+  font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Coach chrome: forest green (~#2D6A4F) — scoped so student sidebar tokens stay unchanged */
+[data-coach-shell] {
+  color: hsl(var(--foreground));
+  --sidebar-background: 152 41% 30%;
+  --sidebar-accent: 152 44% 22%;
+  --sidebar-border: 152 40% 26%;
+}
+
+[data-coach-shell] .coach-main {
+  background: linear-gradient(
+    180deg,
+    hsl(210 40% 98%) 0%,
+    hsl(220 16% 96%) 48%,
+    hsl(210 32% 97%) 100%
+  );
+}
+
+/* Coach top bar: solid forest green, crisp white type (subtle lift vs background) */
+[data-coach-shell] .coach-header-bar {
+  background: hsl(var(--sidebar-background));
+  color: hsl(var(--sidebar-foreground));
+  border-bottom-color: hsl(var(--sidebar-border));
+  box-shadow: 0 1px 0 0 hsl(0 0% 100% / 0.06);
+}
+
+[data-coach-shell] .coach-header-bar .font-heading {
+  text-shadow: 0 1px 1px hsl(0 0% 0% / 0.12);
+}
+
 /* Animations used by dashboard */
 @keyframes quick-play-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
 .animate-quick-play-pulse { animation: quick-play-pulse 2s ease-in-out infinite; }

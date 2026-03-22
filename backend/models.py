@@ -440,3 +440,60 @@ class Payment(Base):
     parent = relationship("User", foreign_keys=[parent_id])
     student = relationship("User", foreign_keys=[student_id])
     batch = relationship("Batch", back_populates="payments")
+
+# ─────────────────────────────────────────────────────────────
+# Assignment Engine Models  (append to the bottom of models.py)
+# ─────────────────────────────────────────────────────────────
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    coach_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title       = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Target: batch OR individual student (at least one must be set)
+    batch_id    = Column(Integer, ForeignKey("batches.id"),  nullable=True)
+    student_id  = Column(Integer, ForeignKey("users.id"),    nullable=True)
+
+    due_date    = Column(DateTime, nullable=True)
+    is_active   = Column(Boolean, default=True, nullable=False)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    coach       = relationship("User",  foreign_keys=[coach_id])
+    batch       = relationship("Batch", foreign_keys=[batch_id])
+    student     = relationship("User",  foreign_keys=[student_id])
+    puzzles     = relationship("AssignmentPuzzle",    back_populates="assignment",
+                               cascade="all, delete-orphan", order_by="AssignmentPuzzle.position")
+    completions = relationship("AssignmentCompletion", back_populates="assignment",
+                               cascade="all, delete-orphan")
+
+
+class AssignmentPuzzle(Base):
+    __tablename__ = "assignment_puzzles"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    puzzle_id     = Column(Integer, ForeignKey("puzzles.id"),     nullable=False)
+    position      = Column(Integer, default=0, nullable=False)
+
+    # Relationships
+    assignment = relationship("Assignment", back_populates="puzzles")
+    puzzle     = relationship("Puzzle")
+
+
+class AssignmentCompletion(Base):
+    __tablename__ = "assignment_completions"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("assignments.id"), nullable=False)
+    student_id    = Column(Integer, ForeignKey("users.id"),       nullable=False)
+    puzzle_id     = Column(Integer, ForeignKey("puzzles.id"),     nullable=False)
+    completed_at  = Column(DateTime, default=datetime.utcnow,    nullable=False)
+
+    # Relationships
+    assignment = relationship("Assignment", back_populates="completions")
+    student    = relationship("User",   foreign_keys=[student_id])
+    puzzle     = relationship("Puzzle", foreign_keys=[puzzle_id])

@@ -2,19 +2,59 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  batchAPI, coachAPI, Batch, ClassSession, AnnouncementItem,
-  StudentBatchInfo, PaymentStatusOverview, User,
+  batchAPI,
+  coachAPI,
+  type Batch,
+  type ClassSession,
+  type AnnouncementItem,
+  type StudentBatchInfo,
+  type PaymentStatusOverview,
+  type User,
 } from '@/lib/api';
 import {
-  Loader2, ArrowLeft, Users, Calendar, Megaphone, CreditCard,
-  Plus, ExternalLink, AlertTriangle, CheckCircle, X, Search,
+  Loader2,
+  ArrowLeft,
+  Users,
+  Calendar,
+  Megaphone,
+  CreditCard,
+  Plus,
+  ExternalLink,
+  AlertTriangle,
+  CheckCircle,
+  X,
+  Search,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+  Archive,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 type Tab = 'students' | 'classes' | 'announcements' | 'payments';
+
+const panel = 'rounded-xl border border-border bg-card shadow-sm';
+const STUDENT_PAGE = 10;
+
+function rupeesToPaise(s: string): number {
+  const n = parseFloat(s);
+  if (Number.isNaN(n) || n < 0) return 0;
+  return Math.round(n * 100);
+}
+
+function formatInrFromPaise(paise: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(paise / 100);
+}
 
 export default function BatchDetailPage() {
   const params = useParams();
@@ -25,61 +65,129 @@ export default function BatchDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('students');
   const [loading, setLoading] = useState(true);
 
-  // Students
   const [students, setStudents] = useState<StudentBatchInfo[]>([]);
   const [allStudents, setAllStudents] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [studentPage, setStudentPage] = useState(1);
+  const [removeId, setRemoveId] = useState<number | null>(null);
 
-  // Classes
   const [classes, setClasses] = useState<ClassSession[]>([]);
   const [showAddClass, setShowAddClass] = useState(false);
-  const [classForm, setClassForm] = useState({ date: '', duration_minutes: '60', topic: '', meeting_link: '', notes: '' });
+  const [classForm, setClassForm] = useState({
+    date: '',
+    duration_minutes: '60',
+    topic: '',
+    meeting_link: '',
+    notes: '',
+  });
 
-  // Announcements
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [showAddAnn, setShowAddAnn] = useState(false);
   const [annForm, setAnnForm] = useState({ title: '', message: '' });
 
-  // Payment Status
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusOverview | null>(null);
 
+  const [showEditBatch, setShowEditBatch] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    schedule: '',
+    monthly_fee: '',
+    is_active: true,
+  });
+  const [savingBatch, setSavingBatch] = useState(false);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [b, s, c, a, p] = await Promise.all([
+        batchAPI.get(batchId),
+        batchAPI.listStudents(batchId),
+        batchAPI.listClasses(batchId),
+        batchAPI.listAnnouncements(batchId),
+        batchAPI.getPaymentStatus(batchId),
+      ]);
+      setBatch(b);
+      setStudents(s);
+      setClasses(c);
+      setAnnouncements(a);
+      setPaymentStatus(p);
+      if (b) {
+        setEditForm({
+          name: b.name,
+          description: b.description ?? '',
+          schedule: b.schedule ?? '',
+          monthly_fee: b.monthly_fee ? (b.monthly_fee / 100).toFixed(2) : '',
+          is_active: b.is_active,
+        });
+      }
+    } catch {
+      toast.error('Failed to load batch');
+      router.push('/coach/batches');
+    } finally {
+      setLoading(false);
+    }
+  }, [batchId, router]);
+
   useEffect(() => {
-    Promise.all([
-      batchAPI.get(batchId),
-      batchAPI.listStudents(batchId),
-      batchAPI.listClasses(batchId),
-      batchAPI.listAnnouncements(batchId),
-      batchAPI.getPaymentStatus(batchId),
-    ])
-      .then(([b, s, c, a, p]) => {
-        setBatch(b);
-        setStudents(s);
-        setClasses(c);
-        setAnnouncements(a);
-        setPaymentStatus(p);
-      })
-      .catch(() => toast.error('Failed to load batch'))
-      .finally(() => setLoading(false));
-  }, [batchId]);
+    loadAll();
+  }, [loadAll]);
+
+  const handleSaveBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batch || !editForm.name.trim()) return;
+    setSavingBatch(true);
+    try {
+      const updated = await batchAPI.update(batch.id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim() || undefined,
+        schedule: editForm.schedule.trim() || undefined,
+        monthly_fee: rupeesToPaise(editForm.monthly_fee),
+        is_active: editForm.is_active,
+      });
+      setBatch(updated);
+      toast.success('Batch updated');
+      setShowEditBatch(false);
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to update');
+    } finally {
+      setSavingBatch(false);
+    }
+  };
 
   const handleAddStudent = async (studentId: number) => {
     try {
       await batchAPI.addStudent(batchId, studentId);
-      toast.success('Student added!');
+      toast.success('Student added');
       setShowAddStudent(false);
+      setSearchQuery('');
       const updated = await batchAPI.listStudents(batchId);
       setStudents(updated);
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to add student');
+      const b = await batchAPI.get(batchId);
+      setBatch(b);
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to add student');
     }
   };
 
-  const handleRemoveStudent = async (studentId: number) => {
+  const confirmRemove = async () => {
+    if (removeId == null) return;
     try {
-      await batchAPI.removeStudent(batchId, studentId);
+      await batchAPI.removeStudent(batchId, removeId);
       toast.success('Student removed');
-      setStudents(students.filter(s => s.student_id !== studentId));
+      setStudents((prev) => prev.filter((s) => s.student_id !== removeId));
+      setRemoveId(null);
+      const b = await batchAPI.get(batchId);
+      setBatch(b);
     } catch {
       toast.error('Failed to remove student');
     }
@@ -87,11 +195,14 @@ export default function BatchDetailPage() {
 
   const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!classForm.date) { toast.error('Date is required'); return; }
+    if (!classForm.date) {
+      toast.error('Date is required');
+      return;
+    }
     try {
       const newClass = await batchAPI.createClass(batchId, {
         date: classForm.date,
-        duration_minutes: parseInt(classForm.duration_minutes) || 60,
+        duration_minutes: parseInt(classForm.duration_minutes, 10) || 60,
         topic: classForm.topic || undefined,
         meeting_link: classForm.meeting_link || undefined,
         notes: classForm.notes || undefined,
@@ -99,98 +210,163 @@ export default function BatchDetailPage() {
       setClasses([newClass, ...classes]);
       setShowAddClass(false);
       setClassForm({ date: '', duration_minutes: '60', topic: '', meeting_link: '', notes: '' });
-      toast.success('Class session created!');
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to create class');
+      toast.success('Class session created');
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to create class');
     }
   };
 
   const handleAddAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!annForm.title.trim() || !annForm.message.trim()) { toast.error('Title and message required'); return; }
+    if (!annForm.title.trim() || !annForm.message.trim()) {
+      toast.error('Title and message required');
+      return;
+    }
     try {
       const newAnn = await batchAPI.createAnnouncement(batchId, annForm);
       setAnnouncements([newAnn, ...announcements]);
       setShowAddAnn(false);
       setAnnForm({ title: '', message: '' });
-      toast.success('Announcement posted!');
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to post announcement');
+      toast.success('Announcement posted');
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to post');
     }
   };
 
-  const searchStudents = async () => {
+  const searchStudents = useCallback(async () => {
     if (searchQuery.length < 2) return;
     try {
       const results = await coachAPI.getStudents();
-      setAllStudents(results.filter((u: User) =>
-        u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.username.toLowerCase().includes(searchQuery.toLowerCase())
-      ));
-    } catch { setAllStudents([]); }
-  };
+      const list = Array.isArray(results) ? results : [];
+      setAllStudents(
+        list.filter(
+          (u: User) =>
+            (u.full_name && u.full_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            (u.username && u.username.toLowerCase().includes(searchQuery.toLowerCase())),
+        ),
+      );
+    } catch {
+      setAllStudents([]);
+    }
+  }, [searchQuery]);
 
   useEffect(() => {
     if (showAddStudent && searchQuery.length >= 2) {
-      const timeout = setTimeout(searchStudents, 300);
-      return () => clearTimeout(timeout);
+      const t = setTimeout(searchStudents, 300);
+      return () => clearTimeout(t);
     }
-  }, [searchQuery, showAddStudent]);
+  }, [searchQuery, showAddStudent, searchStudents]);
 
-  if (loading) {
+  const now = new Date();
+  const upcomingClasses = classes.filter((c) => new Date(c.date) >= now);
+  const pastClasses = classes.filter((c) => new Date(c.date) < now);
+
+  const totalStudentPages = Math.max(1, Math.ceil(students.length / STUDENT_PAGE));
+  const safeStudentPage = Math.min(studentPage, totalStudentPages);
+  const studentSlice = students.slice(
+    (safeStudentPage - 1) * STUDENT_PAGE,
+    safeStudentPage * STUDENT_PAGE,
+  );
+
+  useEffect(() => {
+    setStudentPage(1);
+  }, [students.length]);
+
+  if (loading || !batch) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Loading batch…</p>
+        </div>
       </div>
     );
-  }
-
-  if (!batch) {
-    return <p className="text-center text-gray-500 py-16">Batch not found.</p>;
   }
 
   const tabs: { key: Tab; label: string; icon: typeof Users; count?: number }[] = [
     { key: 'students', label: 'Students', icon: Users, count: students.length },
     { key: 'classes', label: 'Classes', icon: Calendar, count: classes.length },
-    { key: 'announcements', label: 'Announcements', icon: Megaphone, count: announcements.length },
-    { key: 'payments', label: 'Payments', icon: CreditCard, count: paymentStatus?.overdue_count },
+    { key: 'announcements', label: 'News', icon: Megaphone, count: announcements.length },
+    {
+      key: 'payments',
+      label: 'Payments',
+      icon: CreditCard,
+      count: paymentStatus?.overdue_count,
+    },
   ];
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push('/coach/batches')} className="p-2 hover:bg-gray-100 rounded-lg transition">
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">{batch.name}</h1>
-          <p className="text-gray-500 text-sm">
-            {batch.schedule && <span>{batch.schedule} &middot; </span>}
-            {batch.monthly_fee > 0 && <span>${(batch.monthly_fee / 100).toFixed(2)}/month &middot; </span>}
+      <div className="mb-6 flex flex-col gap-4 border-b border-border/80 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => router.push('/coach/batches')}
+            className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            All batches
+          </button>
+          <div className="flex flex-wrap items-start gap-3">
+            <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {batch.name}
+            </h1>
+            {!batch.is_active && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                <Archive className="h-3 w-3" /> Archived
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {batch.schedule && <span>{batch.schedule} · </span>}
+            {batch.monthly_fee > 0 && (
+              <span>{formatInrFromPaise(batch.monthly_fee)}/month · </span>
+            )}
             {students.length} students
           </p>
         </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => setShowEditBatch(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/60"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit batch
+          </button>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
+      <div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-border bg-muted/40 p-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
+            type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition flex-1 justify-center ${
-              activeTab === tab.key ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors sm:min-w-[120px] sm:flex-none ${
+              activeTab === tab.key
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <tab.icon className="w-4 h-4" />
+            <tab.icon className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{tab.label}</span>
             {tab.count !== undefined && tab.count > 0 && (
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                tab.key === 'payments' && (paymentStatus?.overdue_count ?? 0) > 0
-                  ? 'bg-red-100 text-red-600'
-                  : 'bg-gray-200 text-gray-600'
-              }`}>
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-xs ${
+                  tab.key === 'payments' && (paymentStatus?.overdue_count ?? 0) > 0
+                    ? 'bg-destructive/15 text-destructive'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
                 {tab.count}
               </span>
             )}
@@ -198,42 +374,45 @@ export default function BatchDetailPage() {
         ))}
       </div>
 
-      {/* Students Tab */}
       {activeTab === 'students' && (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 flex justify-end">
             <button
-              onClick={() => setShowAddStudent(!showAddStudent)}
-              className="flex items-center gap-1 bg-primary-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition"
+              type="button"
+              onClick={() => setShowAddStudent((s) => !s)}
+              className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
             >
-              <Plus className="w-4 h-4" /> Add Student
+              <Plus className="h-4 w-4" /> Add student
             </button>
           </div>
 
           {showAddStudent && (
-            <div className="bg-white rounded-xl border-2 border-primary-200 p-4 mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Search className="w-4 h-4 text-gray-400" />
+            <div className={`${panel} mb-4 p-4`}>
+              <div className="mb-3 flex items-center gap-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
-                  placeholder="Search students by name..."
+                  className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Search students (min 2 characters)…"
                 />
               </div>
               {allStudents.length > 0 && (
-                <div className="space-y-1 max-h-48 overflow-y-auto">
+                <div className="max-h-48 space-y-1 overflow-y-auto">
                   {allStudents
-                    .filter(s => !students.some(sb => sb.student_id === s.id))
+                    .filter((s) => !students.some((sb) => sb.student_id === s.id))
                     .map((s) => (
                       <button
                         key={s.id}
+                        type="button"
                         onClick={() => handleAddStudent(s.id)}
-                        className="w-full flex items-center justify-between p-2 hover:bg-primary-50 rounded-lg text-sm text-left transition"
+                        className="flex w-full items-center justify-between rounded-lg p-2 text-left text-sm transition-colors hover:bg-muted/60"
                       >
-                        <span className="text-gray-800">{s.full_name} <span className="text-gray-400">@{s.username}</span></span>
-                        <Plus className="w-4 h-4 text-primary-500" />
+                        <span className="text-foreground">
+                          {s.full_name} <span className="text-muted-foreground">@{s.username}</span>
+                        </span>
+                        <Plus className="h-4 w-4 text-primary" />
                       </button>
                     ))}
                 </div>
@@ -241,179 +420,219 @@ export default function BatchDetailPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-xl border-2 border-gray-200 divide-y divide-gray-100">
-            {students.map((sb) => (
-              <div key={sb.student_id} className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-semibold text-gray-800">{sb.student_name}</p>
-                  <p className="text-sm text-gray-500">@{sb.student_username}</p>
+          <div className={`${panel} divide-y divide-border`}>
+            {studentSlice.map((sb) => (
+              <div key={sb.student_id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <Link
+                    href={`/coach/students/${sb.student_id}`}
+                    className="font-semibold text-primary hover:text-primary/90 hover:underline"
+                  >
+                    {sb.student_name}
+                  </Link>
+                  <p className="text-sm text-muted-foreground">@{sb.student_username}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                    sb.payment_status === 'paid' ? 'bg-green-100 text-green-700'
-                    : sb.payment_status === 'overdue' ? 'bg-red-100 text-red-700'
-                    : 'bg-amber-100 text-amber-700'
-                  }`}>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      sb.payment_status === 'paid'
+                        ? 'bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]'
+                        : sb.payment_status === 'overdue'
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-[hsl(var(--gold-light))] text-[hsl(var(--gold-dark))]'
+                    }`}
+                  >
                     {sb.payment_status}
                   </span>
                   <button
-                    onClick={() => handleRemoveStudent(sb.student_id)}
-                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                    type="button"
+                    onClick={() => setRemoveId(sb.student_id)}
+                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    title="Remove from batch"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>
             ))}
             {students.length === 0 && (
-              <p className="text-gray-500 text-center py-8">No students in this batch yet.</p>
+              <p className="p-8 text-center text-muted-foreground">No students in this batch yet.</p>
             )}
           </div>
+
+          {students.length > STUDENT_PAGE && (
+            <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+              <p className="text-sm text-muted-foreground">
+                {safeStudentPage} / {totalStudentPages} · {students.length} total
+              </p>
+              <div className="flex overflow-hidden rounded-lg border border-border bg-card">
+                <button
+                  type="button"
+                  disabled={safeStudentPage <= 1}
+                  onClick={() => setStudentPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center border-r border-border hover:bg-muted disabled:opacity-40"
+                  aria-label="Previous"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={safeStudentPage >= totalStudentPages}
+                  onClick={() => setStudentPage((p) => Math.min(totalStudentPages, p + 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center hover:bg-muted disabled:opacity-40"
+                  aria-label="Next"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Classes Tab */}
       {activeTab === 'classes' && (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 flex justify-end">
             <button
-              onClick={() => setShowAddClass(!showAddClass)}
-              className="flex items-center gap-1 bg-primary-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition"
+              type="button"
+              onClick={() => setShowAddClass((s) => !s)}
+              className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
             >
-              <Plus className="w-4 h-4" /> New Class
+              <Plus className="h-4 w-4" /> New class
             </button>
           </div>
 
           {showAddClass && (
-            <form onSubmit={handleAddClass} className="bg-white rounded-xl border-2 border-primary-200 p-4 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <form onSubmit={handleAddClass} className={`${panel} mb-4 p-4`}>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date & Time *</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Date & time *</label>
                   <input
                     type="datetime-local"
                     value={classForm.date}
                     onChange={(e) => setClassForm({ ...classForm, date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Duration (min)</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Duration (min)</label>
                   <input
                     type="number"
                     value={classForm.duration_minutes}
                     onChange={(e) => setClassForm({ ...classForm, duration_minutes: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Topic</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Topic</label>
                   <input
                     type="text"
                     value={classForm.topic}
                     onChange={(e) => setClassForm({ ...classForm, topic: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
-                    placeholder="Opening Principles"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Opening principles"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Meeting Link</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Meeting link</label>
                   <input
                     type="url"
                     value={classForm.meeting_link}
                     onChange={(e) => setClassForm({ ...classForm, meeting_link: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
-                    placeholder="https://zoom.us/j/..."
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="https://…"
                   />
                 </div>
               </div>
               <div className="mt-3 flex gap-2">
-                <button type="submit" className="bg-primary-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition">
-                  Create Class
+                <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+                  Create class
                 </button>
-                <button type="button" onClick={() => setShowAddClass(false)} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition">
+                <button
+                  type="button"
+                  onClick={() => setShowAddClass(false)}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold"
+                >
                   Cancel
                 </button>
               </div>
             </form>
           )}
 
-          <div className="space-y-2">
-            {classes.map((cls) => (
-              <div key={cls.id} className="bg-white rounded-xl border-2 border-gray-200 p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-gray-800">{cls.topic || 'Chess Class'}</p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(cls.date).toLocaleDateString('en-US', {
-                      weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                    })}
-                    {' '}&middot; {cls.duration_minutes} min
-                  </p>
-                </div>
-                {cls.meeting_link && (
-                  <a
-                    href={cls.meeting_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-primary-600 text-sm font-semibold hover:text-primary-700"
-                  >
-                    Link <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
+          {upcomingClasses.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-heading mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Upcoming
+              </h3>
+              <div className="space-y-2">
+                {upcomingClasses.map((cls) => (
+                  <ClassRow key={cls.id} cls={cls} />
+                ))}
               </div>
-            ))}
-            {classes.length === 0 && (
-              <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center text-gray-500">
-                No classes scheduled yet.
+            </div>
+          )}
+
+          {pastClasses.length > 0 && (
+            <div>
+              <h3 className="font-heading mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Past
+              </h3>
+              <div className="space-y-2">
+                {pastClasses.map((cls) => (
+                  <ClassRow key={cls.id} cls={cls} muted />
+                ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {classes.length === 0 && (
+            <div className={`${panel} p-10 text-center text-muted-foreground`}>No classes scheduled yet.</div>
+          )}
         </div>
       )}
 
-      {/* Announcements Tab */}
       {activeTab === 'announcements' && (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 flex justify-end">
             <button
-              onClick={() => setShowAddAnn(!showAddAnn)}
-              className="flex items-center gap-1 bg-primary-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition"
+              type="button"
+              onClick={() => setShowAddAnn((s) => !s)}
+              className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
             >
-              <Plus className="w-4 h-4" /> New Announcement
+              <Plus className="h-4 w-4" /> New announcement
             </button>
           </div>
 
           {showAddAnn && (
-            <form onSubmit={handleAddAnnouncement} className="bg-white rounded-xl border-2 border-primary-200 p-4 mb-4">
+            <form onSubmit={handleAddAnnouncement} className={`${panel} mb-4 p-4`}>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Title *</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Title *</label>
                   <input
                     type="text"
                     value={annForm.title}
                     onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800"
-                    placeholder="Important Update"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Message *</label>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Message *</label>
                   <textarea
                     value={annForm.message}
                     onChange={(e) => setAnnForm({ ...annForm, message: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-primary-500 text-gray-800 resize-none"
                     rows={3}
-                    placeholder="Write your announcement..."
+                    className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm"
                     required
                   />
                 </div>
               </div>
               <div className="mt-3 flex gap-2">
-                <button type="submit" className="bg-primary-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition">
+                <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
                   Post
                 </button>
-                <button type="button" onClick={() => setShowAddAnn(false)} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition">
+                <button type="button" onClick={() => setShowAddAnn(false)} className="rounded-lg border px-4 py-2 text-sm font-semibold">
                   Cancel
                 </button>
               </div>
@@ -422,88 +641,215 @@ export default function BatchDetailPage() {
 
           <div className="space-y-3">
             {announcements.map((ann) => (
-              <div key={ann.id} className="bg-white rounded-xl border-2 border-gray-200 p-4">
-                <div className="flex justify-between mb-1">
-                  <p className="font-semibold text-gray-800">{ann.title}</p>
-                  <span className="text-xs text-gray-400">{new Date(ann.created_at).toLocaleDateString()}</span>
+              <div key={ann.id} className={`${panel} p-4`}>
+                <div className="mb-1 flex justify-between gap-2">
+                  <p className="font-heading font-semibold text-card-foreground">{ann.title}</p>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {new Date(ann.created_at).toLocaleDateString()}
+                  </span>
                 </div>
-                <p className="text-sm text-gray-600">{ann.message}</p>
+                <p className="text-sm text-muted-foreground">{ann.message}</p>
               </div>
             ))}
             {announcements.length === 0 && (
-              <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center text-gray-500">
-                No announcements yet.
-              </div>
+              <div className={`${panel} p-10 text-center text-muted-foreground`}>No announcements yet.</div>
             )}
           </div>
         </div>
       )}
 
-      {/* Payments Tab */}
       {activeTab === 'payments' && paymentStatus && (
         <div>
-          {/* Summary */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-xl border-2 border-gray-200 p-4 text-center">
-              <p className="text-2xl font-bold text-gray-800">{paymentStatus.total_students}</p>
-              <p className="text-xs text-gray-500">Total Students</p>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className={`${panel} p-4 text-center`}>
+              <p className="font-heading text-2xl font-bold text-foreground">{paymentStatus.total_students}</p>
+              <p className="text-xs text-muted-foreground">Students</p>
             </div>
-            <div className="bg-green-50 rounded-xl border-2 border-green-200 p-4 text-center">
-              <p className="text-2xl font-bold text-green-700">{paymentStatus.paid_count}</p>
-              <p className="text-xs text-green-600">Paid</p>
+            <div className={`${panel} border-[hsl(var(--green-medium))]/25 bg-[hsl(var(--green-very-light))]/40 p-4 text-center`}>
+              <p className="font-heading text-2xl font-bold text-[hsl(var(--green-medium))]">{paymentStatus.paid_count}</p>
+              <p className="text-xs text-[hsl(var(--green-medium))]">Paid</p>
             </div>
-            <div className={`rounded-xl border-2 p-4 text-center ${
-              paymentStatus.overdue_count > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
-            }`}>
-              <p className={`text-2xl font-bold ${paymentStatus.overdue_count > 0 ? 'text-red-700' : 'text-gray-800'}`}>
+            <div
+              className={`${panel} p-4 text-center ${
+                paymentStatus.overdue_count > 0 ? 'border-destructive/30 bg-destructive/5' : ''
+              }`}
+            >
+              <p
+                className={`font-heading text-2xl font-bold ${
+                  paymentStatus.overdue_count > 0 ? 'text-destructive' : 'text-foreground'
+                }`}
+              >
                 {paymentStatus.overdue_count}
               </p>
-              <p className={`text-xs ${paymentStatus.overdue_count > 0 ? 'text-red-600' : 'text-gray-500'}`}>Overdue</p>
+              <p className={`text-xs ${paymentStatus.overdue_count > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                Overdue
+              </p>
             </div>
           </div>
 
           {paymentStatus.is_past_deadline && paymentStatus.overdue_count > 0 && (
-            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3 mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 p-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
               <div>
-                <p className="font-semibold text-red-800">
-                  {paymentStatus.overdue_count} student(s) have overdue payments
+                <p className="font-semibold text-destructive">
+                  {paymentStatus.overdue_count} student(s) overdue
                 </p>
-                <p className="text-sm text-red-600">
-                  Payment deadline (10th) has passed for {paymentStatus.billing_month}.
+                <p className="text-sm text-muted-foreground">
+                  Deadline (10th) passed for {paymentStatus.billing_month}.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Student Payment List */}
-          <div className="bg-white rounded-xl border-2 border-gray-200 divide-y divide-gray-100">
+          <div className={`${panel} divide-y divide-border`}>
             {paymentStatus.students.map((s) => (
               <div key={s.student_id} className="flex items-center justify-between p-4">
                 <div>
-                  <p className="font-semibold text-gray-800">{s.student_name}</p>
-                  <p className="text-sm text-gray-500">@{s.student_username}</p>
+                  <Link
+                    href={`/coach/students/${s.student_id}`}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {s.student_name}
+                  </Link>
+                  <p className="text-sm text-muted-foreground">@{s.student_username}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   {s.payment_status === 'paid' ? (
-                    <span className="flex items-center gap-1 text-green-600 text-sm font-semibold">
-                      <CheckCircle className="w-4 h-4" /> Paid
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[hsl(var(--green-medium))]">
+                      <CheckCircle className="h-4 w-4" /> Paid
                     </span>
                   ) : s.is_overdue ? (
-                    <span className="flex items-center gap-1 text-red-600 text-sm font-semibold">
-                      <AlertTriangle className="w-4 h-4" /> Overdue
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive">
+                      <AlertTriangle className="h-4 w-4" /> Overdue
                     </span>
                   ) : (
-                    <span className="text-amber-600 text-sm font-semibold">Pending</span>
+                    <span className="text-sm font-semibold text-[hsl(var(--gold-dark))]">Pending</span>
                   )}
                 </div>
               </div>
             ))}
             {paymentStatus.students.length === 0 && (
-              <p className="text-gray-500 text-center py-8">No students in this batch.</p>
+              <p className="p-8 text-center text-muted-foreground">No students in this batch.</p>
             )}
           </div>
         </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={removeId !== null}
+        title="Remove student from batch?"
+        message="They will lose this batch on their roster until added again."
+        confirmText="Remove"
+        cancelText="Cancel"
+        isDanger
+        onConfirm={confirmRemove}
+        onCancel={() => setRemoveId(null)}
+      />
+
+      {showEditBatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl">
+            <h2 className="font-heading mb-4 text-xl font-bold">Edit batch</h2>
+            <form onSubmit={handleSaveBatch} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Name *</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Schedule</label>
+                <input
+                  type="text"
+                  value={editForm.schedule}
+                  onChange={(e) => setEditForm({ ...editForm, schedule: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Monthly fee (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editForm.monthly_fee}
+                  onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Description</label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editForm.is_active}
+                  onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })}
+                  className="rounded border-input"
+                />
+                Batch is active
+              </label>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={savingBatch}
+                  className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {savingBatch ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditBatch(false)}
+                  className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClassRow({ cls, muted }: { cls: ClassSession; muted?: boolean }) {
+  return (
+    <div
+      className={`flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between ${muted ? 'opacity-90' : ''}`}
+    >
+      <div>
+        <p className="font-semibold text-foreground">{cls.topic || 'Chess class'}</p>
+        <p className="text-sm text-muted-foreground">
+          {new Date(cls.date).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}{' '}
+          · {cls.duration_minutes} min
+        </p>
+      </div>
+      {cls.meeting_link && (
+        <a
+          href={cls.meeting_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary/90"
+        >
+          Link <ExternalLink className="h-3 w-3" />
+        </a>
       )}
     </div>
   );

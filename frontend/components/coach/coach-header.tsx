@@ -2,34 +2,18 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
-import {
-  LayoutDashboard,
-  Puzzle,
-  PlusCircle,
-  Users,
-  Layers,
-  ChevronDown,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, Menu } from "lucide-react";
 
-const coachNav = [
-  { label: "Dashboard", href: "/coach", icon: LayoutDashboard },
-  { label: "Students", href: "/coach/students", icon: Users },
-  { label: "Batches", href: "/coach/batches", icon: Layers },
-  { label: "Puzzles", href: "/coach/puzzles", icon: Puzzle },
-  { label: "Create Puzzle", href: "/coach/puzzles/create", icon: PlusCircle },
-];
+interface CoachHeaderProps {
+  onMenuClick: () => void;
+}
 
-export function CoachHeader() {
-  const pathname = usePathname();
+export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const displayName = user?.full_name?.split(" ")[0] ?? "Coach";
@@ -46,120 +30,75 @@ export function CoachHeader() {
 
   const handleLogout = async () => {
     setUserMenuOpen(false);
-    setMobileNavOpen(false);
     await logout();
     router.push("/login");
   };
 
   return (
-    <header className="sticky top-0 z-40 rounded-b-2xl bg-gradient-to-r from-primary-500 to-purple-600 px-4 shadow-lg sm:px-6 lg:px-8">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen((o) => !o)}
-            className="rounded-xl p-2.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
-            aria-label="Toggle menu"
-          >
-            {mobileNavOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-          <Link
-            href="/coach"
-            className="flex items-center gap-2 text-white no-underline"
-          >
-            <span className="text-2xl" role="img" aria-hidden>👨‍🏫</span>
-            <span className="text-xl font-bold">Coach Dashboard</span>
-          </Link>
-
-          <nav className="ml-2 hidden items-center gap-1 lg:flex">
-            {coachNav.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/coach" && pathname?.startsWith(item.href));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-all ${
-                    isActive
-                      ? "bg-white/20 text-white shadow-md"
-                      : "text-white/90 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="relative flex items-center" ref={userMenuRef}>
-          <button
-            type="button"
-            onClick={() => setUserMenuOpen((o) => !o)}
-            className="flex items-center gap-2 rounded-xl py-2 pl-2 pr-2 text-left transition-colors hover:bg-white/10 lg:pl-3 lg:pr-2"
-            aria-expanded={userMenuOpen}
-            aria-haspopup="true"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/30 bg-white/20 text-sm font-bold text-white">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-            <span className="hidden max-w-[120px] truncate text-sm font-bold text-white lg:block">
-              {displayName}
+    <header className="coach-header-bar sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="rounded-xl p-2.5 text-sidebar-foreground/85 transition-colors hover:bg-white/10 hover:text-sidebar-foreground lg:hidden"
+          aria-label="Open menu"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+        <Link
+          href="/coach"
+          className="hidden min-w-0 items-center gap-2.5 text-sidebar-foreground no-underline sm:flex"
+        >
+          <LayoutDashboard className="h-5 w-5 shrink-0 text-amber-300/90" aria-hidden />
+          <div className="min-w-0">
+            <span className="font-heading block truncate text-lg font-bold leading-tight tracking-tight">
+              Coach dashboard
             </span>
-            <ChevronDown
-              className={`h-4 w-4 text-white/80 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-
-          {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-52 overflow-hidden rounded-2xl border-2 border-purple-200 bg-white py-1 shadow-xl">
-              <div className="border-b-2 border-gray-100 px-3 py-2">
-                <p className="truncate text-sm font-bold text-gray-800">{user?.full_name ?? displayName}</p>
-                <p className="truncate text-xs text-gray-500">{user?.email ?? ""}</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
+            <span className="mt-0.5 block text-[11px] font-medium text-sidebar-foreground/65">
+              Instruction &amp; analytics
+            </span>
+          </div>
+        </Link>
       </div>
 
-      {mobileNavOpen && (
-        <div className="border-t-2 border-white/20 bg-white/5 px-4 py-3 lg:hidden">
-          <nav className="flex flex-col gap-1">
-            {coachNav.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/coach" && pathname?.startsWith(item.href));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "text-white/90 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-      )}
+      <div className="relative flex items-center" ref={userMenuRef}>
+        <button
+          type="button"
+          onClick={() => setUserMenuOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-xl py-2 pl-2 pr-2 text-left transition-colors hover:bg-white/10 lg:pl-3"
+          aria-expanded={userMenuOpen}
+          aria-haspopup="true"
+        >
+          <div className="sidebar-avatar flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#FCD34D] bg-white/10 text-sm font-bold text-sidebar-foreground">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          <span className="hidden max-w-[140px] truncate text-sm font-semibold text-sidebar-foreground lg:block">
+            {displayName}
+          </span>
+          <ChevronDown
+            className={`hidden h-4 w-4 text-sidebar-foreground/60 transition-transform lg:block ${userMenuOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {userMenuOpen && (
+          <div className="animate-dropdown-slide absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl">
+            <div className="border-b border-border px-3 py-2.5">
+              <p className="truncate text-sm font-semibold text-card-foreground">
+                {user?.full_name ?? displayName}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

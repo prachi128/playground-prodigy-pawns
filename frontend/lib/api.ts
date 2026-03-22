@@ -27,7 +27,10 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    const isSessionCheck = originalRequest?.url?.includes('/api/auth/me') && originalRequest?.method === 'get';
+    const reqUrl = String(originalRequest?.url ?? '');
+    const isSessionCheck =
+      originalRequest?.method === 'get' &&
+      (reqUrl.includes('/api/auth/me') || reqUrl.includes('/api/coach/bootstrap'));
     if (isSessionCheck) {
       return Promise.reject(error);
     }
@@ -238,12 +241,60 @@ export const puzzleAPI = {
       moves_made: string;
       time_taken: number;
       hints_used?: number;
-    }
+    },
+    options?: { assignmentId?: number | null }
   ) => {
-    const response = await api.post(`/api/puzzles/${puzzleId}/attempt`, {
+    const params = new URLSearchParams();
+    if (options?.assignmentId != null && options.assignmentId !== undefined) {
+      params.set('assignment_id', String(options.assignmentId));
+    }
+    const q = params.toString();
+    const url = `/api/puzzles/${puzzleId}/attempt${q ? `?${q}` : ''}`;
+    const response = await api.post(url, {
       puzzle_id: puzzleId,
       ...data,
     });
+    return response.data;
+  },
+};
+
+// Student assignments (coach-created)
+export interface StudentAssignmentSummary {
+  id: number;
+  title: string;
+  description?: string | null;
+  due_date?: string | null;
+  puzzle_count: number;
+  puzzles_completed: number;
+  completion_pct: number;
+  is_complete: boolean;
+  is_overdue: boolean;
+}
+
+export interface StudentAssignmentPuzzleRow {
+  puzzle_id: number;
+  position: number;
+  title: string;
+  difficulty: string;
+  xp_reward: number;
+  completed: boolean;
+}
+
+export interface StudentAssignmentDetail {
+  id: number;
+  title: string;
+  description?: string | null;
+  due_date?: string | null;
+  puzzles: StudentAssignmentPuzzleRow[];
+}
+
+export const assignmentAPI = {
+  getMyAssignments: async (): Promise<StudentAssignmentSummary[]> => {
+    const response = await api.get('/api/assignments/student/my-assignments');
+    return response.data;
+  },
+  getStudentAssignmentDetail: async (assignmentId: number): Promise<StudentAssignmentDetail> => {
+    const response = await api.get(`/api/assignments/student/assignment/${assignmentId}`);
     return response.data;
   },
 };
@@ -706,8 +757,29 @@ export const batchAPI = {
   },
 };
 
+/** Dedupes in-flight coach bootstrap (React 18 Strict Mode runs effects twice in dev). */
+let coachBootstrapInFlight: Promise<{ user: User; stats: Record<string, unknown> }> | null =
+  null;
+
 // Coach API
 export const coachAPI = {
+  /**
+   * One round-trip: current user (same shape as /api/auth/me) + dashboard stats.
+   * Prefer this for coach shell load instead of getCurrentUser + getStats.
+   * Concurrent callers share one HTTP request (important for Strict Mode double-mount).
+   */
+  bootstrap: async (): Promise<{ user: User; stats: Record<string, unknown> }> => {
+    if (!coachBootstrapInFlight) {
+      coachBootstrapInFlight = api
+        .get('/api/coach/bootstrap')
+        .then((res) => res.data)
+        .finally(() => {
+          coachBootstrapInFlight = null;
+        });
+    }
+    return coachBootstrapInFlight;
+  },
+
   // Get coach statistics
   getStats: async () => {
     const response = await api.get('/api/coach/stats');
