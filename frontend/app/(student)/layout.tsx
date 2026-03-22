@@ -45,20 +45,7 @@ export default function StudentLayout({
 
   if (!isAuthenticated) return null;
 
-  const isFullscreenRoute =
-    (pathname?.startsWith('/chess-game')) ?? false;
-
-  const hideHeader =
-    ((pathname && pathname !== '/puzzles' && pathname.startsWith('/puzzles')) ||
-      pathname?.startsWith('/learn/burger-collector/')) ?? false;
-
-  if (isFullscreenRoute) {
-    return (
-      <div className={`${fredoka.variable} ${nunito.variable} dashboard-fonts min-h-screen bg-background`}>
-        {children}
-      </div>
-    );
-  }
+  const hideHeader = pathname !== '/dashboard';
 
   return (
     <div className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>

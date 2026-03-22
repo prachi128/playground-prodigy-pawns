@@ -10,6 +10,7 @@ const puzzleOptions = [
     title: 'Solve Puzzles',
     description: 'Pick a puzzle, take your time, and find the best move. Earn XP and sharpen your tactics.',
     href: '/puzzles/solve',
+    image: '/images/tile-solve-puzzles.jpg',
     gradient: 'from-cyan-400 to-blue-500',
     borderColor: 'border-cyan-300',
     emoji: '🧩',
@@ -19,6 +20,7 @@ const puzzleOptions = [
     title: 'Puzzle Racer',
     description: 'Solve as many puzzles as you can before time runs out. Race the clock and climb the leaderboard!',
     href: '/puzzles/racer',
+    image: '/images/tile-puzzle-racer.jpg',
     gradient: 'from-orange-400 to-amber-500',
     borderColor: 'border-orange-300',
     emoji: '🏎️',
@@ -59,8 +61,16 @@ export default function PuzzlesLandingPage() {
                 className={`animate-bounce-in hover-wiggle group flex flex-col overflow-hidden rounded-3xl border-2 ${card.borderColor} bg-card shadow-md transition-all duration-200 hover:shadow-xl hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                 style={{ animationDelay: `${idx * 120}ms` }}
               >
-                <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
+                <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 transition-transform duration-300 group-hover:scale-105`}>
+                  <img
+                    src={card.image}
+                    alt={card.title}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                  <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-45`} />
+                  <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-6xl sm:text-7xl drop-shadow-lg">{card.emoji}</span>
+                  </div>
                   <div className="absolute right-3 top-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg">
                     <Icon className="h-6 w-6 text-gray-700" />
                   </div>

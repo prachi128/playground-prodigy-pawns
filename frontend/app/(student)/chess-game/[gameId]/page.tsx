@@ -680,8 +680,8 @@ export default function ChessGamePage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white">
-      <div className="mx-auto flex min-h-screen max-w-6xl flex-col pt-12 pb-6 px-2 lg:px-4">
+    <div className="relative min-h-full w-full bg-background">
+      <div className="mx-auto flex min-h-full max-w-6xl flex-col pb-6 px-2 lg:px-4">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
         <div className="lg:col-span-2">
