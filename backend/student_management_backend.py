@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
+from typing import List, Optional, Set
 from pydantic import BaseModel
-from models import User, UserRole, Puzzle, PuzzleAttempt
+from models import User, UserRole, Puzzle, PuzzleAttempt, Batch, StudentBatch
 from auth import get_current_user
 from database import get_db
 from datetime import datetime, timedelta
@@ -62,9 +62,40 @@ class StudentDetailedStats(BaseModel):
 
 def require_coach(user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
-    if not user or user.role not in [UserRole.coach, UserRole.admin]:
+    if not user or user.role not in [UserRole.coach, UserRole.admin, "coach", "admin"]:
         raise HTTPException(status_code=403, detail="Coach access required")
     return user
+
+
+def _is_admin(user: User) -> bool:
+    return user.role in (UserRole.admin, "admin")
+
+
+def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
+    """
+    Distinct student ids with an active enrollment in any batch owned by this coach.
+    None = no roster filter (admin only).
+    """
+    if _is_admin(coach):
+        return None
+    rows = (
+        db.query(StudentBatch.student_id)
+        .join(Batch, StudentBatch.batch_id == Batch.id)
+        .filter(
+            Batch.coach_id == coach.id,
+            StudentBatch.is_active == True,
+        )
+        .distinct()
+        .all()
+    )
+    return {int(r[0]) for r in rows}
+
+
+def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool:
+    if _is_admin(coach):
+        return True
+    roster = _coach_roster_student_ids(coach, db)
+    return student_id in roster if roster is not None else False
 
 
 # Stats overview must be before /{student_id} so "stats" is not captured as id
@@ -73,8 +104,19 @@ def get_class_overview(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """Get overview stats for all students"""
-    students = db.query(User).filter(User.role == UserRole.student).all()
+    """Get overview stats for students in this coach's batches (all students if admin)."""
+    q = db.query(User).filter(User.role == UserRole.student)
+    roster = _coach_roster_student_ids(coach, db)
+    if roster is not None:
+        if not roster:
+            return {
+                "total_students": 0,
+                "average_xp": 0,
+                "most_active": [],
+                "needs_attention": [],
+            }
+        q = q.filter(User.id.in_(roster))
+    students = q.all()
 
     if not students:
         return {
@@ -104,10 +146,16 @@ def get_all_students(
     db: Session = Depends(get_db),
 ):
     """
-    Get all students with their basic stats.
+    Students in this coach's batches with basic stats (all students if admin).
     Uses PuzzleAttempt for per-student attempted/solved counts when available.
     """
-    students = db.query(User).filter(User.role == UserRole.student).all()
+    q = db.query(User).filter(User.role == UserRole.student)
+    roster = _coach_roster_student_ids(coach, db)
+    if roster is not None:
+        if not roster:
+            return []
+        q = q.filter(User.id.in_(roster))
+    students = q.all()
     student_stats = []
     for student in students:
         # Per-student stats from PuzzleAttempt
@@ -156,9 +204,11 @@ def get_student_details(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """Get detailed stats for a specific student"""
+    """Get detailed stats for a specific student (must be on coach roster unless admin)."""
     student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
     if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _coach_can_access_student(coach, db, student_id):
         raise HTTPException(status_code=404, detail="Student not found")
 
     # From PuzzleAttempt
@@ -268,9 +318,11 @@ def award_bonus_xp(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """Award bonus XP to a student"""
+    """Award bonus XP to a student on this coach's roster (any student if admin)."""
     student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
     if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _coach_can_access_student(coach, db, student_id):
         raise HTTPException(status_code=404, detail="Student not found")
 
     student.total_xp = (student.total_xp or 0) + xp_amount
@@ -289,9 +341,11 @@ def deactivate_student(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """Deactivate a student account"""
+    """Deactivate a student on this coach's roster (any student if admin)."""
     student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
     if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _coach_can_access_student(coach, db, student_id):
         raise HTTPException(status_code=404, detail="Student not found")
 
     student.is_active = False

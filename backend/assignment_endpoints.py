@@ -48,6 +48,25 @@ def require_student(
     return user
 
 
+def _is_admin_coach(user: User) -> bool:
+    return user.role in (UserRole.admin, "admin")
+
+
+def _student_on_coach_roster(db: Session, coach_id: int, student_id: int) -> bool:
+    """True if student has an active enrollment in any batch owned by coach_id."""
+    row = (
+        db.query(StudentBatch.id)
+        .join(Batch, StudentBatch.batch_id == Batch.id)
+        .filter(
+            Batch.coach_id == coach_id,
+            StudentBatch.student_id == student_id,
+            StudentBatch.is_active == True,
+        )
+        .first()
+    )
+    return row is not None
+
+
 # ── Internal helpers ─────────────────────────────────────────
 
 def _build_assignment_response(a: Assignment, db: Session) -> AssignmentResponse:
@@ -121,10 +140,16 @@ def create_assignment(
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found or not yours")
 
-    # Validate individual student exists
+    # Validate individual student: exists, is a student, and on coach roster (admins unrestricted)
     if data.student_id:
         student = db.query(User).filter(User.id == data.student_id).first()
         if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        if student.role != UserRole.student:
+            raise HTTPException(status_code=400, detail="Target user is not a student")
+        if not _is_admin_coach(coach) and not _student_on_coach_roster(
+            db, coach.id, data.student_id
+        ):
             raise HTTPException(status_code=404, detail="Student not found")
 
     # Validate all puzzles exist and are active
