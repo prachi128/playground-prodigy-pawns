@@ -17,10 +17,11 @@ import {
   BarChart3,
   Activity,
   Loader2,
+  FileText,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { batchAPI, type Batch } from '@/lib/api';
 
 interface StudentDetails {
   id: number;
@@ -53,6 +54,7 @@ export default function StudentDetailPage() {
   const { isAuthenticated, user } = useAuthStore();
 
   const [student, setStudent] = useState<StudentDetails | null>(null);
+  const [studentBatchName, setStudentBatchName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAwardDialog, setShowAwardDialog] = useState(false);
   const [xpAmount, setXpAmount] = useState(10);
@@ -68,9 +70,33 @@ export default function StudentDetailPage() {
 
   const loadStudent = async () => {
     setIsLoading(true);
+    setStudentBatchName(null);
     try {
-      const response = await api.get(`/api/coach/students/${studentId}`);
+      const studentPromise = api.get(`/api/coach/students/${studentId}`);
+      const batchesPromise = batchAPI.list().catch(() => [] as Batch[]);
+
+      const [response, batches] = await Promise.all([studentPromise, batchesPromise]);
       setStudent(response.data);
+
+      let foundName: string | null = null;
+      if (batches.length > 0) {
+        const settled = await Promise.allSettled(
+          batches.map(async (b) => {
+            const list = await batchAPI.listStudents(b.id);
+            return { batch: b, list };
+          }),
+        );
+        for (const r of settled) {
+          if (
+            r.status === 'fulfilled' &&
+            r.value.list.some((row) => row.student_id === studentId)
+          ) {
+            foundName = r.value.batch.name;
+            break;
+          }
+        }
+      }
+      setStudentBatchName(foundName);
     } catch {
       toast.error('Failed to load student details');
       router.push('/coach/students');
@@ -138,16 +164,35 @@ export default function StudentDetailPage() {
             <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               {student.username} — Profile
             </h1>
-            <p className="mt-1 text-muted-foreground">{student.email}</p>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
+              <span>{student.email}</span>
+              {studentBatchName ? (
+                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-900 dark:bg-indigo-950/70 dark:text-indigo-100">
+                  {studentBatchName}
+                </span>
+              ) : null}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAwardDialog(true)}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-          >
-            <Award className="h-5 w-5" />
-            Award XP
-          </button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                window.open(`/coach/students/${studentId}/report`, '_blank', 'noopener,noreferrer')
+              }
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted/60"
+            >
+              <FileText className="h-5 w-5" />
+              Generate Report
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAwardDialog(true)}
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+            >
+              <Award className="h-5 w-5" />
+              Award XP
+            </button>
+          </div>
         </div>
       </div>
 

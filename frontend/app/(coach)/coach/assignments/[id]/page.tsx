@@ -61,9 +61,11 @@ function isOverdue(due: string | null) {
 
 function ProgressBar({ pct, isComplete }: { pct: number; isComplete: boolean }) {
   return (
-    <div className="w-full bg-gray-200 rounded-full h-2">
+    <div className="h-2 w-full rounded-full bg-muted">
       <div
-        className={`h-2 rounded-full transition-all ${isComplete ? 'bg-green-500' : 'bg-primary-500'}`}
+        className={`h-2 rounded-full transition-all ${
+          isComplete ? 'bg-[hsl(var(--green-medium))]' : 'bg-primary'
+        }`}
         style={{ width: `${Math.min(pct, 100)}%` }}
       />
     </div>
@@ -71,10 +73,14 @@ function ProgressBar({ pct, isComplete }: { pct: number; isComplete: boolean }) 
 }
 
 const DIFF_COLORS: Record<string, string> = {
-  beginner:     'bg-green-100 text-green-800 border-green-300',
-  intermediate: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  advanced:     'bg-orange-100 text-orange-800 border-orange-300',
-  expert:       'bg-red-100 text-red-800 border-red-300',
+  beginner:
+    'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]',
+  intermediate:
+    'border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/80 text-[hsl(var(--gold-dark))]',
+  advanced:
+    'border border-[hsl(var(--orange-medium))]/40 bg-[hsl(var(--orange-very-light))] text-[hsl(var(--orange-dark))]',
+  expert:
+    'border border-[hsl(var(--red-medium))]/35 bg-[hsl(var(--red-light))] text-[hsl(var(--red-medium))]',
 };
 
 // ── Component ────────────────────────────────────────────────
@@ -115,8 +121,11 @@ export default function AssignmentDetailPage() {
 
   if (loading || !detail || !progress) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-10 h-10 text-primary-600 animate-spin" />
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Loading assignment…</p>
+        </div>
       </div>
     );
   }
@@ -131,115 +140,128 @@ export default function AssignmentDetailPage() {
       {/* Back */}
       <Link
         href="/coach/assignments"
-        className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-semibold text-sm mb-5"
+        className="mb-5 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
       >
-        <ArrowLeft className="w-4 h-4" /> Back to Assignments
+        <ArrowLeft className="h-4 w-4" />
+        Back to assignments
       </Link>
 
-      {/* Header card */}
-      <div className="bg-white rounded-2xl shadow-lg border-4 border-gray-200 p-6 mb-6">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div className="mb-6 rounded-xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-gray-800">{detail.title}</h1>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h1 className="font-heading text-2xl font-bold tracking-tight text-card-foreground sm:text-3xl">
+                {detail.title}
+              </h1>
               {!detail.is_active && (
-                <span className="text-xs font-bold bg-gray-100 text-gray-600 border border-gray-300 px-2 py-0.5 rounded-full">
+                <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-bold text-muted-foreground">
                   Inactive
                 </span>
               )}
             </div>
             {detail.description && (
-              <p className="text-gray-600 text-sm mb-3">{detail.description}</p>
+              <p className="mb-3 text-sm text-muted-foreground">{detail.description}</p>
             )}
-            <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               <span className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
+                <Users className="h-4 w-4" />
                 {detail.batch_name ?? detail.student_name}
               </span>
               <span className="flex items-center gap-1">
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="h-4 w-4" />
                 {detail.puzzle_count} puzzles
               </span>
-              <span className={`flex items-center gap-1 font-medium ${overdue ? 'text-red-600' : 'text-gray-600'}`}>
-                {overdue ? <XCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+              <span
+                className={`flex items-center gap-1 font-medium ${
+                  overdue ? 'text-destructive' : 'text-muted-foreground'
+                }`}
+              >
+                {overdue ? <XCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
                 {detail.due_date ? `Due ${formatDate(detail.due_date)}` : 'No deadline'}
               </span>
             </div>
           </div>
 
-          {/* Overall completion ring */}
-          <div className="text-center shrink-0">
-            <div className="relative w-24 h-24 mx-auto">
-              <svg viewBox="0 0 36 36" className="w-24 h-24 -rotate-90">
-                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3"/>
+          <div className="shrink-0 text-center">
+            <div className="relative mx-auto h-24 w-24">
+              <svg viewBox="0 0 36 36" className="h-24 w-24 -rotate-90 text-muted">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" strokeWidth="3" />
                 <circle
-                  cx="18" cy="18" r="15.9" fill="none"
-                  stroke={progress.overall_completion_pct >= 100 ? '#22c55e' : '#9333ea'}
+                  cx="18"
+                  cy="18"
+                  r="15.9"
+                  fill="none"
+                  className={
+                    progress.overall_completion_pct >= 100
+                      ? 'text-[hsl(var(--green-medium))]'
+                      : 'text-primary'
+                  }
+                  stroke="currentColor"
                   strokeWidth="3"
                   strokeDasharray={`${progress.overall_completion_pct} ${100 - progress.overall_completion_pct}`}
                   strokeLinecap="round"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xl font-bold text-gray-800">
+                <span className="text-xl font-bold text-card-foreground">
                   {Math.round(progress.overall_completion_pct)}%
                 </span>
-                <span className="text-xs text-gray-500">done</span>
+                <span className="text-xs text-muted-foreground">done</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-green-200 text-center">
-          <CheckCircle className="w-7 h-7 text-green-600 mx-auto mb-1" />
-          <p className="text-3xl font-bold text-green-600">{completed}</p>
-          <p className="text-xs text-gray-600 mt-1">Completed</p>
+      <div className="mb-6 grid grid-cols-3 gap-4">
+        <div className="rounded-xl border border-[hsl(var(--green-medium))]/30 bg-card p-5 text-center shadow-sm">
+          <CheckCircle className="mx-auto mb-1 h-7 w-7 text-[hsl(var(--green-medium))]" />
+          <p className="text-3xl font-bold text-[hsl(var(--green-medium))]">{completed}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Completed</p>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-yellow-200 text-center">
-          <TrendingUp className="w-7 h-7 text-yellow-600 mx-auto mb-1" />
-          <p className="text-3xl font-bold text-yellow-600">{inProgress}</p>
-          <p className="text-xs text-gray-600 mt-1">In progress</p>
+        <div className="rounded-xl border border-[hsl(var(--gold-medium))]/40 bg-card p-5 text-center shadow-sm">
+          <TrendingUp className="mx-auto mb-1 h-7 w-7 text-[hsl(var(--gold-dark))]" />
+          <p className="text-3xl font-bold text-[hsl(var(--gold-dark))]">{inProgress}</p>
+          <p className="mt-1 text-xs text-muted-foreground">In progress</p>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-lg border-4 border-red-200 text-center">
-          <AlertTriangle className="w-7 h-7 text-red-500 mx-auto mb-1" />
-          <p className="text-3xl font-bold text-red-500">{notStarted}</p>
-          <p className="text-xs text-gray-600 mt-1">Not started</p>
+        <div className="rounded-xl border border-destructive/30 bg-card p-5 text-center shadow-sm">
+          <AlertTriangle className="mx-auto mb-1 h-7 w-7 text-destructive" />
+          <p className="text-3xl font-bold text-destructive">{notStarted}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Not started</p>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Student progress table */}
+      <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-2xl shadow-lg border-4 border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-primary-500 to-purple-600 px-5 py-3">
-              <h2 className="text-lg font-bold text-white">Student Progress</h2>
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="border-b border-border bg-primary px-5 py-3">
+              <h2 className="font-heading text-lg font-bold text-primary-foreground">Student progress</h2>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border">
               {progress.students.length === 0 ? (
-                <p className="text-center text-gray-400 py-10">No students in this assignment yet.</p>
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  No students in this assignment yet.
+                </p>
               ) : (
-                progress.students.map(s => (
+                progress.students.map((s) => (
                   <div key={s.student_id} className="px-5 py-4">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="mb-2 flex items-center justify-between">
                       <div>
                         <Link
                           href={`/coach/students/${s.student_id}`}
-                          className="font-bold text-gray-800 hover:text-primary-600 transition-colors text-sm"
+                          className="text-sm font-bold text-card-foreground transition-colors hover:text-primary"
                         >
                           {s.full_name}
                         </Link>
-                        <p className="text-xs text-gray-500">@{s.username}</p>
+                        <p className="text-xs text-muted-foreground">@{s.username}</p>
                       </div>
                       <div className="text-right">
                         {s.is_complete ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 border border-green-300 px-2 py-0.5 rounded-full">
-                            <CheckCircle className="w-3 h-3" /> Done
+                          <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] px-2 py-0.5 text-xs font-bold text-[hsl(var(--green-medium))]">
+                            <CheckCircle className="h-3 w-3" /> Done
                           </span>
                         ) : (
-                          <span className="text-xs font-bold text-gray-600">
+                          <span className="text-xs font-bold text-muted-foreground">
                             {s.puzzles_completed}/{s.total_puzzles}
                           </span>
                         )}
@@ -247,7 +269,7 @@ export default function AssignmentDetailPage() {
                     </div>
                     <ProgressBar pct={s.completion_pct} isComplete={s.is_complete} />
                     {s.last_completed_at && (
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Last activity: {formatDate(s.last_completed_at)}
                       </p>
                     )}
@@ -258,27 +280,31 @@ export default function AssignmentDetailPage() {
           </div>
         </div>
 
-        {/* Puzzle list */}
         <div>
-          <div className="bg-white rounded-2xl shadow-lg border-4 border-gray-200 overflow-hidden">
-            <div className="bg-gray-100 px-5 py-3 border-b-2 border-gray-200">
-              <h2 className="text-base font-bold text-gray-800">Puzzles in this assignment</h2>
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="border-b border-border bg-muted/50 px-5 py-3">
+              <h2 className="font-heading text-base font-bold text-card-foreground">
+                Puzzles in this assignment
+              </h2>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border">
               {detail.puzzles.map((p, idx) => (
-                <div key={p.puzzle_id} className="px-4 py-3 flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 text-xs font-bold flex items-center justify-center shrink-0">
+                <div key={p.puzzle_id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
                     {idx + 1}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full border capitalize ${
-                        DIFF_COLORS[p.difficulty.toLowerCase()] ?? 'bg-gray-100 text-gray-700 border-gray-300'
-                      }`}>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-card-foreground">{p.title}</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-xs font-bold capitalize ${
+                          DIFF_COLORS[p.difficulty.toLowerCase()] ??
+                          'border border-border bg-muted text-muted-foreground'
+                        }`}
+                      >
                         {p.difficulty}
                       </span>
-                      <span className="text-xs text-yellow-600 font-bold">{p.xp_reward} XP</span>
+                      <span className="text-xs font-bold text-[hsl(var(--gold-dark))]">{p.xp_reward} XP</span>
                     </div>
                   </div>
                 </div>

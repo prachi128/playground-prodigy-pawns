@@ -5,12 +5,29 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { coachAPI, Puzzle } from '@/lib/api';
-import { ArrowLeft, Save, Brain } from 'lucide-react';
+import { ArrowLeft, Save, Brain, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { getDifficultyColor } from '@/lib/utils';
+
+function coachDifficultyBadge(difficulty: string): string {
+  switch (difficulty.toLowerCase()) {
+    case 'beginner':
+      return 'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]';
+    case 'intermediate':
+      return 'border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/80 text-[hsl(var(--gold-dark))]';
+    case 'advanced':
+      return 'border border-[hsl(var(--orange-medium))]/40 bg-[hsl(var(--orange-very-light))] text-[hsl(var(--orange-dark))]';
+    case 'expert':
+      return 'border border-[hsl(var(--red-medium))]/35 bg-[hsl(var(--red-light))] text-[hsl(var(--red-medium))]';
+    default:
+      return 'border border-border bg-muted text-muted-foreground';
+  }
+}
+
+const COACH_DARK_SQ = 'hsl(152 41% 28%)';
+const COACH_LIGHT_SQ = 'hsl(134 55% 92%)';
 
 export default function EditPuzzlePage() {
   const router = useRouter();
@@ -210,266 +227,230 @@ export default function EditPuzzlePage() {
 
   if (isLoading || !puzzle) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-semibold">Loading puzzle...</p>
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-semibold text-muted-foreground">Loading puzzle…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50">
-      <div className="max-w-6xl mx-auto px-8 py-6">
-        {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/coach/puzzles"
-            className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-semibold text-sm mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Manage Puzzles
-          </Link>
-          
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            {isActive ? '✏️' : '🔒'} Edit Puzzle #{puzzleId}
-          </h1>
-          <p className="text-gray-600">
-            View and edit puzzle details
-          </p>
-        </div>
+    <div>
+      <div className="mb-6">
+        <Link
+          href="/coach/puzzles"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to puzzles
+        </Link>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Form */}
-          <div className="space-y-4">
-            {/* Puzzle Details Card */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border-4 border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                📝 Puzzle Details
-              </h2>
+        <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          Edit puzzle #{puzzleId}
+          {!isActive && (
+            <span className="ml-2 align-middle text-base font-normal text-muted-foreground">(inactive)</span>
+          )}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">View and edit puzzle details.</p>
+      </div>
 
-              <div className="space-y-4">
-                {/* Title */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Puzzle details</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Title *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">FEN position *</label>
+                <textarea
+                  value={fen}
+                  onChange={(e) => setFen(e.target.value)}
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2 font-mono text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Solution moves</label>
+                <input
+                  type="text"
+                  value={moves}
+                  onChange={(e) => setMoves(e.target.value)}
+                  placeholder="e.g., e2e4"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 font-mono text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={analyzeFEN}
+                disabled={isAnalyzing || !fen.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2 px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing…
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-4 w-4" />
+                    Re-analyze with Stockfish
+                  </>
+                )}
+              </button>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Title *
-                  </label>
+                  <label className="mb-2 block text-sm font-semibold text-foreground">Difficulty</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                    <option value="expert">Expert</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-foreground">XP reward</label>
                   <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none"
+                    type="number"
+                    value={xpReward}
+                    onChange={(e) => setXpReward(parseInt(e.target.value, 10))}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={2}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none resize-none"
-                  />
-                </div>
-
-                {/* FEN Position */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    FEN Position *
-                  </label>
-                  <textarea
-                    value={fen}
-                    onChange={(e) => setFen(e.target.value)}
-                    rows={2}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none font-mono text-xs resize-none"
-                  />
-                </div>
-
-                {/* Solution Moves */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Solution Moves
-                  </label>
-                  <input
-                    type="text"
-                    value={moves}
-                    onChange={(e) => setMoves(e.target.value)}
-                    placeholder="e.g., e2e4"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none font-mono text-sm"
-                  />
-                </div>
-
-                {/* Re-analyze Button */}
-                <button
-                  onClick={analyzeFEN}
-                  disabled={isAnalyzing || !fen.trim()}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2 px-4 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg text-sm"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Brain className="w-4 h-4" />
-                      Re-analyze with Stockfish
-                    </>
-                  )}
-                </button>
-
-                {/* Difficulty & Theme */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Difficulty
-                    </label>
-                    <select
-                      value={difficulty}
-                      onChange={(e) => setDifficulty(e.target.value)}
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none text-sm"
-                    >
-                      <option value="beginner">Beginner</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                      <option value="expert">Expert</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      XP Reward
-                    </label>
-                    <input
-                      type="number"
-                      value={xpReward}
-                      onChange={(e) => setXpReward(parseInt(e.target.value))}
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Theme */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Theme
-                  </label>
-                  <input
-                    type="text"
-                    value={theme}
-                    onChange={(e) => setTheme(e.target.value)}
-                    placeholder="e.g., fork, pin, checkmate"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none text-sm"
-                  />
-                </div>
-
-                {/* Active Status */}
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      className="w-5 h-5"
-                    />
-                    <span className="text-sm font-bold text-gray-700">
-                      Puzzle is Active (visible to students)
-                    </span>
-                  </label>
                 </div>
               </div>
-            </div>
 
-            {/* Save Button */}
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !title.trim() || !fen.trim()}
-              className="w-full bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold py-3 px-6 rounded-xl hover:from-primary-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xl"
-            >
-              {isSaving ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5" />
-                  Save Changes
-                </>
-              )}
-            </button>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Theme</label>
+                <input
+                  type="text"
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value)}
+                  placeholder="e.g., fork, pin, checkmate"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="h-5 w-5 rounded border-input"
+                />
+                <span className="text-sm font-semibold text-foreground">Puzzle is active (visible to students)</span>
+              </label>
+            </div>
           </div>
 
-          {/* Right Column - Chess Board Preview & Stats */}
-          <div className="space-y-4">
-            {/* Board Preview */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border-4 border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                📋 Board Preview
-              </h2>
-              
-              <div className="w-full max-w-[400px] mx-auto">
-                {(tacticalPosition || fen.trim()) ? (
-                  <Chessboard
-                    key={tacticalPosition || fen}
-                    options={{
-                      position: tacticalPosition || fen,
-                      boardStyle: {
-                        borderRadius: '12px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                      },
-                      darkSquareStyle: { backgroundColor: '#9333ea' },
-                      lightSquareStyle: { backgroundColor: '#e9d5ff' },
-                    }}
-                  />
-                ) : (
-                  <div className="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center">
-                    <p className="text-gray-400 text-center text-sm">
-                      Enter a FEN position to see preview
-                    </p>
-                  </div>
-                )}
-              </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || !title.trim() || !fen.trim()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 px-6 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save className="h-5 w-5" />
+                Save changes
+              </>
+            )}
+          </button>
+        </div>
 
-              <div className="mt-4 p-3 bg-gray-50 rounded-xl">
-                <p className="text-xs font-bold text-gray-700 mb-1">Current Difficulty:</p>
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border-2 capitalize ${getDifficultyColor(difficulty)}`}>
-                  {difficulty}
-                </span>
-              </div>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Board preview</h2>
+
+            <div className="mx-auto w-full max-w-[400px]">
+              {tacticalPosition || fen.trim() ? (
+                <Chessboard
+                  key={tacticalPosition || fen}
+                  options={{
+                    position: tacticalPosition || fen,
+                    boardStyle: {
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                    },
+                    darkSquareStyle: { backgroundColor: COACH_DARK_SQ },
+                    lightSquareStyle: { backgroundColor: COACH_LIGHT_SQ },
+                  }}
+                />
+              ) : (
+                <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-muted/50">
+                  <p className="text-center text-sm text-muted-foreground">Enter a FEN position to see preview</p>
+                </div>
+              )}
             </div>
 
-            {/* Puzzle Stats */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border-4 border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                📊 Statistics
-              </h2>
-              
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Total Attempts:</span>
-                  <span className="font-bold text-gray-800">{puzzle.attempts_count}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Successful:</span>
-                  <span className="font-bold text-green-600">{puzzle.success_count}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Success Rate:</span>
-                  <span className="font-bold text-primary-600">
-                    {puzzle.attempts_count > 0
-                      ? `${Math.round((puzzle.success_count / puzzle.attempts_count) * 100)}%`
-                      : '0%'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Rating:</span>
-                  <span className="font-bold text-gray-800">{puzzle.rating}</span>
-                </div>
+            <div className="mt-4 rounded-lg border border-border bg-muted/40 p-3">
+              <p className="mb-1 text-xs font-semibold text-muted-foreground">Current difficulty</p>
+              <span
+                className={`inline-block rounded-full px-3 py-1 text-xs font-bold capitalize ${coachDifficultyBadge(
+                  difficulty,
+                )}`}
+              >
+                {difficulty}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Statistics</h2>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total attempts</span>
+                <span className="font-bold text-card-foreground">{puzzle.attempts_count}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Successful</span>
+                <span className="font-bold text-[hsl(var(--green-medium))]">{puzzle.success_count}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Success rate</span>
+                <span className="font-bold text-primary">
+                  {puzzle.attempts_count > 0
+                    ? `${Math.round((puzzle.success_count / puzzle.attempts_count) * 100)}%`
+                    : '0%'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Rating</span>
+                <span className="font-bold text-card-foreground">{puzzle.rating}</span>
               </div>
             </div>
           </div>

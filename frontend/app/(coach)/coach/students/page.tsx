@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
@@ -17,9 +17,11 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
+import api, { batchAPI, type Batch } from '@/lib/api';
 
 interface Student {
   id: number;
@@ -31,7 +33,11 @@ interface Student {
   total_puzzles_attempted: number;
   total_puzzles_solved: number;
   success_rate: number;
+  days_since_active?: number;
 }
+
+/** Sortable numeric columns (table headers map to these Student keys). */
+type StudentSortCol = 'xp' | 'total_puzzles_solved' | 'success_rate';
 
 interface ClassOverview {
   total_students: number;
@@ -45,6 +51,27 @@ const statCard =
 
 const PAGE_SIZE = 10;
 
+function daysSinceActive(s: Student): number {
+  if (typeof s.days_since_active === 'number') return s.days_since_active;
+  if (s.last_active) {
+    const t = new Date(s.last_active).getTime();
+    if (!Number.isNaN(t)) return Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+  }
+  return 0;
+}
+
+function formatLastActiveLabel(days: number): string {
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+function lastActiveClass(days: number): string {
+  if (days > 7) return 'font-semibold text-destructive';
+  if (days > 3) return 'font-semibold text-[hsl(var(--gold-dark))]';
+  return 'font-semibold text-[hsl(var(--green-medium))]';
+}
+
 export default function StudentsPage() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuthStore();
@@ -54,7 +81,17 @@ export default function StudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [awardingXP, setAwardingXP] = useState<number | null>(null);
+  const [xpAmounts, setXpAmounts] = useState<Record<number, number>>({});
   const [page, setPage] = useState(1);
+  const [atRiskFilter, setAtRiskFilter] = useState(false);
+
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  const [batchStudentIds, setBatchStudentIds] = useState<Set<number>>(() => new Set());
+  const [batchStudentsLoading, setBatchStudentsLoading] = useState(false);
+
+  const [sortCol, setSortCol] = useState<StudentSortCol | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
@@ -66,19 +103,27 @@ export default function StudentsPage() {
 
   const loadData = async () => {
     setIsLoading(true);
-    try {
-      const [studentsData, overviewData] = await Promise.all([
-        api.get('/api/coach/students'),
-        api.get('/api/coach/students/stats/overview'),
-      ]);
+    const results = await Promise.allSettled([
+      api.get('/api/coach/students'),
+      api.get('/api/coach/students/stats/overview'),
+      batchAPI.list(),
+    ]);
 
-      setStudents(studentsData.data);
-      setOverview(overviewData.data);
-    } catch {
+    if (results[0].status === 'fulfilled') {
+      setStudents(results[0].value.data);
+    } else {
       toast.error('Failed to load students');
-    } finally {
-      setIsLoading(false);
     }
+    if (results[1].status === 'fulfilled') {
+      setOverview(results[1].value.data);
+    }
+    if (results[2].status === 'fulfilled') {
+      setBatches(results[2].value);
+    } else {
+      toast.error('Failed to load batches');
+      setBatches([]);
+    }
+    setIsLoading(false);
   };
 
   const awardXP = async (studentId: number, amount: number) => {
@@ -102,18 +147,94 @@ export default function StudentsPage() {
     router.push(`/coach/students/${studentId}`);
   };
 
-  const filteredStudents = students.filter(
-    (s) =>
-      s.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.email.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const atRiskIds = useMemo(() => {
+    const ids = new Set<number>();
+    overview?.needs_attention.forEach((n) => ids.add(n.id));
+    return ids;
+  }, [overview]);
+
+  const filteredStudents = useMemo(() => {
+    let list = students;
+    if (atRiskFilter && atRiskIds.size > 0) {
+      list = list.filter((s) => atRiskIds.has(s.id));
+    }
+    if (selectedBatchId !== null) {
+      if (batchStudentsLoading) {
+        list = [];
+      } else {
+        list = list.filter((s) => batchStudentIds.has(s.id));
+      }
+    }
+    const q = searchTerm.toLowerCase();
+    if (q) {
+      list = list.filter(
+        (s) =>
+          s.username.toLowerCase().includes(q) ||
+          s.email.toLowerCase().includes(q),
+      );
+    }
+    if (sortCol) {
+      const mult = sortDir === 'asc' ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        const va = a[sortCol];
+        const vb = b[sortCol];
+        if (va < vb) return -1 * mult;
+        if (va > vb) return 1 * mult;
+        return 0;
+      });
+    }
+    return list;
+  }, [
+    students,
+    atRiskFilter,
+    atRiskIds,
+    selectedBatchId,
+    batchStudentIds,
+    batchStudentsLoading,
+    searchTerm,
+    sortCol,
+    sortDir,
+  ]);
+
+  const handleBatchSelect = async (value: string) => {
+    if (value === '') {
+      setSelectedBatchId(null);
+      setBatchStudentIds(new Set());
+      return;
+    }
+    const id = Number(value);
+    if (Number.isNaN(id)) return;
+
+    setSelectedBatchId(id);
+    setBatchStudentIds(new Set());
+    setBatchStudentsLoading(true);
+    try {
+      const roster = await batchAPI.listStudents(id);
+      setBatchStudentIds(new Set(roster.map((r) => r.student_id)));
+    } catch {
+      toast.error('Failed to load batch roster');
+      setSelectedBatchId(null);
+      setBatchStudentIds(new Set());
+    } finally {
+      setBatchStudentsLoading(false);
+    }
+  };
+
+  const handleSortHeaderClick = (col: StudentSortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('desc');
+    }
+  };
 
   const totalFiltered = filteredStudents.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, atRiskFilter, selectedBatchId]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -188,7 +309,16 @@ export default function StudentsPage() {
             </p>
           </div>
 
-          <div className={statCard}>
+          <button
+            type="button"
+            disabled={overview.needs_attention.length === 0}
+            onClick={() => setAtRiskFilter(true)}
+            className={`${statCard} w-full text-left transition-colors ${
+              overview.needs_attention.length > 0
+                ? 'cursor-pointer hover:border-destructive/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                : 'cursor-not-allowed opacity-60'
+            }`}
+          >
             <div className="mb-2 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--red-light))]">
                 <AlertCircle className="h-5 w-5 text-[hsl(var(--red-medium))]" />
@@ -198,20 +328,83 @@ export default function StudentsPage() {
             <p className="font-heading text-3xl font-bold text-[hsl(var(--red-medium))]">
               {overview.needs_attention.length}
             </p>
-          </div>
+            {overview.needs_attention.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">Click to filter the table</p>
+            )}
+          </button>
         </div>
       )}
 
-      <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Search by name or email…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-lg border border-input bg-background py-2.5 pl-10 pr-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
+      {atRiskFilter && (
+        <div
+          className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+          role="status"
+        >
+          <p className="text-sm font-medium text-foreground">
+            Showing at-risk students
+            {overview && overview.needs_attention.length > 0 && (
+              <span className="text-muted-foreground">
+                {' '}
+                ({overview.needs_attention.length} in overview)
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setAtRiskFilter(false)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            aria-label="Clear at-risk filter"
+          >
+            <X className="h-4 w-4" />
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div className="mb-6 space-y-4">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <label htmlFor="batch-filter" className="mb-2 block text-sm font-semibold text-foreground">
+            Batch
+          </label>
+          <div className="relative max-w-md">
+            <select
+              id="batch-filter"
+              value={selectedBatchId ?? ''}
+              onChange={(e) => void handleBatchSelect(e.target.value)}
+              disabled={batchStudentsLoading}
+              className={`w-full appearance-none rounded-lg border border-input bg-background py-2.5 pl-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70 ${batchStudentsLoading ? 'pr-14' : 'pr-12'}`}
+            >
+              <option value="">All batches</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {!b.is_active ? ' (archived)' : ''}
+                </option>
+              ))}
+            </select>
+            <span
+              className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5"
+              aria-hidden
+            >
+              {batchStudentsLoading && (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+              )}
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search by name or email…"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background py-2.5 pl-10 pr-4 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
         </div>
       </div>
 
@@ -221,9 +414,58 @@ export default function StudentsPage() {
             <thead className="bg-[hsl(var(--sidebar-background))] text-sidebar-foreground">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Student</th>
-                <th className="px-4 py-3 text-left font-semibold">XP</th>
-                <th className="px-4 py-3 text-left font-semibold">Puzzles</th>
-                <th className="px-4 py-3 text-left font-semibold">Success</th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleSortHeaderClick('xp')}
+                    className="inline-flex items-center gap-1 rounded-md font-semibold transition-colors hover:text-sidebar-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                    aria-sort={
+                      sortCol === 'xp' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
+                    }
+                  >
+                    XP
+                    {sortCol === 'xp' && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleSortHeaderClick('total_puzzles_solved')}
+                    className="inline-flex items-center gap-1 rounded-md font-semibold transition-colors hover:text-sidebar-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                    aria-sort={
+                      sortCol === 'total_puzzles_solved'
+                        ? sortDir === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                    }
+                  >
+                    Puzzles
+                    {sortCol === 'total_puzzles_solved' && (
+                      <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleSortHeaderClick('success_rate')}
+                    className="inline-flex items-center gap-1 rounded-md font-semibold transition-colors hover:text-sidebar-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                    aria-sort={
+                      sortCol === 'success_rate'
+                        ? sortDir === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                    }
+                  >
+                    Success
+                    {sortCol === 'success_rate' && (
+                      <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left font-semibold">Last active</th>
                 <th className="px-4 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
@@ -269,6 +511,11 @@ export default function StudentsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    <span className={lastActiveClass(daysSinceActive(student))}>
+                      {formatLastActiveLabel(daysSinceActive(student))}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -278,19 +525,46 @@ export default function StudentsPage() {
                       >
                         <Eye className="h-4 w-4 text-[hsl(var(--blue-dark))]" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => awardXP(student.id, 10)}
-                        disabled={awardingXP === student.id}
-                        className="rounded-lg border border-border bg-muted/50 p-2 transition-colors hover:bg-muted disabled:opacity-50"
-                        title="Award 10 XP"
-                      >
-                        {awardingXP === student.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                        ) : (
-                          <Award className="h-4 w-4 text-[hsl(var(--gold-dark))]" />
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={xpAmounts[student.id] ?? 10}
+                          onChange={(e) => {
+                            const raw = e.target.valueAsNumber;
+                            if (Number.isNaN(raw)) {
+                              setXpAmounts((prev) => {
+                                const next = { ...prev };
+                                delete next[student.id];
+                                return next;
+                              });
+                              return;
+                            }
+                            setXpAmounts((prev) => ({
+                              ...prev,
+                              [student.id]: Math.min(100, Math.max(1, Math.round(raw))),
+                            }));
+                          }}
+                          className="h-8 w-14 shrink-0 rounded-md border border-border bg-background py-0 text-center text-xs text-foreground [appearance:textfield] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          aria-label={`XP amount for ${student.username}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            awardXP(student.id, xpAmounts[student.id] ?? 10)
+                          }
+                          disabled={awardingXP === student.id}
+                          className="rounded-lg border border-border bg-muted/50 p-2 transition-colors hover:bg-muted disabled:opacity-50"
+                          title={`Award ${xpAmounts[student.id] ?? 10} XP`}
+                        >
+                          {awardingXP === student.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          ) : (
+                            <Award className="h-4 w-4 text-[hsl(var(--gold-dark))]" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>

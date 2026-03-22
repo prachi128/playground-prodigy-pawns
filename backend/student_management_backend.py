@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from models import User, UserRole, Puzzle, PuzzleAttempt
 from auth import get_current_user
@@ -24,7 +24,8 @@ class StudentStats(BaseModel):
     level: int
     rating: int
     created_at: datetime
-    last_active: datetime
+    last_active: Optional[datetime] = None
+    days_since_active: int
 
     total_puzzles_attempted: int
     total_puzzles_solved: int
@@ -40,7 +41,7 @@ class StudentDetailedStats(BaseModel):
     email: str
     xp: int
     created_at: datetime
-    last_active: datetime
+    last_active: Optional[datetime] = None
 
     total_puzzles_attempted: int
     total_puzzles_solved: int
@@ -122,6 +123,10 @@ def get_all_students(
             db.query(func.max(PuzzleAttempt.attempted_at)).filter(PuzzleAttempt.user_id == student.id).scalar()
         )
         last_active = last_attempt or student.last_login or student.created_at
+        if last_active is None:
+            days_since_active = 999
+        else:
+            days_since_active = (datetime.utcnow() - last_active).days
 
         xp_val = student.total_xp or 0
         student_stats.append(
@@ -136,6 +141,7 @@ def get_all_students(
                 rating=student.rating or 0,
                 created_at=student.created_at,
                 last_active=last_active,
+                days_since_active=days_since_active,
                 total_puzzles_attempted=attempted,
                 total_puzzles_solved=solved,
                 success_rate=round(success_rate, 1),
@@ -168,7 +174,10 @@ def get_student_details(
         db.query(func.max(PuzzleAttempt.attempted_at)).filter(PuzzleAttempt.user_id == student.id).scalar()
     )
     last_active = last_attempt or student.last_login or student.created_at
-    days_since_active = (datetime.utcnow() - last_active).days if last_active else 0
+    if last_active is None:
+        days_since_active = 999
+    else:
+        days_since_active = (datetime.utcnow() - last_active).days
 
     # Solved by difficulty (from PuzzleAttempt joined with Puzzle)
     from models import DifficultyLevel

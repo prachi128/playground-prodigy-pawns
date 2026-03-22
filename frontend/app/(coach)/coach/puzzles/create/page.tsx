@@ -138,233 +138,212 @@ export default function CreatePuzzlePage() {
     }
   };
 
+  const coachDarkSq = 'hsl(152 41% 28%)';
+  const coachLightSq = 'hsl(134 55% 92%)';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50">
-      <div className="max-w-6xl mx-auto px-8 py-6">
-        {/* Header */}
-        <div className="mb-6">
-          <Link
-            href="/coach"
-            className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-semibold text-sm mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Coach Dashboard
-          </Link>
-          
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            ➕ Create New Puzzle
-          </h1>
-          <p className="text-gray-600">
-            Paste a FEN position and Stockfish will auto-generate the solution
-          </p>
-        </div>
+    <div>
+      <div className="mb-6">
+        <Link
+          href="/coach/puzzles"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to puzzles
+        </Link>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Left Column - Form */}
-          <div className="space-y-4">
-            {/* Puzzle Details Card */}
-            <div className="bg-white rounded-2xl p-6 shadow-lg border-4 border-gray-200">
-              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Target className="w-5 h-5 text-primary-600" />
-                Puzzle Details
-              </h2>
+        <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          Create puzzle
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
+          Paste a FEN position and Stockfish will suggest the solution.
+        </p>
+      </div>
 
-              <div className="space-y-4">
-                {/* Title */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Knight Fork Tactic"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none"
-                  />
-                </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 flex items-center gap-2 font-heading text-xl font-bold text-card-foreground">
+              <Target className="h-5 w-5 text-primary" />
+              Puzzle details
+            </h2>
 
-                {/* Description */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Brief description of the puzzle..."
-                    rows={3}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none resize-none"
-                  />
-                </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Title *</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g., Knight fork tactic"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
 
-                {/* FEN Position */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    FEN Position *
-                  </label>
-                  <textarea
-                    value={fen}
-                    onChange={(e) => setFen(e.target.value)}
-                    placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-                    rows={3}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:outline-none font-mono text-sm resize-none"
-                  />
-                  <button
-                    onClick={useSampleFEN}
-                    className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-semibold"
-                  >
-                    Use Sample FEN
-                  </button>
-                </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Brief description of the puzzle…"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
 
-                {/* Analyze Button */}
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-foreground">FEN position *</label>
+                <textarea
+                  value={fen}
+                  onChange={(e) => setFen(e.target.value)}
+                  placeholder="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2 font-mono text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
                 <button
-                  onClick={analyzeFEN}
-                  disabled={isAnalyzing || !fen.trim()}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg"
+                  type="button"
+                  onClick={useSampleFEN}
+                  className="mt-2 text-sm font-semibold text-primary hover:text-primary/90"
                 >
-                  {isAnalyzing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Brain className="w-5 h-5" />
-                      Analyze with Stockfish
-                    </>
-                  )}
+                  Use sample FEN
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={analyzeFEN}
+                disabled={isAnalyzing || !fen.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    Analyzing…
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-5 w-5" />
+                    Analyze with Stockfish
+                  </>
+                )}
+              </button>
             </div>
+          </div>
 
-            {/* Stockfish Analysis Results */}
-            {analysis && (
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-6 shadow-lg border-4 border-purple-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-purple-600" />
-                  Stockfish Analysis
-                </h3>
+          {analysis && (
+            <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 font-heading text-lg font-bold text-card-foreground">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Stockfish analysis
+              </h3>
 
-                <div className="space-y-3">
-                  {/* Best Move */}
-                  <div className="bg-white p-4 rounded-xl">
-                    <p className="text-sm text-gray-600 mb-1">Best Move</p>
-                    <p className="text-2xl font-bold text-primary-600 font-mono">
-                      {analysis.best_move}
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="mb-1 text-sm text-muted-foreground">Best move</p>
+                  <p className="font-mono text-2xl font-bold text-primary">{analysis.best_move}</p>
+                </div>
+
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="mb-1 text-sm text-muted-foreground">Suggested difficulty</p>
+                  <span className="inline-block rounded-full border border-[hsl(var(--purple-medium))]/35 bg-[hsl(var(--purple-light))]/90 px-3 py-1 text-sm font-bold capitalize text-[hsl(var(--purple-dark))]">
+                    {analysis.suggested_difficulty}
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="mb-1 text-sm text-muted-foreground">Evaluation</p>
+                  {analysis.is_mate ? (
+                    <p className="text-lg font-bold text-[hsl(var(--green-medium))]">
+                      Mate in {Math.abs(analysis.evaluation.value)}
                     </p>
-                  </div>
-
-                  {/* Suggested Difficulty */}
-                  <div className="bg-white p-4 rounded-xl">
-                    <p className="text-sm text-gray-600 mb-1">Suggested Difficulty</p>
-                    <span className="inline-block px-3 py-1 rounded-full text-sm font-bold bg-purple-100 text-purple-800 border-2 border-purple-300 capitalize">
-                      {analysis.suggested_difficulty}
-                    </span>
-                  </div>
-
-                  {/* Evaluation */}
-                  <div className="bg-white p-4 rounded-xl">
-                    <p className="text-sm text-gray-600 mb-1">Evaluation</p>
-                    {analysis.is_mate ? (
-                      <p className="text-lg font-bold text-green-600">
-                        Mate in {Math.abs(analysis.evaluation.value)}
-                      </p>
-                    ) : (
-                      <p className="text-lg font-bold text-gray-800">
-                        {analysis.evaluation.type === 'cp' 
-                          ? `${(analysis.evaluation.value / 100).toFixed(2)}`
-                          : 'Equal'}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Top Moves */}
-                  {analysis.top_moves && analysis.top_moves.length > 0 && (
-                    <div className="bg-white p-4 rounded-xl">
-                      <p className="text-sm text-gray-600 mb-2">Top 3 Moves</p>
-                      <div className="space-y-1">
-                        {analysis.top_moves.slice(0, 3).map((move: any, i: number) => (
-                          <div key={i} className="flex justify-between text-sm">
-                            <span className="font-mono font-bold">{move.Move}</span>
-                            <span className="text-gray-600">
-                              {move.Centipawn ? `${(move.Centipawn / 100).toFixed(2)}` : '—'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  ) : (
+                    <p className="text-lg font-bold text-card-foreground">
+                      {analysis.evaluation.type === 'cp'
+                        ? `${(analysis.evaluation.value / 100).toFixed(2)}`
+                        : 'Equal'}
+                    </p>
                   )}
                 </div>
+
+                {analysis.top_moves && analysis.top_moves.length > 0 && (
+                  <div className="rounded-lg border border-border bg-muted/30 p-4">
+                    <p className="mb-2 text-sm text-muted-foreground">Top 3 moves</p>
+                    <div className="space-y-1">
+                      {analysis.top_moves.slice(0, 3).map((move: { Move: string; Centipawn?: number }, i: number) => (
+                        <div key={i} className="flex justify-between text-sm">
+                          <span className="font-mono font-bold">{move.Move}</span>
+                          <span className="text-muted-foreground">
+                            {move.Centipawn ? `${(move.Centipawn / 100).toFixed(2)}` : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={createPuzzle}
+            disabled={isCreating || !title.trim() || !fen.trim()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-4 px-6 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCreating ? (
+              <>
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                Creating puzzle…
+              </>
+            ) : (
+              <>
+                <Zap className="h-5 w-5" />
+                Create puzzle
+              </>
+            )}
+          </button>
+        </div>
+
+        <div>
+          <div className="sticky top-6 rounded-xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Board preview</h2>
+
+            {game ? (
+              <div className="mx-auto w-full max-w-[400px]">
+                <Chessboard
+                  key={game.fen()}
+                  options={{
+                    position: game.fen(),
+                    onPieceDrop: ({ sourceSquare, targetSquare }) =>
+                      sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
+                    boardStyle: {
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                    },
+                    darkSquareStyle: { backgroundColor: coachDarkSq },
+                    lightSquareStyle: { backgroundColor: coachLightSq },
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-muted/50">
+                <p className="text-center text-sm text-muted-foreground">
+                  {fen.trim() ? 'Invalid FEN position' : 'Enter a FEN position'}
+                  <br />
+                  {fen.trim() ? 'Please check the format' : 'to see preview'}
+                </p>
               </div>
             )}
 
-            {/* Create Button */}
-            <button
-              onClick={createPuzzle}
-              disabled={isCreating || !title.trim() || !fen.trim()}
-              className="w-full bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl hover:from-primary-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xl"
-            >
-              {isCreating ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Creating Puzzle...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-5 h-5" />
-                  Create Puzzle
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Right Column - Chess Board Preview */}
-          <div>
-            <div className="bg-white rounded-2xl p-6 shadow-lg border-4 border-gray-200 sticky top-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                📋 Board Preview
-              </h2>
-              
-              {game ? (
-                <div className="w-full max-w-[400px] mx-auto">
-                  <Chessboard
-                    key={game.fen()}
-                    options={{
-                      position: game.fen(),
-                      onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                        sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
-                      boardStyle: {
-                        borderRadius: '12px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                      },
-                      darkSquareStyle: { backgroundColor: '#9333ea' },
-                      lightSquareStyle: { backgroundColor: '#e9d5ff' },
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center">
-                  <p className="text-gray-400 text-center">
-                    {fen.trim() ? 'Invalid FEN position' : 'Enter a FEN position'}
-                    <br />
-                    {fen.trim() ? 'Please check the format' : 'to see preview'}
-                  </p>
-                </div>
-              )}
-
-              {analysis && (
-                <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border-2 border-green-200">
-                  <p className="text-sm font-bold text-gray-700 mb-1">
-                    ✓ Position Validated
-                  </p>
-                  <p className="text-xs text-gray-600">
-                    Stockfish confirmed this is a valid puzzle with solution: <span className="font-mono font-bold">{analysis.best_move}</span>
-                  </p>
-                </div>
-              )}
-            </div>
+            {analysis && (
+              <div className="mt-4 rounded-xl border border-[hsl(var(--green-medium))]/30 bg-[hsl(var(--green-very-light))]/50 p-4">
+                <p className="mb-1 text-sm font-semibold text-[hsl(var(--green-medium))]">Position validated</p>
+                <p className="text-xs text-muted-foreground">
+                  Stockfish suggested solution:{' '}
+                  <span className="font-mono font-bold text-foreground">{analysis.best_move}</span>
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

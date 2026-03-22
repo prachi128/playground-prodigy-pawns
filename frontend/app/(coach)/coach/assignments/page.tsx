@@ -9,9 +9,20 @@ import { useAuthStore } from '@/lib/store';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
-  Plus, BookOpen, Users, User, Calendar, ChevronRight,
-  CheckCircle, Clock, XCircle, Loader2, X, Trash2,
+  Plus,
+  BookOpen,
+  Users,
+  User,
+  ChevronRight,
+  Clock,
+  XCircle,
+  Loader2,
+  X,
+  Trash2,
 } from 'lucide-react';
+
+const cardBase =
+  'rounded-xl border border-border bg-card shadow-sm transition-all hover:border-primary/25 hover:shadow-md';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -52,14 +63,21 @@ interface Assignment {
 // ── Helpers ──────────────────────────────────────────────────
 
 const DIFFICULTY_COLORS: Record<string, string> = {
-  beginner:     'bg-green-100 text-green-800 border-green-300',
-  intermediate: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  advanced:     'bg-orange-100 text-orange-800 border-orange-300',
-  expert:       'bg-red-100 text-red-800 border-red-300',
+  beginner:
+    'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]',
+  intermediate:
+    'border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/80 text-[hsl(var(--gold-dark))]',
+  advanced:
+    'border border-[hsl(var(--orange-medium))]/40 bg-[hsl(var(--orange-very-light))] text-[hsl(var(--orange-dark))]',
+  expert:
+    'border border-[hsl(var(--red-medium))]/35 bg-[hsl(var(--red-light))] text-[hsl(var(--red-medium))]',
 };
 
 function diffBadge(d: string) {
-  return DIFFICULTY_COLORS[d.toLowerCase()] ?? 'bg-gray-100 text-gray-700 border-gray-300';
+  return (
+    DIFFICULTY_COLORS[d.toLowerCase()] ??
+    'border border-border bg-muted text-muted-foreground'
+  );
 }
 
 function formatDate(iso: string | null) {
@@ -194,37 +212,46 @@ export default function AssignmentsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-10 h-10 text-primary-600 animate-spin" />
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium text-muted-foreground">Loading assignments…</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-gray-600">Create and track puzzle assignments for batches or individual students</p>
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            Assignments
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Create and track puzzle assignments for batches or individual students.
+          </p>
         </div>
         <button
+          type="button"
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-gradient-to-r from-primary-500 to-purple-600 text-white px-5 py-2.5 rounded-xl font-bold hover:from-primary-600 hover:to-purple-700 transition-all shadow-lg"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
         >
-          <Plus className="w-5 h-5" /> New Assignment
+          <Plus className="h-5 w-5" />
+          New assignment
         </button>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-5">
-        {(['active', 'all', 'inactive'] as const).map(f => (
+      <div className="mb-5 flex flex-wrap gap-2">
+        {(['active', 'all', 'inactive'] as const).map((f) => (
           <button
             key={f}
+            type="button"
             onClick={() => setFilterActive(f)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all capitalize ${
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold capitalize transition-colors ${
               filterActive === f
-                ? 'bg-primary-500 text-white shadow'
-                : 'bg-white border-2 border-gray-200 text-gray-600 hover:border-primary-300'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             }`}
           >
             {f}
@@ -232,80 +259,85 @@ export default function AssignmentsPage() {
         ))}
       </div>
 
-      {/* Assignment cards */}
       {filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border-2 border-gray-200 p-14 text-center">
-          <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 text-lg font-medium">No assignments yet</p>
-          <p className="text-gray-400 text-sm mt-1">Create your first assignment to get students practising.</p>
+        <div className={`${cardBase} p-14 text-center`}>
+          <BookOpen className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
+          <p className="font-heading text-lg font-bold text-card-foreground">No assignments yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create your first assignment to get students practising.
+          </p>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(a => (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((a) => (
             <div
               key={a.id}
-              className={`bg-white rounded-2xl border-2 p-5 transition-all ${
+              className={`rounded-xl border p-5 shadow-sm transition-all ${
                 a.is_active
-                  ? 'border-gray-200 hover:border-primary-300 hover:shadow-md'
-                  : 'border-gray-100 opacity-60'
+                  ? 'border-border bg-card hover:border-primary/25 hover:shadow-md'
+                  : 'border-border/60 bg-card/80 opacity-60'
               }`}
             >
-              {/* Top row */}
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-800 text-base truncate">{a.title}</h3>
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-base font-bold text-card-foreground">{a.title}</h3>
                   {a.description && (
-                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{a.description}</p>
+                    <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{a.description}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex shrink-0 items-center gap-1">
                   {a.is_active && (
                     <button
+                      type="button"
                       onClick={() => handleDeactivate(a.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                       title="Deactivate"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   )}
                   <Link
                     href={`/coach/assignments/${a.id}`}
-                    className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-all"
+                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                     title="View progress"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="h-4 w-4" />
                   </Link>
                 </div>
               </div>
 
-              {/* Target badge */}
-              <div className="flex items-center gap-1.5 mb-3">
+              <div className="mb-3 flex items-center gap-1.5">
                 {a.batch_id ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-300 px-2 py-0.5 rounded-full">
-                    <Users className="w-3 h-3" /> {a.batch_name}
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--blue-medium))]/35 bg-[hsl(var(--blue-light))] px-2 py-0.5 text-xs font-semibold text-[hsl(var(--blue-dark))]">
+                    <Users className="h-3 w-3" /> {a.batch_name}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-full">
-                    <User className="w-3 h-3" /> {a.student_name}
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--purple-medium))]/35 bg-[hsl(var(--purple-light))]/90 px-2 py-0.5 text-xs font-semibold text-[hsl(var(--purple-dark))]">
+                    <User className="h-3 w-3" /> {a.student_name}
                   </span>
                 )}
               </div>
 
-              {/* Meta row */}
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <BookOpen className="w-3.5 h-3.5" />
+                  <BookOpen className="h-3.5 w-3.5" />
                   {a.puzzle_count} puzzle{a.puzzle_count !== 1 ? 's' : ''}
                 </span>
                 {a.due_date ? (
-                  <span className={`flex items-center gap-1 font-medium ${
-                    isOverdue(a.due_date) ? 'text-red-600' : 'text-gray-500'
-                  }`}>
-                    {isOverdue(a.due_date) ? <XCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                  <span
+                    className={`flex items-center gap-1 font-medium ${
+                      isOverdue(a.due_date) ? 'text-destructive' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {isOverdue(a.due_date) ? (
+                      <XCircle className="h-3.5 w-3.5" />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5" />
+                    )}
                     Due {formatDate(a.due_date)}
                   </span>
                 ) : (
-                  <span className="text-gray-400">No deadline</span>
+                  <span className="text-muted-foreground/70">No deadline</span>
                 )}
               </div>
             </div>
@@ -313,66 +345,91 @@ export default function AssignmentsPage() {
         </div>
       )}
 
-      {/* ── CREATE MODAL ─────────────────────────────────────── */}
       {showCreate && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50,
-                   display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-                   overflowY: 'auto', padding: '2rem 1rem' }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowCreate(false); resetForm(); }}}
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-8 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCreate(false);
+              resetForm();
+            }
+          }}
+          role="presentation"
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
-            {/* Modal header */}
-            <div className="flex items-center justify-between p-6 border-b-2 border-gray-100">
-              <h2 className="text-xl font-bold text-gray-800">New Assignment</h2>
-              <button
-                onClick={() => { setShowCreate(false); resetForm(); }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+          <div
+            className="w-full max-w-2xl rounded-xl border border-border bg-card shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-assignment-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border p-6">
+              <h2
+                id="new-assignment-title"
+                className="font-heading text-xl font-bold text-card-foreground"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                New assignment
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreate(false);
+                  resetForm();
+                }}
+                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted"
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
-              {/* Title */}
+            <div className="space-y-5 p-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Title *</label>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">Title *</label>
                 <input
                   type="text"
                   value={form.title}
-                  onChange={e => setForm({ ...form, title: e.target.value })}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
                   placeholder="e.g. Week 3 Tactics — Forks & Pins"
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:outline-none"
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
 
-              {/* Description */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Description</label>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">Description</label>
                 <textarea
                   value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
-                  placeholder="Optional instructions for students..."
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:outline-none resize-none"
+                  placeholder="Optional instructions for students…"
+                  className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
 
-              {/* Target: batch or student */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">Assign to *</label>
-                <div className="flex gap-3 mb-3">
-                  {(['batch', 'student'] as const).map(t => (
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">Assign to *</label>
+                <div className="mb-3 flex gap-3">
+                  {(['batch', 'student'] as const).map((t) => (
                     <button
                       key={t}
+                      type="button"
                       onClick={() => setForm({ ...form, target: t, batch_id: '', student_id: '' })}
-                      className={`flex-1 py-2 rounded-xl border-2 font-semibold text-sm transition-all capitalize ${
+                      className={`flex-1 rounded-xl border py-2 text-sm font-semibold capitalize transition-colors ${
                         form.target === t
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:border-input hover:text-foreground'
                       }`}
                     >
-                      {t === 'batch' ? <><Users className="w-4 h-4 inline mr-1" />Whole Batch</> : <><User className="w-4 h-4 inline mr-1" />Individual Student</>}
+                      {t === 'batch' ? (
+                        <>
+                          <Users className="mr-1 inline h-4 w-4" />
+                          Whole batch
+                        </>
+                      ) : (
+                        <>
+                          <User className="mr-1 inline h-4 w-4" />
+                          Individual student
+                        </>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -380,11 +437,11 @@ export default function AssignmentsPage() {
                 {form.target === 'batch' ? (
                   <select
                     value={form.batch_id}
-                    onChange={e => setForm({ ...form, batch_id: e.target.value })}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:outline-none"
+                    onChange={(e) => setForm({ ...form, batch_id: e.target.value })}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="">Select batch...</option>
-                    {batches.map(b => (
+                    <option value="">Select batch…</option>
+                    {batches.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name} ({b.student_count} students)
                       </option>
@@ -393,87 +450,105 @@ export default function AssignmentsPage() {
                 ) : (
                   <select
                     value={form.student_id}
-                    onChange={e => setForm({ ...form, student_id: e.target.value })}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:outline-none"
+                    onChange={(e) => setForm({ ...form, student_id: e.target.value })}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="">Select student...</option>
-                    {students.map(s => (
-                      <option key={s.id} value={s.id}>{s.username} — {s.email}</option>
+                    <option value="">Select student…</option>
+                    {students.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.username} — {s.email}
+                      </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {/* Due date */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">
-                  Due Date <span className="font-normal text-gray-400">(optional)</span>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">
+                  Due date <span className="font-normal text-muted-foreground">(optional)</span>
                 </label>
                 <input
                   type="datetime-local"
                   value={form.due_date}
-                  onChange={e => setForm({ ...form, due_date: e.target.value })}
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:outline-none"
+                  onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
 
-              {/* Puzzle picker */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">
-                  Puzzles * <span className="font-normal text-gray-500">({selectedPuzzles.length} selected — order matters)</span>
+                <label className="mb-1.5 block text-sm font-semibold text-foreground">
+                  Puzzles *{' '}
+                  <span className="font-normal text-muted-foreground">
+                    ({selectedPuzzles.length} selected — order matters)
+                  </span>
                 </label>
                 <input
                   type="text"
                   value={puzzleSearch}
-                  onChange={e => setPuzzleSearch(e.target.value)}
-                  placeholder="Search by title or difficulty..."
-                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:outline-none mb-2 text-sm"
+                  onChange={(e) => setPuzzleSearch(e.target.value)}
+                  placeholder="Search by title or difficulty…"
+                  className="mb-2 w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <div className="border-2 border-gray-200 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                <div className="max-h-52 overflow-y-auto overflow-hidden rounded-xl border border-border">
                   {filteredPuzzles.length === 0 ? (
-                    <p className="text-center text-gray-400 py-6 text-sm">No puzzles found</p>
+                    <p className="py-6 text-center text-sm text-muted-foreground">No puzzles found</p>
                   ) : (
-                    filteredPuzzles.map(p => {
+                    filteredPuzzles.map((p) => {
                       const isSelected = selectedPuzzles.includes(p.id);
                       const order = selectedPuzzles.indexOf(p.id) + 1;
                       return (
                         <div
                           key={p.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => togglePuzzle(p.id)}
-                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all border-b border-gray-100 last:border-b-0 ${
-                            isSelected ? 'bg-primary-50' : 'hover:bg-gray-50'
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              togglePuzzle(p.id);
+                            }
+                          }}
+                          className={`flex cursor-pointer items-center gap-3 border-b border-border px-4 py-2.5 transition-colors last:border-b-0 ${
+                            isSelected ? 'bg-primary/10' : 'hover:bg-muted/50'
                           }`}
                         >
-                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 ${
-                            isSelected
-                              ? 'border-primary-500 bg-primary-500 text-white'
-                              : 'border-gray-300 text-gray-400'
-                          }`}>
+                          <div
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                              isSelected
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-muted-foreground/30 text-muted-foreground'
+                            }`}
+                          >
                             {isSelected ? order : ''}
                           </div>
-                          <span className="flex-1 text-sm text-gray-800 font-medium">{p.title}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border capitalize ${diffBadge(p.difficulty)}`}>
+                          <span className="flex-1 text-sm font-medium text-foreground">{p.title}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-bold capitalize ${diffBadge(p.difficulty)}`}
+                          >
                             {p.difficulty}
                           </span>
-                          <span className="text-xs text-yellow-600 font-bold">{p.xp_reward} XP</span>
+                          <span className="text-xs font-bold text-[hsl(var(--gold-dark))]">{p.xp_reward} XP</span>
                         </div>
                       );
                     })
                   )}
                 </div>
-                {/* Selected order preview */}
                 {selectedPuzzles.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {selectedPuzzles.map((id, idx) => {
-                      const p = allPuzzles.find(x => x.id === id);
+                      const p = allPuzzles.find((x) => x.id === id);
                       return (
                         <span
                           key={id}
-                          className="inline-flex items-center gap-1 bg-primary-100 text-primary-800 border border-primary-300 text-xs font-bold px-2 py-1 rounded-full"
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-bold text-primary"
                         >
                           {idx + 1}. {p?.title ?? `#${id}`}
-                          <button onClick={() => togglePuzzle(id)} className="ml-0.5 hover:text-red-600">
-                            <X className="w-3 h-3" />
+                          <button
+                            type="button"
+                            onClick={() => togglePuzzle(id)}
+                            className="ml-0.5 text-primary hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
                           </button>
                         </span>
                       );
@@ -483,20 +558,31 @@ export default function AssignmentsPage() {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex gap-3 p-6 pt-0">
               <button
-                onClick={() => { setShowCreate(false); resetForm(); }}
-                className="flex-1 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-all"
+                type="button"
+                onClick={() => {
+                  setShowCreate(false);
+                  resetForm();
+                }}
+                className="flex-1 rounded-xl border border-border bg-muted py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleCreate}
                 disabled={creating}
-                className="flex-1 py-3 bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold rounded-xl hover:from-primary-600 hover:to-purple-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
-                {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : 'Create Assignment'}
+                {creating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  'Create assignment'
+                )}
               </button>
             </div>
           </div>

@@ -6,11 +6,29 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { coachAPI, Puzzle } from '@/lib/api';
-import { Plus, Edit, Trash2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, XCircle, RefreshCw, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { getDifficultyColor, parseThemeList } from '@/lib/utils';
+import { parseThemeList } from '@/lib/utils';
 import ConfirmDialog from '@/components/ConfirmDialog';
+
+const cardBase =
+  'rounded-xl border border-border bg-card shadow-sm transition-all hover:border-primary/25 hover:shadow-md';
+
+function coachDifficultyBadge(difficulty: string): string {
+  switch (difficulty.toLowerCase()) {
+    case 'beginner':
+      return 'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]';
+    case 'intermediate':
+      return 'border border-[hsl(var(--gold-medium))]/40 bg-[hsl(var(--gold-light))]/80 text-[hsl(var(--gold-dark))]';
+    case 'advanced':
+      return 'border border-[hsl(var(--orange-medium))]/40 bg-[hsl(var(--orange-very-light))] text-[hsl(var(--orange-dark))]';
+    case 'expert':
+      return 'border border-[hsl(var(--red-medium))]/35 bg-[hsl(var(--red-light))] text-[hsl(var(--red-medium))]';
+    default:
+      return 'border border-border bg-muted text-muted-foreground';
+  }
+}
 
 export default function ManagePuzzlesPage() {
   const router = useRouter();
@@ -112,10 +130,10 @@ export default function ManagePuzzlesPage() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-semibold">Loading puzzles...</p>
+      <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-semibold text-muted-foreground">Loading puzzles…</p>
         </div>
       </div>
     );
@@ -123,175 +141,180 @@ export default function ManagePuzzlesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-gray-600">
-          Edit, delete, or revalidate puzzles
-        </p>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            Puzzles
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Edit, deactivate, or revalidate puzzles with Stockfish.
+          </p>
+        </div>
         <Link
           href="/coach/puzzles/create"
-          className="bg-gradient-to-r from-primary-500 to-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:from-primary-600 hover:to-purple-700 transition-all shadow-lg flex items-center gap-2"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
         >
-          <Plus className="w-5 h-5" />
-          Create New
+          <Plus className="h-5 w-5" />
+          Create new
         </Link>
       </div>
 
-        {/* Filter Buttons */}
-        <div className="flex gap-3 mb-6">
-          {[
-            { value: 'all', label: 'All Puzzles' },
-            { value: 'active', label: 'Active' },
-            { value: 'inactive', label: 'Inactive' }
-          ].map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setFilterActive(filter.value as any)}
-              style={{
-                backgroundColor: filterActive === filter.value ? '#9333ea' : '#ffffff',
-                color: filterActive === filter.value ? '#ffffff' : '#1f2937',
-                border: filterActive === filter.value ? '2px solid #9333ea' : '2px solid #d1d5db',
-              }}
-              className="px-4 py-2 rounded-lg font-semibold text-sm transition-all"
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
+      <div className="mb-6 flex flex-wrap gap-2">
+        {[
+          { value: 'all' as const, label: 'All puzzles' },
+          { value: 'active' as const, label: 'Active' },
+          { value: 'inactive' as const, label: 'Inactive' },
+        ].map((filter) => (
+          <button
+            key={filter.value}
+            type="button"
+            onClick={() => setFilterActive(filter.value)}
+            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
+              filterActive === filter.value
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Puzzles Table */}
-        <div className="bg-white rounded-2xl shadow-lg border-4 border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-primary-500 to-purple-600 text-white">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-bold">ID</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Title</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Difficulty</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Theme</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">XP</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Success</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPuzzles.map((puzzle, index) => (
-                  <tr
-                    key={puzzle.id}
-                    className={`border-t-2 border-gray-100 hover:bg-gray-50 ${
-                      index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-sm font-bold text-gray-800">
-                      #{puzzle.id}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Link href={`/coach/puzzles/${puzzle.id}`}>
-                        <div className="hover:bg-primary-50 p-2 rounded-lg transition-colors cursor-pointer">
-                          <p className="font-bold text-primary-600 hover:text-primary-700">
-                            {puzzle.title}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate max-w-xs">
-                            {puzzle.description}
-                          </p>
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold border-2 capitalize ${getDifficultyColor(puzzle.difficulty)}`}>
-                        {puzzle.difficulty}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {parseThemeList(puzzle.theme).length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {parseThemeList(puzzle.theme).map((t) => (
-                            <span key={t} className="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 capitalize">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-gray-500">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold text-yellow-600">
-                      {puzzle.xp_reward} XP
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className="text-gray-600">
-                        {puzzle.success_count}/{puzzle.attempts_count}
-                      </span>
-                      {puzzle.attempts_count > 0 && (
-                        <span className="ml-2 text-xs text-gray-500">
-                          ({Math.round((puzzle.success_count / puzzle.attempts_count) * 100)}%)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {puzzle.is_active ? (
-                        <span className="inline-flex items-center gap-1 text-green-600 font-bold">
-                          <CheckCircle className="w-4 h-4" />
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-red-600 font-bold">
-                          <XCircle className="w-4 h-4" />
-                          Inactive
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleRevalidate(puzzle.id)}
-                          className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-all"
-                          title="Revalidate with Stockfish"
-                        >
-                          <RefreshCw className="w-4 h-4 text-blue-600" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(puzzle.id, puzzle.title)}
-                          className="p-2 bg-red-100 hover:bg-red-200 rounded-lg transition-all"
-                          title="Deactivate puzzle"
-                          disabled={!puzzle.is_active}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </button>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-b border-border bg-primary text-primary-foreground">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-bold">ID</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Title</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Difficulty</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Theme</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">XP</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Success</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPuzzles.map((puzzle, index) => (
+                <tr
+                  key={puzzle.id}
+                  className={`border-b border-border transition-colors hover:bg-muted/40 ${
+                    index % 2 === 1 ? 'bg-muted/20' : ''
+                  }`}
+                >
+                  <td className="px-4 py-3 text-sm font-bold text-foreground">#{puzzle.id}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <Link href={`/coach/puzzles/${puzzle.id}`}>
+                      <div className="cursor-pointer rounded-lg p-2 transition-colors hover:bg-primary/10">
+                        <p className="font-bold text-primary hover:text-primary/90">{puzzle.title}</p>
+                        <p className="max-w-xs truncate text-xs text-muted-foreground">{puzzle.description}</p>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredPuzzles.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No puzzles found</p>
-            </div>
-          )}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span
+                      className={`inline-block rounded-full px-2 py-1 text-xs font-bold capitalize ${coachDifficultyBadge(
+                        puzzle.difficulty,
+                      )}`}
+                    >
+                      {puzzle.difficulty}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {parseThemeList(puzzle.theme).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {parseThemeList(puzzle.theme).map((t) => (
+                          <span
+                            key={t}
+                            className="inline-block rounded-full border border-[hsl(var(--blue-medium))]/35 bg-[hsl(var(--blue-light))] px-2 py-0.5 text-xs font-bold capitalize text-[hsl(var(--blue-dark))]"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-bold text-[hsl(var(--gold-dark))]">
+                    {puzzle.xp_reward} XP
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className="text-muted-foreground">
+                      {puzzle.success_count}/{puzzle.attempts_count}
+                    </span>
+                    {puzzle.attempts_count > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({Math.round((puzzle.success_count / puzzle.attempts_count) * 100)}%)
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {puzzle.is_active ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-[hsl(var(--green-medium))]">
+                        <CheckCircle className="h-4 w-4" />
+                        Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-bold text-destructive">
+                        <XCircle className="h-4 w-4" />
+                        Inactive
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleRevalidate(puzzle.id)}
+                        className="rounded-lg p-2 text-[hsl(var(--blue-dark))] transition-colors hover:bg-[hsl(var(--blue-light))]"
+                        title="Revalidate with Stockfish"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(puzzle.id, puzzle.title)}
+                        className="rounded-lg p-2 text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-40"
+                        title="Deactivate puzzle"
+                        disabled={!puzzle.is_active}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        {/* Stats Summary */}
-        <div className="mt-6 grid md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-xl shadow-lg border-2 border-gray-200">
-            <p className="text-sm text-gray-600 mb-1">Total Puzzles</p>
-            <p className="text-2xl font-bold text-primary-600">{puzzles.length}</p>
+        {filteredPuzzles.length === 0 && (
+          <div className="py-12 text-center">
+            <p className="text-muted-foreground">No puzzles found</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-lg border-2 border-gray-200">
-            <p className="text-sm text-gray-600 mb-1">Active Puzzles</p>
-            <p className="text-2xl font-bold text-green-600">
-              {puzzles.filter(p => p.is_active).length}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow-lg border-2 border-gray-200">
-            <p className="text-sm text-gray-600 mb-1">Inactive Puzzles</p>
-            <p className="text-2xl font-bold text-red-600">
-              {puzzles.filter(p => !p.is_active).length}
-            </p>
-          </div>
+        )}
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <div className={`${cardBase} p-4`}>
+          <p className="mb-1 text-sm text-muted-foreground">Total puzzles</p>
+          <p className="text-2xl font-bold text-primary">{puzzles.length}</p>
         </div>
+        <div className={`${cardBase} p-4`}>
+          <p className="mb-1 text-sm text-muted-foreground">Active puzzles</p>
+          <p className="text-2xl font-bold text-[hsl(var(--green-medium))]">
+            {puzzles.filter((p) => p.is_active).length}
+          </p>
+        </div>
+        <div className={`${cardBase} p-4`}>
+          <p className="mb-1 text-sm text-muted-foreground">Inactive puzzles</p>
+          <p className="text-2xl font-bold text-destructive">
+            {puzzles.filter((p) => !p.is_active).length}
+          </p>
+        </div>
+      </div>
 
       {/* Confirmation Dialog */}
       <ConfirmDialog
