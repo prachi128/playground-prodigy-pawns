@@ -75,7 +75,7 @@ from schemas import (
 from stockfish_service import get_stockfish_service
 from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
-from student_management_backend import router as student_router
+from student_management_backend import router as student_router, admin_router as admin_students_router
 from parent_endpoints import router as parent_router
 from batch_endpoints import router as batch_router, admin_router
 from assignment_endpoints import router as assignment_router
@@ -331,6 +331,7 @@ app.mount("/uploads", StaticFiles(directory=str(_UPLOAD_ROOT)), name="uploads")
 # Include routers
 app.include_router(coach_router)
 app.include_router(student_router)
+app.include_router(admin_students_router)
 app.include_router(parent_router)
 app.include_router(batch_router)
 app.include_router(admin_router)

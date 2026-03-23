@@ -80,7 +80,7 @@ export default function AdminCoachesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/coach/students/coaches');
+      const res = await api.get('/api/admin/coaches');
       const data = res.data;
       setRows(Array.isArray(data) ? data : []);
     } catch {
@@ -105,10 +105,10 @@ export default function AdminCoachesPage() {
     setBusyId(id);
     try {
       if (action === 'deactivate') {
-        await api.put(`/api/coach/students/coaches/${id}/deactivate`);
+        await api.put(`/api/admin/coaches/${id}/deactivate`);
         toast.success('Coach deactivated');
       } else {
-        await api.put(`/api/coach/students/coaches/${id}/reactivate`);
+        await api.put(`/api/admin/coaches/${id}/reactivate`);
         toast.success('Coach reactivated');
       }
       setConfirm(null);
@@ -131,7 +131,7 @@ export default function AdminCoachesPage() {
     }
     setRosterLoadingId(coachId);
     try {
-      const res = await api.get('/api/coach/students/coaches/roster', {
+      const res = await api.get('/api/admin/coaches/roster', {
         params: { coach_id: coachId, include_inactive: true },
       });
       const rows = Array.isArray(res.data) ? (res.data as CoachRoster[]) : [];

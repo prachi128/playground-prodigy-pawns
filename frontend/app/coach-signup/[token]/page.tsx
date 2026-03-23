@@ -19,6 +19,7 @@ export default function CoachInviteSignupPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [inlineError, setInlineError] = useState('');
   const [form, setForm] = useState({
     full_name: '',
     username: '',
@@ -51,13 +52,18 @@ export default function CoachInviteSignupPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInlineError('');
     if (!inviteEmail) return;
     if (!form.full_name.trim() || !form.username.trim() || !form.password) {
-      toast.error('Please fill all fields');
+      const msg = 'Please fill in all required fields.';
+      setInlineError(msg);
+      toast.error(msg);
       return;
     }
     if (form.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      const msg = 'Password must be at least 6 characters.';
+      setInlineError(msg);
+      toast.error(msg);
       return;
     }
     setSubmitting(true);
@@ -77,7 +83,9 @@ export default function CoachInviteSignupPage() {
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
           : undefined;
-      toast.error(detail || 'Failed to create account');
+      const msg = detail || 'Failed to create account';
+      setInlineError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -157,12 +165,23 @@ export default function CoachInviteSignupPage() {
           </div>
 
           <form onSubmit={onSubmit} className="space-y-4">
+            {inlineError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+              >
+                {inlineError}
+              </div>
+            )}
             <div>
               <label className="mb-2 block text-sm font-semibold text-foreground">Full Name *</label>
               <input
                 type="text"
                 value={form.full_name}
-                onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, full_name: e.target.value }));
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="Your full name"
                 required
@@ -173,7 +192,10 @@ export default function CoachInviteSignupPage() {
               <input
                 type="text"
                 value={form.username}
-                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, username: e.target.value }));
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="coach_username"
                 required
@@ -193,7 +215,10 @@ export default function CoachInviteSignupPage() {
               <input
                 type="password"
                 value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, password: e.target.value }));
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                 required
               />

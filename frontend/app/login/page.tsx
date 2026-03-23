@@ -21,12 +21,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [inlineError, setInlineError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInlineError('');
 
     if (!email || !password) {
-      toast.error('Please fill in all fields');
+      const msg = 'Please fill in all required fields.';
+      setInlineError(msg);
+      toast.error(msg);
       return;
     }
 
@@ -46,7 +50,9 @@ export default function LoginPage() {
       router.push(redirectPath);
     } catch (error: any) {
       console.error('Login error:', error);
-      toast.error(error.response?.data?.detail || 'Login failed. Please try again.');
+      const msg = error.response?.data?.detail || 'Login failed. Please try again.';
+      setInlineError(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -127,6 +133,14 @@ export default function LoginPage() {
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {inlineError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+              >
+                {inlineError}
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Email
@@ -135,7 +149,10 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (inlineError) setInlineError('');
+                }}
                 disabled={isLoading}
                 className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="your@email.com"
@@ -151,7 +168,10 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (inlineError) setInlineError('');
+                }}
                 disabled={isLoading}
                 className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="••••••••"

@@ -688,10 +688,21 @@ def list_coach_invites(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    now = datetime.utcnow()
     invites = db.query(CoachSignupInvite).filter(
         CoachSignupInvite.created_by == admin.id
     ).order_by(CoachSignupInvite.created_at.desc()).all()
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    
+    def _status(invite: CoachSignupInvite) -> str:
+        if invite.used_at:
+            return "used"
+        if not invite.is_active:
+            return "revoked"
+        if invite.expires_at < now:
+            return "expired"
+        return "active"
+
     return [
         {
             "id": i.id,
@@ -701,6 +712,9 @@ def list_coach_invites(
             "expires_at": i.expires_at,
             "used_at": i.used_at,
             "is_active": i.is_active,
+            "status": _status(i),
+            "is_expired": i.expires_at < now,
+            "expires_in_hours": max(0.0, (i.expires_at - now).total_seconds() / 3600.0),
             "created_at": i.created_at,
             "used_by": i.used_by,
         }
@@ -722,6 +736,8 @@ def revoke_coach_invite(
         raise HTTPException(status_code=404, detail="Invite not found")
     if invite.used_at:
         raise HTTPException(status_code=400, detail="Invite already used")
+    if invite.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invite already expired")
     invite.is_active = False
     log_admin_action(
         db,
@@ -733,6 +749,35 @@ def revoke_coach_invite(
     )
     db.commit()
     return {"detail": "Invite revoked"}
+
+
+@admin_router.post("/coach-invites/revoke-expired")
+def revoke_expired_coach_invites(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+    invites = db.query(CoachSignupInvite).filter(
+        CoachSignupInvite.created_by == admin.id,
+        CoachSignupInvite.is_active == True,
+        CoachSignupInvite.used_at.is_(None),
+        CoachSignupInvite.expires_at < now,
+    ).all()
+    if not invites:
+        return {"revoked_count": 0}
+
+    for invite in invites:
+        invite.is_active = False
+        log_admin_action(
+            db,
+            admin_id=admin.id,
+            action="coach_invite_revoke",
+            target_type="coach_invite",
+            target_id=invite.id,
+            details={"email": invite.email, "reason": "bulk_expired_cleanup"},
+        )
+    db.commit()
+    return {"revoked_count": len(invites)}
 
 
 @admin_router.get("/audit-logs")
@@ -764,3 +809,80 @@ def list_admin_audit_logs(
         }
         for r in rows
     ]
+
+
+@admin_router.get("/operational-metrics")
+def get_admin_operational_metrics(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+    next_48h = now + timedelta(hours=48)
+    last_24h = now - timedelta(hours=24)
+
+    active_coaches = db.query(User).filter(
+        User.role == UserRole.coach,
+        User.is_active == True,
+    ).count()
+    unassigned_students = db.query(User).filter(
+        User.role == UserRole.student,
+        User.is_active == True,
+        User.primary_coach_id.is_(None),
+    ).count()
+
+    invites = db.query(CoachSignupInvite).filter(
+        CoachSignupInvite.created_by == admin.id
+    ).all()
+    invite_counts = {
+        "active": 0,
+        "used": 0,
+        "revoked": 0,
+        "expired": 0,
+        "expiring_soon": 0,
+    }
+    for invite in invites:
+        if invite.used_at:
+            invite_counts["used"] += 1
+            continue
+        if not invite.is_active:
+            invite_counts["revoked"] += 1
+            continue
+        if invite.expires_at < now:
+            invite_counts["expired"] += 1
+            continue
+        invite_counts["active"] += 1
+        if invite.expires_at <= next_48h:
+            invite_counts["expiring_soon"] += 1
+
+    critical_actions = [
+        "coach_deactivate",
+        "student_deactivate",
+        "student_assign_coach",
+        "coach_invite_create",
+        "coach_invite_revoke",
+        "payment_mark_paid",
+        "payment_unmark_paid",
+    ]
+    recent_q = db.query(AdminAuditLog).filter(
+        AdminAuditLog.created_at >= last_24h,
+        AdminAuditLog.action.in_(critical_actions),
+    )
+    recent_count = recent_q.count()
+    recent_rows = recent_q.order_by(AdminAuditLog.created_at.desc()).limit(8).all()
+
+    return {
+        "active_coaches": active_coaches,
+        "unassigned_students": unassigned_students,
+        "invite_counts": invite_counts,
+        "recent_critical_actions_24h": recent_count,
+        "recent_critical_actions": [
+            {
+                "id": row.id,
+                "action": row.action,
+                "target_type": row.target_type,
+                "target_id": row.target_id,
+                "created_at": row.created_at,
+            }
+            for row in recent_rows
+        ],
+    }

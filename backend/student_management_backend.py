@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from audit_service import log_admin_action
 
 router = APIRouter(prefix="/api/coach/students", tags=["students"])
+admin_router = APIRouter(prefix="/api/admin", tags=["admin-students"])
 
 
 # Response Models
@@ -799,3 +800,92 @@ def reactivate_student(
     )
     db.commit()
     return {"success": True, "message": f"Student {student.username} reactivated"}
+
+
+@admin_router.get("/coaches", response_model=List[CoachAccountRow])
+def admin_get_all_coaches(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return get_all_coaches(admin=admin, db=db)
+
+
+@admin_router.put("/coaches/{coach_id}/deactivate")
+def admin_deactivate_coach(
+    coach_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return deactivate_coach(coach_id=coach_id, admin=admin, db=db)
+
+
+@admin_router.put("/coaches/{coach_id}/reactivate")
+def admin_reactivate_coach(
+    coach_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return reactivate_coach(coach_id=coach_id, admin=admin, db=db)
+
+
+@admin_router.get("/coaches/roster", response_model=List[CoachRosterRow])
+def admin_get_coach_roster(
+    coach_id: Optional[int] = Query(None, description="Filter for one coach"),
+    include_inactive: bool = Query(True, description="Include inactive enrollments"),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return get_coach_roster(
+        coach_id=coach_id,
+        include_inactive=include_inactive,
+        _admin=admin,
+        db=db,
+    )
+
+
+@admin_router.get("/students", response_model=List[StudentStats])
+def admin_get_all_students(
+    coach_id: Optional[int] = Query(None, description="Filter by assigned coach"),
+    unassigned_only: bool = Query(False, description="Only students with no assigned coach"),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return get_all_students(
+        coach_id=coach_id,
+        unassigned_only=unassigned_only,
+        coach=admin,
+        db=db,
+    )
+
+
+@admin_router.put("/students/{student_id}/assign-coach")
+def admin_assign_student_to_coach(
+    student_id: int,
+    payload: StudentCoachAssignRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return assign_student_to_coach(
+        student_id=student_id,
+        payload=payload,
+        _admin=admin,
+        db=db,
+    )
+
+
+@admin_router.put("/students/{student_id}/deactivate")
+def admin_deactivate_student(
+    student_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return deactivate_student(student_id=student_id, admin=admin, db=db)
+
+
+@admin_router.put("/students/{student_id}/reactivate")
+def admin_reactivate_student(
+    student_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return reactivate_student(student_id=student_id, admin=admin, db=db)

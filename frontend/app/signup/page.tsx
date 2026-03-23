@@ -37,6 +37,7 @@ export default function SignupPage() {
   });
   const [childEmails, setChildEmails] = useState(['']);
   const [isLoading, setIsLoading] = useState(false);
+  const [inlineError, setInlineError] = useState('');
 
   const handleAddChildEmail = () => {
     setChildEmails([...childEmails, '']);
@@ -55,21 +56,28 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInlineError('');
 
     if (!formData.email || !formData.username || !formData.full_name || !formData.password) {
-      toast.error('Please fill in all required fields');
+      const msg = 'Please fill in all required fields.';
+      setInlineError(msg);
+      toast.error(msg);
       return;
     }
 
     if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      const msg = 'Password must be at least 6 characters.';
+      setInlineError(msg);
+      toast.error(msg);
       return;
     }
 
     if (mode === 'parent') {
       const validEmails = childEmails.filter(e => e.trim());
       if (validEmails.length === 0) {
-        toast.error('Please enter at least one child\'s email');
+        const msg = "Please enter at least one child's email.";
+        setInlineError(msg);
+        toast.error(msg);
         return;
       }
     }
@@ -104,7 +112,9 @@ export default function SignupPage() {
       router.push(redirectPath);
     } catch (error: any) {
       console.error('Signup error:', error);
-      toast.error(error.response?.data?.detail || 'Signup failed. Please try again.');
+      const msg = error.response?.data?.detail || 'Signup failed. Please try again.';
+      setInlineError(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -160,6 +170,14 @@ export default function SignupPage() {
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {inlineError && (
+              <div
+                role="alert"
+                className="rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+              >
+                {inlineError}
+              </div>
+            )}
             {/* Full Name */}
             <div>
               <label htmlFor="full_name" className="block text-sm font-semibold text-gray-700 mb-2">
@@ -169,7 +187,10 @@ export default function SignupPage() {
                 id="full_name"
                 type="text"
                 value={formData.full_name}
-                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, full_name: e.target.value });
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                 placeholder="Your Name"
                 required
@@ -185,7 +206,10 @@ export default function SignupPage() {
                 id="username"
                 type="text"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, username: e.target.value });
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                 placeholder={mode === 'parent' ? 'parent_jane' : 'chess_master'}
                 required
@@ -201,7 +225,10 @@ export default function SignupPage() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                 placeholder="your@email.com"
                 required
@@ -220,7 +247,10 @@ export default function SignupPage() {
                   min="5"
                   max="99"
                   value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, age: e.target.value });
+                    if (inlineError) setInlineError('');
+                  }}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                   placeholder="10"
                 />
@@ -317,7 +347,10 @@ export default function SignupPage() {
                     <input
                       type="email"
                       value={email}
-                      onChange={(e) => handleChildEmailChange(index, e.target.value)}
+                      onChange={(e) => {
+                        handleChildEmailChange(index, e.target.value);
+                        if (inlineError) setInlineError('');
+                      }}
                       className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                       placeholder="child@email.com"
                       required
@@ -353,7 +386,10 @@ export default function SignupPage() {
                 id="password"
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, password: e.target.value });
+                  if (inlineError) setInlineError('');
+                }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
                 placeholder="••••••••"
                 required

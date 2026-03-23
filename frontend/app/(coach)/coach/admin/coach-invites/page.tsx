@@ -13,9 +13,11 @@ export default function CoachInvitesPage() {
   const { isAuthenticated, user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [bulkRevoking, setBulkRevoking] = useState(false);
   const [invites, setInvites] = useState<CoachInvite[]>([]);
   const [email, setEmail] = useState('');
   const [days, setDays] = useState('7');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'used' | 'revoked' | 'expired'>('all');
 
   const loadInvites = useCallback(async () => {
     setLoading(true);
@@ -79,10 +81,40 @@ export default function CoachInvitesPage() {
     }
   };
 
+  const revokeExpired = async () => {
+    setBulkRevoking(true);
+    try {
+      const result = await adminAPI.revokeExpiredCoachInvites();
+      toast.success(`Revoked ${result.revoked_count} expired invite${result.revoked_count === 1 ? '' : 's'}`);
+      await loadInvites();
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to revoke expired invites');
+    } finally {
+      setBulkRevoking(false);
+    }
+  };
+
   const copyLink = async (link: string) => {
     await navigator.clipboard.writeText(link);
     toast.success('Invite link copied');
   };
+
+  const getStatus = (invite: CoachInvite): 'active' | 'used' | 'revoked' | 'expired' => {
+    if (invite.status) return invite.status;
+    if (invite.used_at) return 'used';
+    if (invite.is_active === false) return 'revoked';
+    const expired = new Date(invite.expires_at).getTime() < Date.now();
+    return expired ? 'expired' : 'active';
+  };
+
+  const filteredInvites = invites.filter((invite) => {
+    const status = getStatus(invite);
+    return statusFilter === 'all' ? true : status === statusFilter;
+  });
 
   return (
     <div className="relative min-h-[min(70vh,520px)]">
@@ -148,6 +180,34 @@ export default function CoachInvitesPage() {
         </div>
       </form>
 
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Status filter
+          </span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'used' | 'revoked' | 'expired')}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="used">Used</option>
+            <option value="revoked">Revoked</option>
+            <option value="expired">Expired</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={bulkRevoking}
+          onClick={() => void revokeExpired()}
+          className="inline-flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive disabled:opacity-50"
+        >
+          {bulkRevoking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Revoke expired invites
+        </button>
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -166,17 +226,43 @@ export default function CoachInvitesPage() {
                 </tr>
               </thead>
               <tbody>
-                {invites.map((i) => (
+                {filteredInvites.map((i) => {
+                  const status = getStatus(i);
+                  const isExpiringSoon = status === 'active' && (i.expires_in_hours ?? 999) <= 48;
+                  return (
                   <tr key={i.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3 font-mono text-xs text-foreground">
                       {i.token.slice(0, 16)}...
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{i.email || '-'}</td>
                     <td className="px-4 py-3">
-                      {i.used_at ? 'Used' : i.is_active ? 'Active' : 'Revoked'}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          status === 'active'
+                            ? 'bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]'
+                            : status === 'used'
+                            ? 'bg-muted text-foreground'
+                            : status === 'expired'
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                            : 'bg-destructive/10 text-destructive'
+                        }`}
+                      >
+                        {status === 'active'
+                          ? 'Active'
+                          : status === 'used'
+                          ? 'Used'
+                          : status === 'expired'
+                          ? 'Expired'
+                          : 'Revoked'}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {new Date(i.expires_at).toLocaleString()}
+                      <div className="space-y-1">
+                        <p>{new Date(i.expires_at).toLocaleString()}</p>
+                        {isExpiringSoon && (
+                          <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Expiring soon</p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-2">
@@ -188,7 +274,7 @@ export default function CoachInvitesPage() {
                           <Copy className="h-3.5 w-3.5" />
                           Copy link
                         </button>
-                        {!i.used_at && i.is_active && (
+                        {status === 'active' && (
                           <button
                             type="button"
                             onClick={() => void revokeInvite(i.id)}
@@ -200,10 +286,10 @@ export default function CoachInvitesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
-            {invites.length === 0 && (
+            {filteredInvites.length === 0 && (
               <p className="py-10 text-center text-sm text-muted-foreground">No coach invites yet.</p>
             )}
           </div>

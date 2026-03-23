@@ -751,6 +751,9 @@ export interface CoachInvite {
   expires_at: string;
   used_at: string | null;
   is_active: boolean;
+  status?: 'active' | 'used' | 'revoked' | 'expired';
+  is_expired?: boolean;
+  expires_in_hours?: number;
   created_at: string;
   used_by?: number | null;
 }
@@ -764,6 +767,26 @@ export interface AdminAuditLogRow {
   target_id?: number | null;
   details?: Record<string, unknown>;
   created_at: string;
+}
+
+export interface AdminOperationalMetrics {
+  active_coaches: number;
+  unassigned_students: number;
+  invite_counts: {
+    active: number;
+    used: number;
+    revoked: number;
+    expired: number;
+    expiring_soon: number;
+  };
+  recent_critical_actions_24h: number;
+  recent_critical_actions: Array<{
+    id: number;
+    action: string;
+    target_type: string;
+    target_id?: number | null;
+    created_at: string;
+  }>;
 }
 
 export const batchAPI = {
@@ -828,8 +851,16 @@ export const adminAPI = {
   revokeCoachInvite: async (id: number): Promise<void> => {
     await api.post(`/api/admin/coach-invites/${id}/revoke`);
   },
+  revokeExpiredCoachInvites: async (): Promise<{ revoked_count: number }> => {
+    const response = await api.post('/api/admin/coach-invites/revoke-expired');
+    return response.data;
+  },
   listAuditLogs: async (params?: { action?: string; limit?: number }): Promise<AdminAuditLogRow[]> => {
     const response = await api.get('/api/admin/audit-logs', { params });
+    return response.data;
+  },
+  getOperationalMetrics: async (): Promise<AdminOperationalMetrics> => {
+    const response = await api.get('/api/admin/operational-metrics');
     return response.data;
   },
 };

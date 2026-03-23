@@ -62,8 +62,8 @@ export default function AdminStudentsPage() {
     try {
       const params = assignmentFilter === 'unassigned' ? { unassigned_only: true } : undefined;
       const [studentsRes, coachesRes] = await Promise.all([
-        api.get('/api/coach/students', { params }),
-        api.get('/api/coach/students/coaches'),
+        api.get('/api/admin/students', { params }),
+        api.get('/api/admin/coaches'),
       ]);
       const res = studentsRes;
       const data = res.data;
@@ -118,7 +118,7 @@ export default function AdminStudentsPage() {
         if (coachId !== null && Number.isNaN(coachId)) {
           throw new Error('Pick a valid coach');
         }
-        await api.put(`/api/coach/students/${studentId}/assign-coach`, { coach_id: coachId });
+        await api.put(`/api/admin/students/${studentId}/assign-coach`, { coach_id: coachId });
       }
       toast.success(`Saved coach assignment${changedStudentIds.length > 1 ? 's' : ''}`);
       await load();
@@ -139,10 +139,10 @@ export default function AdminStudentsPage() {
     setBusyId(id);
     try {
       if (action === 'deactivate') {
-        await api.put(`/api/coach/students/${id}/deactivate`);
+        await api.put(`/api/admin/students/${id}/deactivate`);
         toast.success('Student deactivated');
       } else {
-        await api.put(`/api/coach/students/${id}/reactivate`);
+        await api.put(`/api/admin/students/${id}/reactivate`);
         toast.success('Student reactivated');
       }
       setConfirm(null);

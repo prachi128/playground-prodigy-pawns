@@ -9,6 +9,8 @@ import { BarChart3, TrendingUp, Target, Trophy, Users, Layers, Loader2 } from 'l
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useCoachStats } from '@/contexts/coach-stats-context';
+import { adminAPI, type AdminOperationalMetrics } from '@/lib/api';
+import { useState } from 'react';
 
 function formatStat(n: number): string {
   return n.toLocaleString('en-US');
@@ -24,6 +26,8 @@ export default function CoachDashboard() {
   const router = useRouter();
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
   const { stats, statsLoading } = useCoachStats();
+  const [adminMetrics, setAdminMetrics] = useState<AdminOperationalMetrics | null>(null);
+  const [adminMetricsLoading, setAdminMetricsLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -37,6 +41,25 @@ export default function CoachDashboard() {
       return;
     }
   }, [isAuthenticated, authLoading, user, router]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+    let cancelled = false;
+    (async () => {
+      setAdminMetricsLoading(true);
+      try {
+        const data = await adminAPI.getOperationalMetrics();
+        if (!cancelled) setAdminMetrics(data);
+      } catch {
+        if (!cancelled) setAdminMetrics(null);
+      } finally {
+        if (!cancelled) setAdminMetricsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   return (
     <div className="relative min-h-[min(70vh,520px)]">
@@ -98,6 +121,75 @@ export default function CoachDashboard() {
             </div>
           </Link>
         </div>
+
+        {user?.role === 'admin' && (
+          <div className="mb-8">
+            <div className="mb-4 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-primary" aria-hidden />
+              <h2 className="font-heading text-xl font-bold text-foreground">Admin operations</h2>
+            </div>
+            {adminMetricsLoading ? (
+              <div className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                Loading admin metrics…
+              </div>
+            ) : adminMetrics ? (
+              <>
+                <div className="mb-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className={statCard}>
+                    <h3 className="text-sm font-semibold text-muted-foreground">Active coaches</h3>
+                    <p className="mt-2 font-heading text-3xl font-bold text-foreground">
+                      {formatStat(adminMetrics.active_coaches)}
+                    </p>
+                  </div>
+                  <div className={statCard}>
+                    <h3 className="text-sm font-semibold text-muted-foreground">Unassigned students</h3>
+                    <p className="mt-2 font-heading text-3xl font-bold text-foreground">
+                      {formatStat(adminMetrics.unassigned_students)}
+                    </p>
+                  </div>
+                  <div className={statCard}>
+                    <h3 className="text-sm font-semibold text-muted-foreground">Invites expiring soon</h3>
+                    <p className="mt-2 font-heading text-3xl font-bold text-amber-700">
+                      {formatStat(adminMetrics.invite_counts.expiring_soon)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatStat(adminMetrics.invite_counts.active)} active · {formatStat(adminMetrics.invite_counts.expired)} expired
+                    </p>
+                  </div>
+                  <div className={statCard}>
+                    <h3 className="text-sm font-semibold text-muted-foreground">Critical actions (24h)</h3>
+                    <p className="mt-2 font-heading text-3xl font-bold text-foreground">
+                      {formatStat(adminMetrics.recent_critical_actions_24h)}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                  <h3 className="font-heading mb-3 text-base font-bold text-card-foreground">Recent critical activity</h3>
+                  {adminMetrics.recent_critical_actions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No critical actions in the last 24 hours.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {adminMetrics.recent_critical_actions.map((a) => (
+                        <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-sm">
+                          <span className="font-medium text-foreground">{a.action}</span>
+                          <span className="text-muted-foreground">
+                            {a.target_type}
+                            {a.target_id != null ? ` #${a.target_id}` : ''}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                Could not load admin operational metrics.
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mb-4 flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-primary" aria-hidden />
