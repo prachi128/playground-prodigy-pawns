@@ -28,9 +28,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const reqUrl = String(originalRequest?.url ?? '');
+    const isAuthEndpoint =
+      reqUrl.includes('/api/auth/login') ||
+      reqUrl.includes('/api/auth/signup') ||
+      reqUrl.includes('/api/auth/signup/coach') ||
+      reqUrl.includes('/api/auth/signup/parent');
     const isSessionCheck =
       originalRequest?.method === 'get' &&
       (reqUrl.includes('/api/auth/me') || reqUrl.includes('/api/coach/bootstrap'));
+    if (isAuthEndpoint) {
+      return Promise.reject(error);
+    }
     if (isSessionCheck) {
       return Promise.reject(error);
     }
@@ -82,6 +90,10 @@ export interface User {
   level_category?: string;
   created_at: string;
   is_active: boolean;
+  coach_id?: number | null;
+  coach_username?: string | null;
+  coach_full_name?: string | null;
+  is_unassigned?: boolean;
 }
 
 export interface LoginResponse {
@@ -171,6 +183,22 @@ export const authAPI = {
     child_emails: string[];
   }): Promise<LoginResponse> => {
     const response = await api.post('/api/auth/signup/parent', data);
+    return response.data;
+  },
+
+  signupCoach: async (data: {
+    email: string;
+    username: string;
+    full_name: string;
+    password: string;
+    invite_token: string;
+  }): Promise<LoginResponse> => {
+    const response = await api.post('/api/auth/signup/coach', data);
+    return response.data;
+  },
+
+  getCoachInvite: async (token: string): Promise<{ email: string; expires_at: string }> => {
+    const response = await api.get(`/api/auth/coach-invite/${token}`);
     return response.data;
   },
 
@@ -715,6 +743,18 @@ export interface PaymentStatusOverview {
   overdue_count: number;
 }
 
+export interface CoachInvite {
+  id: number;
+  token: string;
+  invite_url: string;
+  email: string | null;
+  expires_at: string;
+  used_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  used_by?: number | null;
+}
+
 export const batchAPI = {
   create: async (data: { name: string; description?: string; schedule?: string; monthly_fee?: number }): Promise<Batch> => {
     const response = await api.post('/api/batches', data);
@@ -762,6 +802,20 @@ export const batchAPI = {
   getPaymentStatus: async (batchId: number): Promise<PaymentStatusOverview> => {
     const response = await api.get(`/api/batches/${batchId}/payment-status`);
     return response.data;
+  },
+};
+
+export const adminAPI = {
+  createCoachInvite: async (data: { email: string; expires_in_days?: number }): Promise<CoachInvite> => {
+    const response = await api.post('/api/admin/coach-invites', data);
+    return response.data;
+  },
+  listCoachInvites: async (): Promise<CoachInvite[]> => {
+    const response = await api.get('/api/admin/coach-invites');
+    return response.data;
+  },
+  revokeCoachInvite: async (id: number): Promise<void> => {
+    await api.post(`/api/admin/coach-invites/${id}/revoke`);
   },
 };
 
@@ -845,10 +899,10 @@ export const coachAPI = {
     return response.data;
   },
 
-  // List students (for coach). Returns [] if endpoint is not implemented (404).
-  getStudents: async (): Promise<User[]> => {
+  // List students (for coach/admin). Returns [] if endpoint is not implemented (404).
+  getStudents: async (params?: { coach_id?: number; unassigned_only?: boolean }): Promise<User[]> => {
     try {
-      const response = await api.get('/api/coach/students');
+      const response = await api.get('/api/coach/students', { params });
       return response.data?.students ?? response.data ?? [];
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;

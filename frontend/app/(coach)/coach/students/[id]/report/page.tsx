@@ -129,7 +129,8 @@ export default function StudentReportPage() {
           [data-coach-shell] .coach-header-bar {
             display: none !important;
           }
-          [data-coach-shell] .lg\\:pl-64 {
+          [data-coach-shell] .lg\\:pl-64,
+          [data-coach-shell] .lg\\:pl-16 {
             padding-left: 0 !important;
           }
           [data-coach-shell] .max-w-7xl {

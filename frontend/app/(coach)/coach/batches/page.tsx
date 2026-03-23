@@ -24,20 +24,13 @@ const cardBase =
   'rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:border-primary/25 hover:shadow-md';
 const PAGE_SIZE = 9;
 
-/** Rupees → paise (same integer storage as before: 1 ₹ = 100 units). */
-function rupeesToPaise(s: string): number {
-  const n = parseFloat(s);
-  if (Number.isNaN(n) || n < 0) return 0;
-  return Math.round(n * 100);
-}
-
-function formatInrFromPaise(paise: number): string {
+function formatInr(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(paise / 100);
+  }).format(amount);
 }
 
 export default function CoachBatchesPage() {
@@ -117,7 +110,7 @@ export default function CoachBatchesPage() {
       name: b.name,
       description: b.description ?? '',
       schedule: b.schedule ?? '',
-      monthly_fee: b.monthly_fee ? (b.monthly_fee / 100).toFixed(2) : '',
+      monthly_fee: b.monthly_fee ? Number(b.monthly_fee).toFixed(2) : '',
       is_active: b.is_active,
     });
   };
@@ -134,7 +127,7 @@ export default function CoachBatchesPage() {
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         schedule: editForm.schedule.trim() || undefined,
-        monthly_fee: rupeesToPaise(editForm.monthly_fee),
+        monthly_fee: editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : 0,
         is_active: editForm.is_active,
       });
       setBatches((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
@@ -163,7 +156,7 @@ export default function CoachBatchesPage() {
         name: form.name,
         description: form.description || undefined,
         schedule: form.schedule || undefined,
-        monthly_fee: form.monthly_fee ? rupeesToPaise(form.monthly_fee) : 0,
+        monthly_fee: form.monthly_fee ? parseFloat(form.monthly_fee) : 0,
       });
       toast.success('Batch created');
       setShowCreate(false);
@@ -270,7 +263,7 @@ export default function CoachBatchesPage() {
                 value={form.monthly_fee}
                 onChange={(e) => setForm({ ...form, monthly_fee: e.target.value })}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="2500"
+                placeholder="1600.00"
               />
             </div>
             <div>
@@ -359,7 +352,7 @@ export default function CoachBatchesPage() {
             {batch.monthly_fee > 0 && (
               <div className="mt-2 flex items-center gap-1 text-sm font-medium text-primary">
                 <IndianRupee className="h-4 w-4" aria-hidden />
-                {formatInrFromPaise(batch.monthly_fee)}/month
+                {formatInr(batch.monthly_fee)}/month
               </div>
             )}
           </div>

@@ -13,6 +13,7 @@ import {
   UserCheck,
   UserX,
   ExternalLink,
+  Save,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -21,9 +22,21 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 interface Row {
   id: number;
   username: string;
+  full_name?: string;
   email: string;
   xp?: number;
   total_xp?: number;
+  is_active?: boolean;
+  coach_id?: number | null;
+  coach_username?: string | null;
+  coach_full_name?: string | null;
+  is_unassigned?: boolean;
+}
+
+interface CoachRow {
+  id: number;
+  username: string;
+  full_name: string;
   is_active?: boolean;
 }
 
@@ -31,8 +44,13 @@ export default function AdminStudentsPage() {
   const router = useRouter();
   const { isAuthenticated, user } = useAuthStore();
   const [rows, setRows] = useState<Row[]>([]);
+  const [coaches, setCoaches] = useState<CoachRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignmentDraft, setAssignmentDraft] = useState<Record<number, string>>({});
+  const [initialAssignment, setInitialAssignment] = useState<Record<number, string>>({});
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [confirm, setConfirm] = useState<{
     id: number;
     username: string;
@@ -42,16 +60,37 @@ export default function AdminStudentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/coach/students');
+      const params =
+        assignmentFilter === 'unassigned'
+          ? { unassigned_only: true }
+          : assignmentFilter === 'assigned'
+          ? { unassigned_only: false }
+          : undefined;
+      const [studentsRes, coachesRes] = await Promise.all([
+        api.get('/api/coach/students', { params }),
+        api.get('/api/coach/students/coaches'),
+      ]);
+      const res = studentsRes;
       const data = res.data;
-      setRows(Array.isArray(data) ? data : []);
+      const nextRows = Array.isArray(data) ? data : [];
+      setRows(nextRows);
+      setCoaches(Array.isArray(coachesRes.data) ? coachesRes.data : []);
+      const nextInitial: Record<number, string> = {};
+      for (const student of nextRows) {
+        nextInitial[student.id] = student.coach_id ? String(student.coach_id) : '__none__';
+      }
+      setInitialAssignment(nextInitial);
+      setAssignmentDraft({});
     } catch {
       toast.error('Failed to load students');
       setRows([]);
+      setCoaches([]);
+      setInitialAssignment({});
+      setAssignmentDraft({});
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [assignmentFilter]);
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'admin') {
@@ -60,6 +99,40 @@ export default function AdminStudentsPage() {
     }
     load();
   }, [isAuthenticated, user, router, load]);
+
+  const changedStudentIds = rows
+    .filter((r) => {
+      const current = assignmentDraft[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__');
+      const initial = initialAssignment[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__');
+      return current !== initial;
+    })
+    .map((r) => r.id);
+
+  const saveCoachAssignments = async () => {
+    if (changedStudentIds.length === 0) return;
+    setAssignBusy(true);
+    try {
+      for (const studentId of changedStudentIds) {
+        const row = rows.find((r) => r.id === studentId);
+        const rawValue = assignmentDraft[studentId] ?? (row?.coach_id ? String(row.coach_id) : '__none__');
+        const coachId = rawValue === '__none__' || rawValue === '' ? null : Number(rawValue);
+        if (coachId !== null && Number.isNaN(coachId)) {
+          throw new Error('Pick a valid coach');
+        }
+        await api.put(`/api/coach/students/${studentId}/assign-coach`, { coach_id: coachId });
+      }
+      toast.success(`Saved coach assignment${changedStudentIds.length > 1 ? 's' : ''}`);
+      await load();
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to update coach assignment');
+    } finally {
+      setAssignBusy(false);
+    }
+  };
 
   const runAction = async () => {
     if (!confirm) return;
@@ -117,6 +190,32 @@ export default function AdminStudentsPage() {
           View every student in the database. Deactivation blocks sign-in but keeps all data. Coaches only see active
           students and receive a notice listing deactivated accounts on their roster.
         </p>
+        <div className="mt-4 inline-flex rounded-lg border border-border bg-card p-1">
+          {(['all', 'assigned', 'unassigned'] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setAssignmentFilter(key)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                assignmentFilter === key ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'
+              }`}
+            >
+              {key === 'all' ? 'All' : key === 'assigned' ? 'Assigned' : 'Unassigned'}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => void saveCoachAssignments()}
+            disabled={assignBusy || changedStudentIds.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {assignBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save coach changes
+            {changedStudentIds.length > 0 ? ` (${changedStudentIds.length})` : ''}
+          </button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -127,6 +226,7 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 text-left font-semibold">Student</th>
                 <th className="px-4 py-3 text-left font-semibold">XP</th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
+                <th className="px-4 py-3 text-left font-semibold">Coach Assigned</th>
                 <th className="px-4 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
@@ -140,7 +240,9 @@ export default function AdminStudentsPage() {
                       <p className="font-semibold text-foreground">{r.username}</p>
                       <p className="text-xs text-muted-foreground">{r.email}</p>
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground">{xp}</td>
+                    <td className="px-4 py-3">
+                      {xp}
+                    </td>
                     <td className="px-4 py-3">
                       {active ? (
                         <span className="rounded-full bg-[hsl(var(--green-very-light))] px-2 py-0.5 text-xs font-medium text-[hsl(var(--green-medium))]">
@@ -151,6 +253,25 @@ export default function AdminStudentsPage() {
                           Deactivated
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={assignmentDraft[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__')}
+                        onChange={(e) =>
+                          setAssignmentDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
+                        }
+                        disabled={assignBusy}
+                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
+                      >
+                        <option value="__none__">Unassigned</option>
+                        {coaches
+                          .filter((c) => c.is_active !== false)
+                          .map((c) => (
+                            <option key={c.id} value={String(c.id)}>
+                              {c.full_name || c.username}
+                            </option>
+                          ))}
+                      </select>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-2">

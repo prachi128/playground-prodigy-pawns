@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, TypeDecorator
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, TypeDecorator, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -70,6 +70,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(CaseInsensitiveEnum(UserRole), default=UserRole.student)
+    primary_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     
     # Student specific fields
     age = Column(Integer)
@@ -96,6 +97,7 @@ class User(Base):
     children = relationship("ParentStudent", back_populates="parent", foreign_keys="ParentStudent.parent_id")
     parents = relationship("ParentStudent", back_populates="student", foreign_keys="ParentStudent.student_id")
     coached_batches = relationship("Batch", back_populates="coach", foreign_keys="Batch.coach_id")
+    primary_coach = relationship("User", remote_side=[id], foreign_keys=[primary_coach_id])
 
 # Game Model
 class Game(Base):
@@ -357,7 +359,7 @@ class Batch(Base):
     description = Column(Text)
     schedule = Column(String)  # e.g., "Mon/Wed/Fri 4-5PM"
     coach_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    monthly_fee = Column(Integer, default=0)  # in cents
+    monthly_fee = Column(Numeric(10, 2), default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -428,7 +430,7 @@ class Payment(Base):
     parent_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     batch_id = Column(Integer, ForeignKey("batches.id"), nullable=False)
-    amount = Column(Integer, nullable=False)  # in cents
+    amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String, default="usd")
     billing_month = Column(String, nullable=False)  # "YYYY-MM"
     status = Column(String, default="pending")  # pending, completed, failed
@@ -440,6 +442,23 @@ class Payment(Base):
     parent = relationship("User", foreign_keys=[parent_id])
     student = relationship("User", foreign_keys=[student_id])
     batch = relationship("Batch", back_populates="payments")
+
+
+class CoachSignupInvite(Base):
+    __tablename__ = "coach_signup_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(128), unique=True, index=True, nullable=False)
+    email = Column(String, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    used_user = relationship("User", foreign_keys=[used_by])
 
 # ─────────────────────────────────────────────────────────────
 # Assignment Engine Models  (append to the bottom of models.py)

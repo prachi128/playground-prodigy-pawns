@@ -12,6 +12,7 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from models import User
+from database import get_db
 
 # Security configurations
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production-make-it-long-and-random")
@@ -99,6 +100,7 @@ def get_token_from_cookie_or_bearer(
 def get_current_user(
     request: Request,
     token_from_bearer: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
 ):
     """Get current user from JWT - token from cookie or Authorization header. Returns user_id."""
     # Get token from cookie or bearer header
@@ -126,7 +128,15 @@ def get_current_user(
         user_id_str = payload.get("sub")
         if user_id_str is None:
             raise credentials_exception
-        return int(user_id_str)
+        user_id = int(user_id_str)
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or user.is_active is False:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is deactivated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user_id
     except JWTError:
         raise credentials_exception
     except ValueError:
@@ -136,6 +146,8 @@ def authenticate_user(db: Session, email: str, password: str):
     """Authenticate a user by email and password"""
     user = db.query(User).filter(User.email == email).first()
     if not user:
+        return False
+    if user.is_active is False:
         return False
     if not verify_password(password, user.hashed_password):
         return False

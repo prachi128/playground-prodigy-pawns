@@ -188,7 +188,12 @@ export default function ParentPaymentsPage() {
                     <td className="px-4 py-3 text-gray-700">{p.batch_name || '-'}</td>
                     <td className="px-4 py-3 text-gray-700">{p.billing_month}</td>
                     <td className="px-4 py-3 text-gray-700 text-right font-medium">
-                      ${(p.amount / 100).toFixed(2)}
+                      {new Intl.NumberFormat('en-IN', {
+                        style: 'currency',
+                        currency: 'INR',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(p.amount)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${

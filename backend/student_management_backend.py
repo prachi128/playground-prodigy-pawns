@@ -27,6 +27,10 @@ class StudentStats(BaseModel):
     last_active: Optional[datetime] = None
     days_since_active: int
     is_active: bool = True
+    coach_id: Optional[int] = None
+    coach_username: Optional[str] = None
+    coach_full_name: Optional[str] = None
+    is_unassigned: bool = False
 
     total_puzzles_attempted: int
     total_puzzles_solved: int
@@ -68,6 +72,57 @@ class StudentDetailedStats(BaseModel):
         from_attributes = True
 
 
+class CoachAccountRow(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CoachRosterStudentRow(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    payment_status: str
+    is_enrollment_active: bool
+
+
+class CoachRosterBatchRow(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    schedule: Optional[str] = None
+    monthly_fee: float
+    is_active: bool
+    student_count: int
+    students: List[CoachRosterStudentRow]
+
+
+class CoachRosterRow(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    total_batches: int
+    total_students: int
+    active_students: int
+    inactive_students: int
+    batches: List[CoachRosterBatchRow]
+
+
+class StudentCoachAssignRequest(BaseModel):
+    coach_id: Optional[int] = None
+
+
 def require_coach(user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user or user.role not in [UserRole.coach, UserRole.admin, "coach", "admin"]:
@@ -93,7 +148,15 @@ def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
     """
     if _is_admin(coach):
         return None
-    rows = (
+    assigned_rows = (
+        db.query(User.id)
+        .filter(
+            User.role == UserRole.student,
+            User.primary_coach_id == coach.id,
+        )
+        .all()
+    )
+    roster_rows = (
         db.query(StudentBatch.student_id)
         .join(Batch, StudentBatch.batch_id == Batch.id)
         .filter(
@@ -103,14 +166,191 @@ def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
         .distinct()
         .all()
     )
-    return {int(r[0]) for r in rows}
+    assigned_ids = {int(r[0]) for r in assigned_rows}
+    roster_ids = {int(r[0]) for r in roster_rows}
+    return assigned_ids.union(roster_ids)
 
 
 def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool:
     if _is_admin(coach):
         return True
+    assigned = (
+        db.query(User.id)
+        .filter(
+            User.id == student_id,
+            User.role == UserRole.student,
+            User.primary_coach_id == coach.id,
+        )
+        .first()
+    )
+    if assigned:
+        return True
     roster = _coach_roster_student_ids(coach, db)
     return student_id in roster if roster is not None else False
+
+
+@router.get("/coaches", response_model=List[CoachAccountRow])
+def get_all_coaches(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List all coach accounts (admin only)."""
+    coaches = db.query(User).filter(User.role == UserRole.coach).order_by(User.created_at.desc()).all()
+    return [
+        CoachAccountRow(
+            id=c.id,
+            username=c.username,
+            full_name=c.full_name or c.username,
+            email=c.email,
+            is_active=bool(c.is_active),
+            created_at=c.created_at,
+            last_login=c.last_login,
+        )
+        for c in coaches
+    ]
+
+
+@router.put("/coaches/{coach_id}/deactivate")
+def deactivate_coach(
+    coach_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a coach account (admin only)."""
+    coach = db.query(User).filter(User.id == coach_id, User.role == UserRole.coach).first()
+    if not coach:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    if coach.is_active is False:
+        return {"success": True, "message": f"Coach {coach.username} is already deactivated"}
+    coach.is_active = False
+    db.commit()
+    return {"success": True, "message": f"Coach {coach.username} deactivated"}
+
+
+@router.put("/coaches/{coach_id}/reactivate")
+def reactivate_coach(
+    coach_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Restore a deactivated coach account (admin only)."""
+    coach = db.query(User).filter(User.id == coach_id, User.role == UserRole.coach).first()
+    if not coach:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    if coach.is_active is True:
+        return {"success": True, "message": f"Coach {coach.username} is already active"}
+    coach.is_active = True
+    db.commit()
+    return {"success": True, "message": f"Coach {coach.username} reactivated"}
+
+
+@router.get("/coaches/roster", response_model=List[CoachRosterRow])
+def get_coach_roster(
+    coach_id: Optional[int] = Query(None, description="Filter for one coach"),
+    include_inactive: bool = Query(True, description="Include inactive enrollments"),
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin-only nested view: coaches -> batches -> students."""
+    coaches_q = db.query(User).filter(User.role == UserRole.coach)
+    if coach_id is not None:
+        coaches_q = coaches_q.filter(User.id == coach_id)
+    coaches = coaches_q.order_by(User.created_at.desc()).all()
+    if not coaches:
+        return []
+
+    coach_ids = [c.id for c in coaches]
+    batches = (
+        db.query(Batch)
+        .filter(Batch.coach_id.in_(coach_ids))
+        .order_by(Batch.name.asc(), Batch.id.asc())
+        .all()
+    )
+    batch_ids = [b.id for b in batches]
+
+    enrollments_q = db.query(StudentBatch).filter(StudentBatch.batch_id.in_(batch_ids))
+    if not include_inactive:
+        enrollments_q = enrollments_q.filter(StudentBatch.is_active == True)
+    enrollments = enrollments_q.order_by(StudentBatch.joined_at.desc()).all() if batch_ids else []
+
+    student_ids = list({e.student_id for e in enrollments})
+    students = (
+        db.query(User)
+        .filter(User.id.in_(student_ids), User.role == UserRole.student)
+        .all()
+        if student_ids
+        else []
+    )
+
+    student_by_id = {s.id: s for s in students}
+    enrollments_by_batch = {}
+    for e in enrollments:
+        enrollments_by_batch.setdefault(e.batch_id, []).append(e)
+
+    batches_by_coach = {}
+    for b in batches:
+        batches_by_coach.setdefault(b.coach_id, []).append(b)
+
+    output: List[CoachRosterRow] = []
+    for c in coaches:
+        coach_batches = batches_by_coach.get(c.id, [])
+        batch_rows: List[CoachRosterBatchRow] = []
+        coach_student_ids = set()
+        coach_active_students = set()
+        coach_inactive_students = set()
+
+        for b in coach_batches:
+            batch_students: List[CoachRosterStudentRow] = []
+            for enrollment in enrollments_by_batch.get(b.id, []):
+                student = student_by_id.get(enrollment.student_id)
+                if not student:
+                    continue
+                coach_student_ids.add(student.id)
+                if student.is_active:
+                    coach_active_students.add(student.id)
+                else:
+                    coach_inactive_students.add(student.id)
+                batch_students.append(
+                    CoachRosterStudentRow(
+                        id=student.id,
+                        username=student.username,
+                        full_name=student.full_name or student.username,
+                        email=student.email,
+                        is_active=bool(student.is_active),
+                        payment_status=enrollment.payment_status or "pending",
+                        is_enrollment_active=bool(enrollment.is_active),
+                    )
+                )
+
+            batch_rows.append(
+                CoachRosterBatchRow(
+                    id=b.id,
+                    name=b.name,
+                    description=b.description,
+                    schedule=b.schedule,
+                    monthly_fee=float(b.monthly_fee or 0),
+                    is_active=bool(b.is_active),
+                    student_count=len(batch_students),
+                    students=batch_students,
+                )
+            )
+
+        output.append(
+            CoachRosterRow(
+                id=c.id,
+                username=c.username,
+                full_name=c.full_name or c.username,
+                email=c.email,
+                is_active=bool(c.is_active),
+                total_batches=len(batch_rows),
+                total_students=len(coach_student_ids),
+                active_students=len(coach_active_students),
+                inactive_students=len(coach_inactive_students),
+                batches=batch_rows,
+            )
+        )
+
+    return output
 
 
 # Stats overview must be before /{student_id} so "stats" is not captured as id
@@ -190,6 +430,8 @@ def get_deactivated_notice(
 
 @router.get("/", response_model=List[StudentStats])
 def get_all_students(
+    coach_id: Optional[int] = Query(None, description="Admin: filter by assigned coach"),
+    unassigned_only: bool = Query(False, description="Admin: only students with no assigned coach"),
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
@@ -198,10 +440,25 @@ def get_all_students(
     Coaches only see active accounts; admins see all students (including inactive).
     """
     q = db.query(User).filter(User.role == UserRole.student)
-    if not _is_admin(coach):
+    is_admin_user = _is_admin(coach)
+    if not is_admin_user:
         q = q.filter(User.is_active == True)
+    else:
+        if unassigned_only:
+            q = q.filter(User.primary_coach_id.is_(None))
+        elif coach_id is not None:
+            target = db.query(User).filter(User.id == coach_id, User.role == UserRole.coach).first()
+            if not target:
+                raise HTTPException(status_code=404, detail="Coach not found")
+            q = q.filter(User.primary_coach_id == coach_id)
+
+    coach_map = {}
+    if is_admin_user:
+        coach_rows = db.query(User).filter(User.role == UserRole.coach).all()
+        coach_map = {c.id: c for c in coach_rows}
+
     roster = _coach_roster_student_ids(coach, db)
-    if roster is not None:
+    if not is_admin_user and roster is not None:
         if not roster:
             return []
         q = q.filter(User.id.in_(roster))
@@ -244,9 +501,54 @@ def get_all_students(
                 total_puzzles_attempted=attempted,
                 total_puzzles_solved=solved,
                 success_rate=round(success_rate, 1),
+                coach_id=student.primary_coach_id,
+                coach_username=(
+                    coach_map.get(student.primary_coach_id).username
+                    if student.primary_coach_id in coach_map
+                    else None
+                ),
+                coach_full_name=(
+                    coach_map.get(student.primary_coach_id).full_name
+                    if student.primary_coach_id in coach_map
+                    else None
+                ),
+                is_unassigned=student.primary_coach_id is None,
             )
         )
     return student_stats
+
+
+@router.put("/{student_id}/assign-coach")
+def assign_student_to_coach(
+    student_id: int,
+    payload: StudentCoachAssignRequest,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    coach_user: Optional[User] = None
+    if payload.coach_id is not None:
+        coach_user = db.query(User).filter(User.id == payload.coach_id, User.role == UserRole.coach).first()
+        if not coach_user:
+            raise HTTPException(status_code=404, detail="Coach not found")
+        if coach_user.is_active is False:
+            raise HTTPException(status_code=400, detail="Cannot assign an inactive coach")
+
+    student.primary_coach_id = payload.coach_id
+    db.commit()
+    db.refresh(student)
+
+    return {
+        "success": True,
+        "student_id": student.id,
+        "coach_id": student.primary_coach_id,
+        "coach_username": coach_user.username if coach_user else None,
+        "coach_full_name": (coach_user.full_name or coach_user.username) if coach_user else None,
+        "is_unassigned": student.primary_coach_id is None,
+    }
 
 
 @router.get("/{student_id}", response_model=StudentDetailedStats)

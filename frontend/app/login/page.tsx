@@ -46,8 +46,9 @@ export default function LoginPage() {
       router.push(redirectPath);
     } catch (error: any) {
       console.error('Login error:', error);
-      setIsLoading(false);
       toast.error(error.response?.data?.detail || 'Login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 

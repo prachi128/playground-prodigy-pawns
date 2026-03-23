@@ -73,7 +73,6 @@ export default function SignupPage() {
         return;
       }
     }
-
     setIsLoading(true);
 
     try {

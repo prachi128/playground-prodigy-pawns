@@ -237,18 +237,26 @@ class ParentSignup(BaseModel):
     child_emails: List[str]  # emails of existing student accounts to link
 
 
+class CoachSignup(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: str
+    password: str = Field(..., min_length=6)
+    invite_token: str
+
+
 # Batch Schemas
 class BatchCreate(BaseModel):
     name: str
     description: Optional[str] = None
     schedule: Optional[str] = None
-    monthly_fee: int = 0  # in cents
+    monthly_fee: float = 0
 
 class BatchUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     schedule: Optional[str] = None
-    monthly_fee: Optional[int] = None
+    monthly_fee: Optional[float] = None
     is_active: Optional[bool] = None
 
 class BatchResponse(BaseModel):
@@ -257,7 +265,7 @@ class BatchResponse(BaseModel):
     description: Optional[str]
     schedule: Optional[str]
     coach_id: int
-    monthly_fee: int
+    monthly_fee: float
     is_active: bool
     created_at: datetime
     student_count: Optional[int] = 0
@@ -319,7 +327,7 @@ class PaymentResponse(BaseModel):
     parent_id: int
     student_id: int
     batch_id: int
-    amount: int
+    amount: float
     currency: str
     billing_month: str
     status: str

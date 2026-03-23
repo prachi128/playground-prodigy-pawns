@@ -28,12 +28,13 @@ from models import (
     GameInvite,
     Notification,
     ParentStudent,
+    CoachSignupInvite,
     Assignment,
     AssignmentPuzzle,
     AssignmentCompletion,
     StudentBatch,
 )
-from database import get_db, SessionLocal
+from database import get_db, SessionLocal, validate_required_schema
 from auth import (
     get_password_hash,
     verify_password,
@@ -65,6 +66,7 @@ from schemas import (
     NotificationResponse,
     NotificationMarkRead,
     ParentSignup,
+    CoachSignup,
     PuzzleRaceRoomState,
     PuzzleRaceRoomCreate,
     PuzzleRaceCarSelect,
@@ -75,7 +77,7 @@ from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router
 from parent_endpoints import router as parent_router
-from batch_endpoints import router as batch_router
+from batch_endpoints import router as batch_router, admin_router
 from assignment_endpoints import router as assignment_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
@@ -294,6 +296,7 @@ def _serialize_puzzle_race_room(room: Dict) -> PuzzleRaceRoomState:
 # FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_required_schema()
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_auto_resign_for_all_games, "interval", minutes=1)
     scheduler.start()
@@ -330,6 +333,7 @@ app.include_router(coach_router)
 app.include_router(student_router)
 app.include_router(parent_router)
 app.include_router(batch_router)
+app.include_router(admin_router)
 app.include_router(assignment_router)
 
 
@@ -690,6 +694,84 @@ def signup_parent(data: ParentSignup, db: Session = Depends(get_db)):
     return response
 
 
+@app.post("/api/auth/signup/coach")
+def signup_coach(data: CoachSignup, db: Session = Depends(get_db)):
+    """Register a coach account using an admin-generated invite token."""
+    if db.query(User).filter(User.email == data.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.query(User).filter(User.username == data.username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    invite = db.query(CoachSignupInvite).filter(
+        CoachSignupInvite.token == data.invite_token,
+        CoachSignupInvite.is_active == True,
+        CoachSignupInvite.used_at.is_(None),
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=400, detail="Invalid or inactive invite token")
+    if invite.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invite token has expired")
+    if invite.email and invite.email.lower() != data.email.lower():
+        raise HTTPException(status_code=400, detail="Invite token is bound to a different email")
+
+    hashed_password = get_password_hash(data.password)
+    coach = User(
+        email=data.email,
+        username=data.username,
+        full_name=data.full_name,
+        hashed_password=hashed_password,
+        avatar_url="/avatars/default.png",
+        role=UserRole.coach,
+    )
+    coach.level = level_from_rating(coach.rating or 100)
+    db.add(coach)
+    db.flush()
+
+    invite.used_at = datetime.utcnow()
+    invite.used_by = coach.id
+    invite.is_active = False
+    db.commit()
+    db.refresh(coach)
+
+    access_token = create_access_token(data={"sub": coach.id})
+    refresh_token = create_refresh_token(data={"sub": coach.id})
+    user_payload = UserResponse.model_validate(coach).model_dump(mode="json")
+    user_payload["level_category"] = get_level_category(coach.level)
+    response = JSONResponse(content={"user": user_payload})
+    response.set_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        value=access_token,
+        max_age=15 * 60,
+        **_cookie_attrs(),
+    )
+    response.set_cookie(
+        key=COOKIE_REFRESH_TOKEN,
+        value=refresh_token,
+        max_age=7 * 24 * 3600,
+        **_cookie_attrs(),
+    )
+    return response
+
+
+@app.get("/api/auth/coach-invite/{token}")
+def get_coach_invite(token: str, db: Session = Depends(get_db)):
+    invite = db.query(CoachSignupInvite).filter(
+        CoachSignupInvite.token == token
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if not invite.is_active or invite.used_at is not None:
+        raise HTTPException(status_code=400, detail="Invite already used or revoked")
+    if invite.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invite token has expired")
+    if not invite.email:
+        raise HTTPException(status_code=400, detail="Invite is missing email restriction")
+    return {
+        "email": invite.email,
+        "expires_at": invite.expires_at,
+    }
+
+
 @app.post("/api/auth/login")
 def login(
     request: Request,
@@ -753,6 +835,8 @@ def refresh_token(request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if user.is_active is False:
+        raise HTTPException(status_code=401, detail="Account is deactivated")
     sync_user_level_from_rating(user)
     db.commit()
     db.refresh(user)

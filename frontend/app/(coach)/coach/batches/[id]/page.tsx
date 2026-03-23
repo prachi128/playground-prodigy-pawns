@@ -42,19 +42,13 @@ type CoachStudentStatsLite = { id: number; xp: number; success_rate: number };
 const panel = 'rounded-xl border border-border bg-card shadow-sm';
 const STUDENT_PAGE = 10;
 
-function rupeesToPaise(s: string): number {
-  const n = parseFloat(s);
-  if (Number.isNaN(n) || n < 0) return 0;
-  return Math.round(n * 100);
-}
-
-function formatInrFromPaise(paise: number): string {
+function formatInr(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(paise / 100);
+  }).format(amount);
 }
 
 export default function BatchDetailPage() {
@@ -152,7 +146,7 @@ export default function BatchDetailPage() {
           name: b.name,
           description: b.description ?? '',
           schedule: b.schedule ?? '',
-          monthly_fee: b.monthly_fee ? (b.monthly_fee / 100).toFixed(2) : '',
+          monthly_fee: b.monthly_fee ? Number(b.monthly_fee).toFixed(2) : '',
           is_active: b.is_active,
         });
       }
@@ -204,7 +198,7 @@ export default function BatchDetailPage() {
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         schedule: editForm.schedule.trim() || undefined,
-        monthly_fee: rupeesToPaise(editForm.monthly_fee),
+        monthly_fee: editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : 0,
         is_active: editForm.is_active,
       });
       setBatch(updated);
@@ -408,7 +402,7 @@ export default function BatchDetailPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             {batch.schedule && <span>{batch.schedule} · </span>}
             {batch.monthly_fee > 0 && (
-              <span>{formatInrFromPaise(batch.monthly_fee)}/month · </span>
+              <span>{formatInr(batch.monthly_fee)}/month · </span>
             )}
             {students.length} students
           </p>
@@ -883,6 +877,7 @@ export default function BatchDetailPage() {
                   value={editForm.monthly_fee}
                   onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="1600.00"
                 />
               </div>
               <div>
