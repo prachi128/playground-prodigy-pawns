@@ -2,8 +2,9 @@
 # Add these to your main.py
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 from typing import List, Optional
 from pydantic import BaseModel, field_serializer
 from models import Puzzle, User, DifficultyLevel, UserRole
@@ -147,8 +148,11 @@ def create_puzzle(
 @router.get("/puzzles", response_model=List[PuzzleWithAnalysis])
 def get_all_puzzles_coach(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 500,
     include_inactive: bool = True,
+    is_active_filter: Optional[bool] = None,
+    search: Optional[str] = None,
+    difficulty: Optional[str] = None,
     user: User = Depends(require_coach),
     db: Session = Depends(get_db)
 ):
@@ -159,9 +163,32 @@ def get_all_puzzles_coach(
     
     if not include_inactive:
         query = query.filter(Puzzle.is_active == True)
-    
+
+    if is_active_filter is not None:
+        query = query.filter(Puzzle.is_active == is_active_filter)
+
+    if search and search.strip():
+        term = search.strip()
+        query = query.filter(
+            or_(
+                Puzzle.title.ilike(f"%{term}%"),
+                Puzzle.theme.ilike(f"%{term}%"),
+                Puzzle.description.ilike(f"%{term}%"),
+            )
+        )
+    if difficulty and difficulty.strip():
+        query = query.filter(Puzzle.difficulty == DifficultyLevel[difficulty.upper()])
+
+    total = query.count()
     puzzles = query.offset(skip).limit(limit).all()
-    return puzzles
+    data = [PuzzleWithAnalysis.model_validate(p).model_dump(mode="json") for p in puzzles]
+    return JSONResponse(
+        content=data,
+        headers={
+            "X-Total-Count": str(total),
+            "Access-Control-Expose-Headers": "X-Total-Count",
+        },
+    )
 
 @router.get("/puzzles/{puzzle_id}", response_model=PuzzleWithAnalysis)
 def get_puzzle_coach(

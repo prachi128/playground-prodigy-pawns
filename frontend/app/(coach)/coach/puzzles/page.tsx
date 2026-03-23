@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { coachAPI, Puzzle } from '@/lib/api';
@@ -11,9 +11,11 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { parseThemeList } from '@/lib/utils';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import api from '@/lib/api';
 
 const cardBase =
   'rounded-xl border border-border bg-card shadow-sm transition-all hover:border-primary/25 hover:shadow-md';
+const PAGE_SIZE = 50;
 
 function coachDifficultyBadge(difficulty: string): string {
   switch (difficulty.toLowerCase()) {
@@ -35,8 +37,13 @@ export default function ManagePuzzlesPage() {
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
   
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDifficulty, setFilterDifficulty] = useState('all');
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('active');
+  const [isLoading, setIsLoading] = useState(true);
+  const initialFetchDoneRef = useRef(false);
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; puzzleId: number | null; puzzleTitle: string }>({
     isOpen: false,
     puzzleId: null,
@@ -59,23 +66,51 @@ export default function ManagePuzzlesPage() {
       return;
     }
 
-    if (isAuthenticated) {
-      loadPuzzles();
-    }
   }, [isAuthenticated, authLoading, user, router]);
 
-  const loadPuzzles = async () => {
+  const loadPuzzles = async (
+    page = currentPage,
+    search = searchQuery,
+    difficulty = filterDifficulty,
+    active = filterActive,
+  ) => {
     setIsLoading(true);
     try {
-      const data = await coachAPI.getAllPuzzles(true);
-      setPuzzles(data);
-    } catch (error) {
-      console.error('Failed to load puzzles:', error);
+      const params = new URLSearchParams();
+      params.set('skip', String((page - 1) * PAGE_SIZE));
+      params.set('limit', String(PAGE_SIZE));
+      params.set('include_inactive', 'true');
+      if (active === 'active') {
+        params.set('is_active_filter', 'true');
+      } else if (active === 'inactive') {
+        params.set('is_active_filter', 'false');
+      }
+      if (search.trim().length >= 2) params.set('search', search.trim());
+      if (difficulty !== 'all') params.set('difficulty', difficulty);
+      const res = await api.get(`/api/coach/puzzles?${params.toString()}`);
+      setPuzzles(Array.isArray(res.data) ? res.data : []);
+      setTotalCount(res.headers['x-total-count'] ? parseInt(res.headers['x-total-count']) : res.data.length);
+    } catch {
       toast.error('Failed to load puzzles');
     } finally {
       setIsLoading(false);
+      initialFetchDoneRef.current = true;
     }
   };
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadPuzzles();
+  }, [currentPage, filterActive, filterDifficulty, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const t = setTimeout(() => {
+      setCurrentPage(1);
+      loadPuzzles(1, searchQuery);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchQuery, isAuthenticated]);
 
   const handleDelete = async (id: number, title: string) => {
     setDeleteDialog({ isOpen: true, puzzleId: id, puzzleTitle: title });
@@ -122,13 +157,7 @@ export default function ManagePuzzlesPage() {
     }
   };
 
-  const filteredPuzzles = puzzles.filter(puzzle => {
-    if (filterActive === 'active') return puzzle.is_active;
-    if (filterActive === 'inactive') return !puzzle.is_active;
-    return true;
-  });
-
-  if (authLoading || isLoading) {
+  if (authLoading || (isLoading && !initialFetchDoneRef.current)) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3 text-center">
@@ -141,6 +170,17 @@ export default function ManagePuzzlesPage() {
 
   return (
     <div>
+      {isLoading && initialFetchDoneRef.current && (
+        <div
+          className="pointer-events-auto fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/35 backdrop-blur-[1px]"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Loader2 className="h-11 w-11 animate-spin text-primary drop-shadow-sm" />
+          <span className="sr-only">Loading puzzles</span>
+        </div>
+      )}
+
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
@@ -159,25 +199,44 @@ export default function ManagePuzzlesPage() {
         </Link>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
-        {[
-          { value: 'all' as const, label: 'All puzzles' },
-          { value: 'active' as const, label: 'Active' },
-          { value: 'inactive' as const, label: 'Inactive' },
-        ].map((filter) => (
-          <button
-            key={filter.value}
-            type="button"
-            onClick={() => setFilterActive(filter.value)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
-              filterActive === filter.value
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'border border-border bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-sm flex-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by title, theme…"
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        <select
+          value={filterDifficulty}
+          onChange={(e) => {
+            setCurrentPage(1);
+            setFilterDifficulty(e.target.value);
+          }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="all">All difficulties</option>
+          <option value="beginner">Beginner</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+          <option value="expert">Expert</option>
+        </select>
+
+        <select
+          value={filterActive}
+          onChange={(e) => {
+            setCurrentPage(1);
+            setFilterActive(e.target.value as 'all' | 'active' | 'inactive');
+          }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="all">All</option>
+        </select>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -196,7 +255,7 @@ export default function ManagePuzzlesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPuzzles.map((puzzle, index) => (
+              {puzzles.map((puzzle, index) => (
                 <tr
                   key={puzzle.id}
                   className={`border-b border-border transition-colors hover:bg-muted/40 ${
@@ -290,11 +349,39 @@ export default function ManagePuzzlesPage() {
           </table>
         </div>
 
-        {filteredPuzzles.length === 0 && (
+        {puzzles.length === 0 && (
           <div className="py-12 text-center">
             <p className="text-muted-foreground">No puzzles found</p>
           </div>
         )}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {(() => {
+            const start = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+            const end = totalCount === 0 ? 0 : Math.min(currentPage * PAGE_SIZE, totalCount);
+            return `Showing ${start}–${end} of ${totalCount} puzzles`;
+          })()}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1 || isLoading}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((p) => p + 1)}
+            disabled={isLoading || currentPage * PAGE_SIZE >= totalCount}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-3">

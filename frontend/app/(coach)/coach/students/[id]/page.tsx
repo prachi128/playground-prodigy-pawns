@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import {
@@ -18,10 +18,13 @@ import {
   Activity,
   Loader2,
   FileText,
+  UserX,
+  UserCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api, { batchAPI, type Batch } from '@/lib/api';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface StudentDetails {
   id: number;
@@ -40,6 +43,7 @@ interface StudentDetails {
   puzzles_this_week: number;
   xp_this_week: number;
   days_since_active: number;
+  is_active?: boolean;
 }
 
 const statCard =
@@ -59,6 +63,12 @@ export default function StudentDetailPage() {
   const [showAwardDialog, setShowAwardDialog] = useState(false);
   const [xpAmount, setXpAmount] = useState(10);
   const [isAwarding, setIsAwarding] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [showReactivateDialog, setShowReactivateDialog] = useState(false);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
+  const deactivateLock = useRef(false);
+  const reactivateLock = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
@@ -128,6 +138,48 @@ export default function StudentDetailPage() {
     }
   };
 
+  const handleDeactivate = async () => {
+    if (deactivateLock.current) return;
+    deactivateLock.current = true;
+    setIsDeactivating(true);
+    try {
+      await api.put(`/api/coach/students/${studentId}/deactivate`);
+      toast.success('Student account deactivated');
+      setShowDeactivateDialog(false);
+      router.push('/coach/admin/students');
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to deactivate');
+    } finally {
+      setIsDeactivating(false);
+      deactivateLock.current = false;
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (reactivateLock.current) return;
+    reactivateLock.current = true;
+    setIsReactivating(true);
+    try {
+      await api.put(`/api/coach/students/${studentId}/reactivate`);
+      toast.success('Student account reactivated');
+      setShowReactivateDialog(false);
+      loadStudent();
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to reactivate');
+    } finally {
+      setIsReactivating(false);
+      reactivateLock.current = false;
+    }
+  };
+
   if (isLoading || !student) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
@@ -147,6 +199,8 @@ export default function StudentDetailPage() {
   ];
 
   const maxSolved = Math.max(...difficultyData.map((d) => d.solved), 1);
+  const isStudentActive = student.is_active !== false;
+  const isAdmin = user?.role === 'admin';
 
   return (
     <div>
@@ -184,17 +238,52 @@ export default function StudentDetailPage() {
               <FileText className="h-5 w-5" />
               Generate Report
             </button>
-            <button
-              type="button"
-              onClick={() => setShowAwardDialog(true)}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-            >
-              <Award className="h-5 w-5" />
-              Award XP
-            </button>
+            {isStudentActive && (
+              <button
+                type="button"
+                onClick={() => setShowAwardDialog(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
+                <Award className="h-5 w-5" />
+                Award XP
+              </button>
+            )}
+            {isAdmin && isStudentActive && (
+              <button
+                type="button"
+                onClick={() => setShowDeactivateDialog(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-destructive/40 bg-background px-5 py-2.5 text-sm font-semibold text-destructive shadow-sm transition-colors hover:bg-destructive/10"
+              >
+                <UserX className="h-5 w-5" />
+                Deactivate
+              </button>
+            )}
+            {isAdmin && !isStudentActive && (
+              <button
+                type="button"
+                onClick={() => setShowReactivateDialog(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-5 py-2.5 text-sm font-semibold text-primary shadow-sm transition-colors hover:bg-primary/15"
+              >
+                <UserCheck className="h-5 w-5" />
+                Reactivate
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {!isStudentActive && isAdmin && (
+        <div
+          className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
+          role="status"
+        >
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
+          <p>
+            This account is <span className="font-semibold">deactivated</span> (left the academy or suspended). The
+            profile remains in the database. Students cannot sign in until you reactivate.
+          </p>
+        </div>
+      )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className={statCard}>
@@ -475,6 +564,28 @@ export default function StudentDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={showDeactivateDialog}
+        title="Deactivate student account?"
+        message={`This will deactivate ${student.username} and prevent them from signing in. Their data is kept in the database. Coaches will no longer see this student in their active roster but will be notified that the account is deactivated.`}
+        confirmText={isDeactivating ? 'Deactivating…' : 'Deactivate'}
+        cancelText="Cancel"
+        isDanger
+        onConfirm={() => void handleDeactivate()}
+        onCancel={() => !isDeactivating && setShowDeactivateDialog(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={showReactivateDialog}
+        title="Reactivate student account?"
+        message={`Restore sign-in for ${student.username}? They will appear again in coach rosters as an active student.`}
+        confirmText={isReactivating ? 'Reactivating…' : 'Reactivate'}
+        cancelText="Cancel"
+        isDanger={false}
+        onConfirm={() => void handleReactivate()}
+        onCancel={() => !isReactivating && setShowReactivateDialog(false)}
+      />
     </div>
   );
 }

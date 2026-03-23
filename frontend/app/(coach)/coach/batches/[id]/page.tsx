@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -37,6 +37,7 @@ import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 type Tab = 'students' | 'classes' | 'announcements' | 'payments';
+type CoachStudentStatsLite = { id: number; xp: number; success_rate: number };
 
 const panel = 'rounded-xl border border-border bg-card shadow-sm';
 const STUDENT_PAGE = 10;
@@ -66,6 +67,7 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true);
 
   const [students, setStudents] = useState<StudentBatchInfo[]>([]);
+  const [allCoachStudents, setAllCoachStudents] = useState<CoachStudentStatsLite[]>([]);
   const [allStudents, setAllStudents] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
@@ -87,6 +89,8 @@ export default function BatchDetailPage() {
   const [annForm, setAnnForm] = useState({ title: '', message: '' });
 
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusOverview | null>(null);
+  const [paymentLoaded, setPaymentLoaded] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const [showEditBatch, setShowEditBatch] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -100,19 +104,49 @@ export default function BatchDetailPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setPaymentLoaded(false);
+    setPaymentStatus(null);
     try {
-      const [b, s, c, a, p] = await Promise.all([
+      const [batchRes, studentsRes, classesRes, announcementsRes, coachStudentsRes] = await Promise.allSettled([
         batchAPI.get(batchId),
         batchAPI.listStudents(batchId),
         batchAPI.listClasses(batchId),
         batchAPI.listAnnouncements(batchId),
-        batchAPI.getPaymentStatus(batchId),
+        coachAPI.getStudents(),
       ]);
+
+      if (
+        batchRes.status !== 'fulfilled' ||
+        studentsRes.status !== 'fulfilled' ||
+        classesRes.status !== 'fulfilled' ||
+        announcementsRes.status !== 'fulfilled'
+      ) {
+        throw new Error('Failed to load batch');
+      }
+
+      const b = batchRes.value;
+      const s = studentsRes.value;
+      const c = classesRes.value;
+      const a = announcementsRes.value;
       setBatch(b);
       setStudents(s);
       setClasses(c);
       setAnnouncements(a);
-      setPaymentStatus(p);
+
+      if (coachStudentsRes.status === 'fulfilled') {
+        const list = Array.isArray(coachStudentsRes.value) ? coachStudentsRes.value : [];
+        const normalized = list
+          .filter((u): u is User & { success_rate?: number } => typeof u?.id === 'number')
+          .map((u) => ({
+            id: u.id,
+            xp: typeof u.xp === 'number' ? u.xp : 0,
+            success_rate: typeof u.success_rate === 'number' ? u.success_rate : 0,
+          }));
+        setAllCoachStudents(normalized);
+      } else {
+        setAllCoachStudents([]);
+      }
+
       if (b) {
         setEditForm({
           name: b.name,
@@ -133,6 +167,33 @@ export default function BatchDetailPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (activeTab !== 'payments' || paymentLoaded) return;
+    let cancelled = false;
+
+    (async () => {
+      setPaymentLoading(true);
+      try {
+        const data = await batchAPI.getPaymentStatus(batchId);
+        if (cancelled) return;
+        setPaymentStatus(data);
+        setPaymentLoaded(true);
+      } catch {
+        if (!cancelled) {
+          toast.error('Failed to load payment status');
+        }
+      } finally {
+        if (!cancelled) {
+          setPaymentLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, paymentLoaded, batchId]);
 
   const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -275,6 +336,25 @@ export default function BatchDetailPage() {
     (safeStudentPage - 1) * STUDENT_PAGE,
     safeStudentPage * STUDENT_PAGE,
   );
+  const batchStats = useMemo(() => {
+    const batchStudentDetails = allCoachStudents.filter((s) =>
+      students.some((bs) => bs.student_id === s.id),
+    );
+    console.log('allCoachStudents count:', allCoachStudents.length);
+    console.log('students count:', students.length);
+    console.log('batchStudentDetails count:', batchStudentDetails.length);
+    if (batchStudentDetails.length === 0) return null;
+
+    const totalXP = batchStudentDetails.reduce((acc, s) => acc + s.xp, 0);
+    const totalAccuracy = batchStudentDetails.reduce((acc, s) => acc + s.success_rate, 0);
+    const count = batchStudentDetails.length;
+
+    return {
+      avgXP: Math.round(totalXP / count),
+      avgAccuracy: Math.round((totalAccuracy / count) * 10) / 10,
+      count,
+    };
+  }, [students, allCoachStudents]);
 
   useEffect(() => {
     setStudentPage(1);
@@ -344,6 +424,21 @@ export default function BatchDetailPage() {
           </button>
         </div>
       </div>
+
+      {batchStats && batchStats.count > 0 && (
+        <div className="mb-6 flex gap-3">
+          <div className={`${panel} flex-1 p-3`}>
+            <p className="font-heading text-xl font-bold text-[hsl(var(--gold-dark))]">{batchStats.avgXP}</p>
+            <p className="text-xs text-muted-foreground">Avg XP</p>
+          </div>
+          <div className={`${panel} flex-1 p-3`}>
+            <p className="font-heading text-xl font-bold text-[hsl(var(--green-medium))]">
+              {batchStats.avgAccuracy}%
+            </p>
+            <p className="text-xs text-muted-foreground">Avg accuracy</p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-1 rounded-xl border border-border bg-muted/40 p-1">
         {tabs.map((tab) => (
@@ -654,6 +749,15 @@ export default function BatchDetailPage() {
             {announcements.length === 0 && (
               <div className={`${panel} p-10 text-center text-muted-foreground`}>No announcements yet.</div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'payments' && paymentLoading && (
+        <div className={`${panel} flex min-h-[220px] items-center justify-center`}>
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm font-medium text-muted-foreground">Loading payments…</p>
           </div>
         </div>
       )}

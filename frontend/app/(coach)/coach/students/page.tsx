@@ -13,6 +13,7 @@ import {
   Eye,
   TrendingUp,
   AlertCircle,
+  Info,
   Zap,
   Loader2,
   ChevronLeft,
@@ -21,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api, { batchAPI, type Batch } from '@/lib/api';
+import api, { batchAPI, coachAPI, type Batch } from '@/lib/api';
 
 interface Student {
   id: number;
@@ -34,6 +35,7 @@ interface Student {
   total_puzzles_solved: number;
   success_rate: number;
   days_since_active?: number;
+  is_active?: boolean;
 }
 
 /** Sortable numeric columns (table headers map to these Student keys). */
@@ -93,6 +95,11 @@ export default function StudentsPage() {
   const [sortCol, setSortCol] = useState<StudentSortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const [deactivatedNotice, setDeactivatedNotice] = useState<{
+    count: number;
+    students: { id: number; username: string; email: string }[];
+  } | null>(null);
+
   useEffect(() => {
     if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
       router.push('/dashboard');
@@ -103,10 +110,19 @@ export default function StudentsPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    const isAdminUser = user?.role === 'admin';
+    const noticePromise = isAdminUser
+      ? Promise.resolve({ count: 0, students: [] as { id: number; username: string; email: string }[] })
+      : coachAPI.getDeactivatedNotice().catch(() => ({
+          count: 0,
+          students: [] as { id: number; username: string; email: string }[],
+        }));
+
     const results = await Promise.allSettled([
       api.get('/api/coach/students'),
       api.get('/api/coach/students/stats/overview'),
       batchAPI.list(),
+      noticePromise,
     ]);
 
     if (results[0].status === 'fulfilled') {
@@ -122,6 +138,11 @@ export default function StudentsPage() {
     } else {
       toast.error('Failed to load batches');
       setBatches([]);
+    }
+    if (results[3].status === 'fulfilled') {
+      setDeactivatedNotice(results[3].value);
+    } else {
+      setDeactivatedNotice({ count: 0, students: [] });
     }
     setIsLoading(false);
   };
@@ -248,6 +269,8 @@ export default function StudentsPage() {
   const goPrev = () => setPage((p) => Math.max(1, p - 1));
   const goNext = () => setPage((p) => Math.min(totalPages, p + 1));
 
+  const isAdmin = user?.role === 'admin';
+
   if (isLoading) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center">
@@ -267,9 +290,29 @@ export default function StudentsPage() {
           Student management
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          View rosters, progress, and award bonus XP—same coach styling as the rest of your console.
+          {isAdmin
+            ? 'View all students, progress, and award bonus XP (admin access). Overview stats match the list below.'
+            : 'Students listed here are enrolled in at least one of your batches. Track progress and award bonus XP.'}
         </p>
       </div>
+
+      {!isAdmin && deactivatedNotice && deactivatedNotice.count > 0 && (
+        <div
+          className="mb-6 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm"
+          role="status"
+        >
+          <p className="font-semibold text-amber-950 dark:text-amber-100">
+            Deactivated accounts ({deactivatedNotice.count})
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            These learners are no longer active (left the academy or suspended). They are not shown in your roster below;
+            only admins can restore access. Names:{' '}
+            <span className="font-medium text-foreground">
+              {deactivatedNotice.students.map((s) => s.username).join(', ')}
+            </span>
+          </p>
+        </div>
+      )}
 
       {overview && (
         <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -313,12 +356,19 @@ export default function StudentsPage() {
             type="button"
             disabled={overview.needs_attention.length === 0}
             onClick={() => setAtRiskFilter(true)}
-            className={`${statCard} w-full text-left transition-colors ${
+            className={`${statCard} relative w-full text-left transition-colors ${
               overview.needs_attention.length > 0
                 ? 'cursor-pointer hover:border-destructive/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
                 : 'cursor-not-allowed opacity-60'
             }`}
           >
+            <span
+              className="absolute right-3 top-3 inline-flex items-center text-muted-foreground/70"
+              title="Students who have earned less than 50 XP so far and may need extra support."
+              aria-label="Students who have earned less than 50 XP so far and may need extra support."
+            >
+              <Info className="h-4 w-4" />
+            </span>
             <div className="mb-2 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--red-light))]">
                 <AlertCircle className="h-5 w-5 text-[hsl(var(--red-medium))]" />
@@ -333,6 +383,14 @@ export default function StudentsPage() {
             )}
           </button>
         </div>
+      )}
+
+      {overview && (
+        <p className="mb-6 text-xs text-muted-foreground">
+          {isAdmin
+            ? 'Overview figures include every student account (admin).'
+            : 'Overview figures include only students in your batches.'}
+        </p>
       )}
 
       {atRiskFilter && (
@@ -484,7 +542,14 @@ export default function StudentsPage() {
                       href={`/coach/students/${student.id}`}
                       className="block rounded-md p-1 -m-1 transition-colors hover:bg-muted/60"
                     >
-                      <p className="font-semibold text-primary hover:text-primary/90">{student.username}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-primary hover:text-primary/90">{student.username}</p>
+                        {isAdmin && student.is_active === false && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{student.email}</p>
                     </Link>
                   </td>
@@ -530,6 +595,7 @@ export default function StudentsPage() {
                           type="number"
                           min={1}
                           max={100}
+                          disabled={student.is_active === false}
                           value={xpAmounts[student.id] ?? 10}
                           onChange={(e) => {
                             const raw = e.target.valueAsNumber;
@@ -554,9 +620,13 @@ export default function StudentsPage() {
                           onClick={() =>
                             awardXP(student.id, xpAmounts[student.id] ?? 10)
                           }
-                          disabled={awardingXP === student.id}
+                          disabled={student.is_active === false || awardingXP === student.id}
                           className="rounded-lg border border-border bg-muted/50 p-2 transition-colors hover:bg-muted disabled:opacity-50"
-                          title={`Award ${xpAmounts[student.id] ?? 10} XP`}
+                          title={
+                            student.is_active === false
+                              ? 'Cannot award XP to inactive student'
+                              : `Award ${xpAmounts[student.id] ?? 10} XP`
+                          }
                         >
                           {awardingXP === student.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-primary" />

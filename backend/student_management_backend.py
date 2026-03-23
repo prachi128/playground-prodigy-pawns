@@ -1,6 +1,6 @@
 # student_management_backend.py - Coach student management API
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Set
@@ -26,6 +26,7 @@ class StudentStats(BaseModel):
     created_at: datetime
     last_active: Optional[datetime] = None
     days_since_active: int
+    is_active: bool = True
 
     total_puzzles_attempted: int
     total_puzzles_solved: int
@@ -33,6 +34,12 @@ class StudentStats(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DeactivatedNoticeStudent(BaseModel):
+    id: int
+    username: str
+    email: str
 
 
 class StudentDetailedStats(BaseModel):
@@ -55,6 +62,7 @@ class StudentDetailedStats(BaseModel):
     puzzles_this_week: int
     xp_this_week: int
     days_since_active: int
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -64,6 +72,13 @@ def require_coach(user_id: int = Depends(get_current_user), db: Session = Depend
     user = db.query(User).filter(User.id == user_id).first()
     if not user or user.role not in [UserRole.coach, UserRole.admin, "coach", "admin"]:
         raise HTTPException(status_code=403, detail="Coach access required")
+    return user
+
+
+def require_admin(user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.role not in [UserRole.admin, "admin"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
 
 
@@ -140,16 +155,51 @@ def get_class_overview(
     }
 
 
+@router.get("/deactivated-notice")
+def get_deactivated_notice(
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """
+    Coaches only: students who are deactivated but still enrolled in one of your batches.
+    Admins get an empty payload (they use the full student list including inactive).
+    """
+    if _is_admin(coach):
+        return {"count": 0, "students": []}
+    rows = (
+        db.query(User)
+        .join(StudentBatch, StudentBatch.student_id == User.id)
+        .join(Batch, Batch.id == StudentBatch.batch_id)
+        .filter(
+            Batch.coach_id == coach.id,
+            User.role == UserRole.student,
+            User.is_active == False,
+            StudentBatch.is_active == True,
+        )
+        .distinct()
+        .all()
+    )
+    return {
+        "count": len(rows),
+        "students": [
+            DeactivatedNoticeStudent(id=u.id, username=u.username, email=u.email).model_dump()
+            for u in rows
+        ],
+    }
+
+
 @router.get("/", response_model=List[StudentStats])
 def get_all_students(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
     """
-    Students in this coach's batches with basic stats (all students if admin).
-    Uses PuzzleAttempt for per-student attempted/solved counts when available.
+    Students in this coach's batches with basic stats.
+    Coaches only see active accounts; admins see all students (including inactive).
     """
     q = db.query(User).filter(User.role == UserRole.student)
+    if not _is_admin(coach):
+        q = q.filter(User.is_active == True)
     roster = _coach_roster_student_ids(coach, db)
     if roster is not None:
         if not roster:
@@ -190,6 +240,7 @@ def get_all_students(
                 created_at=student.created_at,
                 last_active=last_active,
                 days_since_active=days_since_active,
+                is_active=bool(student.is_active),
                 total_puzzles_attempted=attempted,
                 total_puzzles_solved=solved,
                 success_rate=round(success_rate, 1),
@@ -209,6 +260,8 @@ def get_student_details(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     if not _coach_can_access_student(coach, db, student_id):
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _is_admin(coach) and student.is_active is False:
         raise HTTPException(status_code=404, detail="Student not found")
 
     # From PuzzleAttempt
@@ -308,6 +361,7 @@ def get_student_details(
         puzzles_this_week=puzzles_this_week,
         xp_this_week=xp_this_week,
         days_since_active=days_since_active,
+        is_active=bool(student.is_active),
     )
 
 
@@ -324,6 +378,11 @@ def award_bonus_xp(
         raise HTTPException(status_code=404, detail="Student not found")
     if not _coach_can_access_student(coach, db, student_id):
         raise HTTPException(status_code=404, detail="Student not found")
+    if student.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot award XP to a deactivated student",
+        )
 
     student.total_xp = (student.total_xp or 0) + xp_amount
     db.commit()
@@ -338,16 +397,40 @@ def award_bonus_xp(
 @router.put("/{student_id}/deactivate")
 def deactivate_student(
     student_id: int,
-    coach: User = Depends(require_coach),
+    admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Deactivate a student on this coach's roster (any student if admin)."""
+    """Deactivate a student account (admin only). Does not remove database rows."""
     student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    if not _coach_can_access_student(coach, db, student_id):
-        raise HTTPException(status_code=404, detail="Student not found")
+    if student.is_active is False:
+        return {
+            "success": True,
+            "message": f"Student {student.username} is already deactivated",
+        }
 
     student.is_active = False
     db.commit()
     return {"success": True, "message": f"Student {student.username} deactivated"}
+
+
+@router.put("/{student_id}/reactivate")
+def reactivate_student(
+    student_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Restore a deactivated student account (admin only)."""
+    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if student.is_active is True:
+        return {
+            "success": True,
+            "message": f"Student {student.username} is already active",
+        }
+
+    student.is_active = True
+    db.commit()
+    return {"success": True, "message": f"Student {student.username} reactivated"}

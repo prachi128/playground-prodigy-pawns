@@ -856,6 +856,15 @@ export const coachAPI = {
       throw err;
     }
   },
+
+  /** Coaches: inactive students still enrolled in your batches (admins get empty). */
+  getDeactivatedNotice: async (): Promise<{
+    count: number;
+    students: { id: number; username: string; email: string }[];
+  }> => {
+    const response = await api.get('/api/coach/students/deactivated-notice');
+    return response.data;
+  },
 };
 
 export default api;

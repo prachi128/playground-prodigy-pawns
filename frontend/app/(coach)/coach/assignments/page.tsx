@@ -30,6 +30,7 @@ interface Puzzle {
   id: number;
   title: string;
   difficulty: string;
+  theme?: string;
   xp_reward: number;
   is_active: boolean;
 }
@@ -99,7 +100,6 @@ export default function AssignmentsPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [batches, setBatches]         = useState<Batch[]>([]);
   const [students, setStudents]       = useState<Student[]>([]);
-  const [allPuzzles, setAllPuzzles]   = useState<Puzzle[]>([]);
   const [loading, setLoading]         = useState(true);
   const [showCreate, setShowCreate]   = useState(false);
   const [creating, setCreating]       = useState(false);
@@ -115,7 +115,10 @@ export default function AssignmentsPage() {
     due_date:     '',
   });
   const [selectedPuzzles, setSelectedPuzzles] = useState<number[]>([]);
-  const [puzzleSearch, setPuzzleSearch]       = useState('');
+  const [selectedPuzzleDetails, setSelectedPuzzleDetails] = useState<Map<number, Puzzle>>(new Map());
+  const [puzzleQuery, setPuzzleQuery] = useState('');
+  const [puzzleResults, setPuzzleResults] = useState<Puzzle[]>([]);
+  const [puzzleSearching, setPuzzleSearching] = useState(false);
 
   // ── Auth guard ──────────────────────────────────────────────
   useEffect(() => {
@@ -132,22 +135,53 @@ export default function AssignmentsPage() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [asgnRes, batchRes, stuRes, puzRes] = await Promise.all([
+      const [asgnRes, batchRes, stuRes] = await Promise.all([
         api.get('/api/assignments'),
         api.get('/api/batches'),
         api.get('/api/coach/students/'),
-        api.get('/api/coach/puzzles?include_inactive=false'),
       ]);
       setAssignments(asgnRes.data);
       setBatches(batchRes.data);
       setStudents(stuRes.data);
-      setAllPuzzles(puzRes.data);
     } catch {
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const q = puzzleQuery.trim();
+    if (q.length < 3) {
+      setPuzzleResults([]);
+      setPuzzleSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPuzzleSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(
+          `/api/coach/puzzles?include_inactive=false&limit=20&search=${encodeURIComponent(q)}`,
+        );
+        if (cancelled) return;
+        setPuzzleResults(Array.isArray(res.data) ? res.data : []);
+      } catch {
+        if (!cancelled) {
+          toast.error('Search failed');
+          setPuzzleResults([]);
+        }
+      } finally {
+        if (!cancelled) setPuzzleSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [puzzleQuery]);
 
   // ── Create assignment ───────────────────────────────────────
   const handleCreate = async () => {
@@ -190,13 +224,26 @@ export default function AssignmentsPage() {
   const resetForm = () => {
     setForm({ title: '', description: '', target: 'batch', batch_id: '', student_id: '', due_date: '' });
     setSelectedPuzzles([]);
-    setPuzzleSearch('');
+    setSelectedPuzzleDetails(new Map());
+    setPuzzleQuery('');
+    setPuzzleResults([]);
+    setPuzzleSearching(false);
   };
 
-  const togglePuzzle = (id: number) => {
+  const togglePuzzle = (puzzle: Puzzle) => {
+    const id = puzzle.id;
     setSelectedPuzzles(prev =>
       prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
     );
+    setSelectedPuzzleDetails((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.set(id, puzzle);
+      }
+      return next;
+    });
   };
 
   const filtered = assignments.filter(a => {
@@ -204,11 +251,6 @@ export default function AssignmentsPage() {
     if (filterActive === 'inactive') return !a.is_active;
     return true;
   });
-
-  const filteredPuzzles = allPuzzles.filter(p =>
-    p.title.toLowerCase().includes(puzzleSearch.toLowerCase()) ||
-    p.difficulty.toLowerCase().includes(puzzleSearch.toLowerCase())
-  );
 
   if (loading) {
     return (
@@ -484,16 +526,24 @@ export default function AssignmentsPage() {
                 </label>
                 <input
                   type="text"
-                  value={puzzleSearch}
-                  onChange={(e) => setPuzzleSearch(e.target.value)}
+                  value={puzzleQuery}
+                  onChange={(e) => setPuzzleQuery(e.target.value)}
                   placeholder="Search by title or difficulty…"
                   className="mb-2 w-full rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <div className="max-h-52 overflow-y-auto overflow-hidden rounded-xl border border-border">
-                  {filteredPuzzles.length === 0 ? (
+                  {puzzleQuery.trim().length < 3 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      Type at least 3 characters to search puzzles
+                    </p>
+                  ) : puzzleSearching ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  ) : puzzleResults.length === 0 ? (
                     <p className="py-6 text-center text-sm text-muted-foreground">No puzzles found</p>
                   ) : (
-                    filteredPuzzles.map((p) => {
+                    puzzleResults.map((p) => {
                       const isSelected = selectedPuzzles.includes(p.id);
                       const order = selectedPuzzles.indexOf(p.id) + 1;
                       return (
@@ -501,11 +551,11 @@ export default function AssignmentsPage() {
                           key={p.id}
                           role="button"
                           tabIndex={0}
-                          onClick={() => togglePuzzle(p.id)}
+                          onClick={() => togglePuzzle(p)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
-                              togglePuzzle(p.id);
+                              togglePuzzle(p);
                             }
                           }}
                           className={`flex cursor-pointer items-center gap-3 border-b border-border px-4 py-2.5 transition-colors last:border-b-0 ${
@@ -536,7 +586,7 @@ export default function AssignmentsPage() {
                 {selectedPuzzles.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {selectedPuzzles.map((id, idx) => {
-                      const p = allPuzzles.find((x) => x.id === id);
+                      const p = selectedPuzzleDetails.get(id);
                       return (
                         <span
                           key={id}
@@ -545,7 +595,17 @@ export default function AssignmentsPage() {
                           {idx + 1}. {p?.title ?? `#${id}`}
                           <button
                             type="button"
-                            onClick={() => togglePuzzle(id)}
+                            onClick={() =>
+                              togglePuzzle(
+                                p ?? {
+                                  id,
+                                  title: `#${id}`,
+                                  difficulty: 'beginner',
+                                  xp_reward: 0,
+                                  is_active: true,
+                                },
+                              )
+                            }
                             className="ml-0.5 text-primary hover:text-destructive"
                           >
                             <X className="h-3 w-3" />

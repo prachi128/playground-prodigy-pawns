@@ -151,6 +151,8 @@ def create_assignment(
             db, coach.id, data.student_id
         ):
             raise HTTPException(status_code=404, detail="Student not found")
+        if not _is_admin_coach(coach) and student.is_active is False:
+            raise HTTPException(status_code=404, detail="Student not found")
 
     # Validate all puzzles exist and are active
     for pid in data.puzzle_ids:

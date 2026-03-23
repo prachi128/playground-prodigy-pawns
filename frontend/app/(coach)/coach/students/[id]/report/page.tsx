@@ -27,6 +27,7 @@ interface StudentDetails {
   puzzles_this_week: number;
   xp_this_week: number;
   days_since_active: number;
+  is_active?: boolean;
 }
 
 const row = 'flex justify-between gap-4 border-b border-border py-2 text-sm last:border-0';
@@ -160,6 +161,11 @@ export default function StudentReportPage() {
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Prodigy Pawns — Coach report
           </p>
+          {student.is_active === false && (
+            <p className="mt-3 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-foreground print:border-foreground/20">
+              Account status: <span className="font-semibold">deactivated</span> (historical snapshot)
+            </p>
+          )}
           <h1 className="mt-2 font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Student progress report
           </h1>

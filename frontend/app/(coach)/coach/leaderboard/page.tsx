@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
+import Link from 'next/link';
 import { Trophy, TrendingUp, Zap, Target, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -16,6 +17,7 @@ interface RawStudent {
   xp: number;
   total_puzzles_solved: number;
   success_rate: number;
+  is_active?: boolean;
 }
 
 interface LeaderboardEntry {
@@ -66,7 +68,7 @@ export default function LeaderboardPage() {
   }, [isAuthenticated, user, router]);
 
   const leaderboard = useMemo((): LeaderboardEntry[] => {
-    const sorted = [...rawStudents];
+    const sorted = [...rawStudents.filter((s) => s.is_active !== false)];
     if (sortBy === 'xp') {
       sorted.sort((a, b) => b.xp - a.xp);
     } else if (sortBy === 'puzzles') {
@@ -101,12 +103,68 @@ export default function LeaderboardPage() {
     return 'border border-border bg-card text-muted-foreground';
   };
 
+  const isAdmin = user?.role === 'admin';
+
   if (isLoading) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="text-sm font-medium text-muted-foreground">Loading leaderboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const rankableStudents = rawStudents.filter((s) => s.is_active !== false);
+  const allOnRosterInactive =
+    rawStudents.length > 0 && rankableStudents.length === 0;
+
+  if (rankableStudents.length === 0) {
+    return (
+      <div className="relative min-h-[min(70vh,520px)]">
+        <div className="mb-6">
+          <h1 className="font-heading flex items-center gap-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15 sm:h-11 sm:w-11">
+              <Trophy className="h-5 w-5 sm:h-6 sm:w-6" />
+            </span>
+            Class leaderboard
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {allOnRosterInactive
+              ? 'Only active student accounts appear on the leaderboard.'
+              : isAdmin
+                ? 'Rankings for all students on the platform. Add student accounts to see them here.'
+                : 'Rankings for students enrolled in your batches. Add students to a batch to see them here.'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card px-6 py-14 text-center shadow-sm">
+          <Trophy className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
+          <p className="font-heading text-base font-semibold text-card-foreground">No students to rank yet</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            {allOnRosterInactive
+              ? 'Everyone in the current list has a deactivated account. Restore access from admin tools, or wait until active students are on your roster.'
+              : isAdmin
+                ? 'There are no student accounts yet, or none match the current view.'
+                : 'Enroll students in one of your batches to populate this leaderboard.'}
+          </p>
+          {!isAdmin && !allOnRosterInactive && (
+            <Link
+              href="/coach/batches"
+              className="mt-6 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+            >
+              Manage batches
+            </Link>
+          )}
+          {!isAdmin && allOnRosterInactive && (
+            <Link
+              href="/coach/students"
+              className="mt-6 inline-flex items-center justify-center rounded-xl border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted/60"
+            >
+              View students
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -122,7 +180,9 @@ export default function LeaderboardPage() {
           Class leaderboard
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Top performers across your students—sort by XP, puzzles solved, or success rate.
+          {isAdmin
+            ? 'Top performers across all students—sort by XP, puzzles solved, or success rate.'
+            : 'Top performers among students in your batches—sort by XP, puzzles solved, or success rate.'}
         </p>
       </div>
 
@@ -295,14 +355,6 @@ export default function LeaderboardPage() {
               </tbody>
             </table>
           </div>
-
-          {leaderboard.length === 0 && (
-            <div className="py-12 text-center">
-              <Trophy className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-              <p className="font-heading text-sm font-semibold text-card-foreground">No students yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">Students will appear here once they are in your roster.</p>
-            </div>
-          )}
         </div>
     </div>
   );

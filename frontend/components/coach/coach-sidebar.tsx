@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
+import { useAuthStore } from "@/lib/store";
 import { coachNav } from "./coach-nav";
 
 interface CoachSidebarProps {
@@ -12,6 +13,10 @@ interface CoachSidebarProps {
 
 export function CoachSidebar({ mobileOpen, onCloseMobile }: CoachSidebarProps) {
   const pathname = usePathname();
+  const { user } = useAuthStore();
+  const navItems = coachNav.filter(
+    (item) => !item.adminOnly || user?.role === "admin",
+  );
 
   const linkClass = (href: string) => {
     const isActive =
@@ -76,7 +81,7 @@ export function CoachSidebar({ mobileOpen, onCloseMobile }: CoachSidebarProps) {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3 pb-6 scrollbar-hide">
-          {coachNav.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href ||
