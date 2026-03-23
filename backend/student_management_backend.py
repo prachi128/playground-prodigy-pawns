@@ -9,6 +9,7 @@ from models import User, UserRole, Puzzle, PuzzleAttempt, Batch, StudentBatch
 from auth import get_current_user
 from database import get_db
 from datetime import datetime, timedelta
+from audit_service import log_admin_action
 
 router = APIRouter(prefix="/api/coach/students", tags=["students"])
 
@@ -148,7 +149,7 @@ def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
     """
     if _is_admin(coach):
         return None
-    assigned_rows = (
+    rows = (
         db.query(User.id)
         .filter(
             User.role == UserRole.student,
@@ -156,25 +157,13 @@ def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
         )
         .all()
     )
-    roster_rows = (
-        db.query(StudentBatch.student_id)
-        .join(Batch, StudentBatch.batch_id == Batch.id)
-        .filter(
-            Batch.coach_id == coach.id,
-            StudentBatch.is_active == True,
-        )
-        .distinct()
-        .all()
-    )
-    assigned_ids = {int(r[0]) for r in assigned_rows}
-    roster_ids = {int(r[0]) for r in roster_rows}
-    return assigned_ids.union(roster_ids)
+    return {int(r[0]) for r in rows}
 
 
 def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool:
     if _is_admin(coach):
         return True
-    assigned = (
+    row = (
         db.query(User.id)
         .filter(
             User.id == student_id,
@@ -183,10 +172,7 @@ def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool
         )
         .first()
     )
-    if assigned:
-        return True
-    roster = _coach_roster_student_ids(coach, db)
-    return student_id in roster if roster is not None else False
+    return bool(row)
 
 
 @router.get("/coaches", response_model=List[CoachAccountRow])
@@ -223,6 +209,14 @@ def deactivate_coach(
     if coach.is_active is False:
         return {"success": True, "message": f"Coach {coach.username} is already deactivated"}
     coach.is_active = False
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="coach_deactivate",
+        target_type="coach",
+        target_id=coach.id,
+        details={"username": coach.username},
+    )
     db.commit()
     return {"success": True, "message": f"Coach {coach.username} deactivated"}
 
@@ -240,6 +234,14 @@ def reactivate_coach(
     if coach.is_active is True:
         return {"success": True, "message": f"Coach {coach.username} is already active"}
     coach.is_active = True
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="coach_reactivate",
+        target_type="coach",
+        target_id=coach.id,
+        details={"username": coach.username},
+    )
     db.commit()
     return {"success": True, "message": f"Coach {coach.username} reactivated"}
 
@@ -529,15 +531,60 @@ def assign_student_to_coach(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
+    active_enrollment_coach_ids = {
+        int(cid)
+        for (cid,) in (
+            db.query(Batch.coach_id)
+            .join(StudentBatch, StudentBatch.batch_id == Batch.id)
+            .filter(
+                StudentBatch.student_id == student_id,
+                StudentBatch.is_active == True,
+                Batch.is_active == True,
+            )
+            .distinct()
+            .all()
+        )
+        if cid is not None
+    }
+
     coach_user: Optional[User] = None
+    previous_coach_id = student.primary_coach_id
     if payload.coach_id is not None:
         coach_user = db.query(User).filter(User.id == payload.coach_id, User.role == UserRole.coach).first()
         if not coach_user:
             raise HTTPException(status_code=404, detail="Coach not found")
         if coach_user.is_active is False:
             raise HTTPException(status_code=400, detail="Cannot assign an inactive coach")
+        if active_enrollment_coach_ids and (
+            len(active_enrollment_coach_ids) > 1
+            or payload.coach_id not in active_enrollment_coach_ids
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot assign this coach while student has active batch enrollments "
+                    "under another coach. Move or remove those enrollments first."
+                ),
+            )
+    elif active_enrollment_coach_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot unassign coach while student has active batch enrollments",
+        )
 
     student.primary_coach_id = payload.coach_id
+    log_admin_action(
+        db,
+        admin_id=_admin.id,
+        action="student_assign_coach",
+        target_type="student",
+        target_id=student.id,
+        details={
+            "previous_coach_id": previous_coach_id,
+            "new_coach_id": payload.coach_id,
+            "student_username": student.username,
+        },
+    )
     db.commit()
     db.refresh(student)
 
@@ -713,6 +760,14 @@ def deactivate_student(
         }
 
     student.is_active = False
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="student_deactivate",
+        target_type="student",
+        target_id=student.id,
+        details={"username": student.username},
+    )
     db.commit()
     return {"success": True, "message": f"Student {student.username} deactivated"}
 
@@ -734,5 +789,13 @@ def reactivate_student(
         }
 
     student.is_active = True
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="student_reactivate",
+        target_type="student",
+        target_id=student.id,
+        details={"username": student.username},
+    )
     db.commit()
     return {"success": True, "message": f"Student {student.username} reactivated"}

@@ -7,10 +7,12 @@ from typing import List, Optional
 from datetime import datetime, date, timedelta
 import os
 import secrets
+import json
 
-from models import Batch, StudentBatch, ClassSession, Announcement, Payment, User, UserRole, CoachSignupInvite
+from models import Batch, StudentBatch, ClassSession, Announcement, Payment, User, UserRole, CoachSignupInvite, AdminAuditLog
 from auth import get_current_user
 from database import get_db
+from audit_service import log_admin_action
 from schemas import (
     BatchCreate, BatchUpdate, BatchResponse,
     ClassSessionCreate, ClassSessionResponse,
@@ -142,6 +144,18 @@ def add_student_to_batch(batch_id: int, data: StudentBatchAdd, coach: User = Dep
     student = db.query(User).filter(User.id == data.student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    if student.role not in [UserRole.student, "student"]:
+        raise HTTPException(status_code=400, detail="Only student accounts can be added to batches")
+    if student.primary_coach_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Student has no assigned coach. Assign coach from Admin > Student accounts first.",
+        )
+    if int(student.primary_coach_id) != int(batch.coach_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Student is assigned to a different coach. Update coach assignment before adding to this batch.",
+        )
     existing = db.query(StudentBatch).filter(
         StudentBatch.student_id == data.student_id,
         StudentBatch.batch_id == batch_id,
@@ -528,6 +542,20 @@ def mark_payment_paid(
         paid_at=datetime.utcnow(),
     )
     db.add(payment)
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="payment_mark_paid",
+        target_type="payment",
+        target_id=None,
+        details={
+            "student_id": data.student_id,
+            "batch_id": data.batch_id,
+            "billing_month": data.billing_month,
+            "notes": data.notes,
+            "amount": float(batch.monthly_fee or 0),
+        },
+    )
     sb.payment_status = "paid"
     db.commit()
     db.refresh(payment)
@@ -568,6 +596,18 @@ def unmark_payment_paid(
 
     payment.status = "pending"
     payment.paid_at = None
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="payment_unmark_paid",
+        target_type="payment",
+        target_id=payment.id,
+        details={
+            "student_id": payment.student_id,
+            "batch_id": payment.batch_id,
+            "billing_month": payment.billing_month,
+        },
+    )
 
     sb = db.query(StudentBatch).filter(
         StudentBatch.student_id == payment.student_id,
@@ -618,6 +658,14 @@ def create_coach_invite(
         expires_at=expires_at,
     )
     db.add(invite)
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="coach_invite_create",
+        target_type="coach_invite",
+        target_id=None,
+        details={"email": email, "expires_in_days": data.expires_in_days},
+    )
     db.commit()
     db.refresh(invite)
 
@@ -675,5 +723,44 @@ def revoke_coach_invite(
     if invite.used_at:
         raise HTTPException(status_code=400, detail="Invite already used")
     invite.is_active = False
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="coach_invite_revoke",
+        target_type="coach_invite",
+        target_id=invite.id,
+        details={"email": invite.email},
+    )
     db.commit()
     return {"detail": "Invite revoked"}
+
+
+@admin_router.get("/audit-logs")
+def list_admin_audit_logs(
+    action: Optional[str] = None,
+    limit: int = 50,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    rows_q = db.query(AdminAuditLog).order_by(AdminAuditLog.created_at.desc())
+    if action:
+        rows_q = rows_q.filter(AdminAuditLog.action == action)
+    rows = rows_q.limit(max(1, min(limit, 200))).all()
+    admin_ids = list({r.admin_id for r in rows})
+    admin_map = {}
+    if admin_ids:
+        admin_users = db.query(User).filter(User.id.in_(admin_ids)).all()
+        admin_map = {u.id: (u.full_name or u.username) for u in admin_users}
+    return [
+        {
+            "id": r.id,
+            "admin_id": r.admin_id,
+            "admin_name": admin_map.get(r.admin_id),
+            "action": r.action,
+            "target_type": r.target_type,
+            "target_id": r.target_id,
+            "details": json.loads(r.details_json) if r.details_json else {},
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]

@@ -516,3 +516,17 @@ class AssignmentCompletion(Base):
     assignment = relationship("Assignment", back_populates="completions")
     student    = relationship("User",   foreign_keys=[student_id])
     puzzle     = relationship("Puzzle", foreign_keys=[puzzle_id])
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String(64), nullable=False, index=True)
+    target_type = Column(String(64), nullable=False, index=True)
+    target_id = Column(Integer, nullable=True)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    admin = relationship("User", foreign_keys=[admin_id])

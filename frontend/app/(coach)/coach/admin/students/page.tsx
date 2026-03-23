@@ -60,19 +60,18 @@ export default function AdminStudentsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params =
-        assignmentFilter === 'unassigned'
-          ? { unassigned_only: true }
-          : assignmentFilter === 'assigned'
-          ? { unassigned_only: false }
-          : undefined;
+      const params = assignmentFilter === 'unassigned' ? { unassigned_only: true } : undefined;
       const [studentsRes, coachesRes] = await Promise.all([
         api.get('/api/coach/students', { params }),
         api.get('/api/coach/students/coaches'),
       ]);
       const res = studentsRes;
       const data = res.data;
-      const nextRows = Array.isArray(data) ? data : [];
+      const allRows = Array.isArray(data) ? data : [];
+      const nextRows =
+        assignmentFilter === 'assigned'
+          ? allRows.filter((r) => (r.coach_id ?? null) !== null)
+          : allRows;
       setRows(nextRows);
       setCoaches(Array.isArray(coachesRes.data) ? coachesRes.data : []);
       const nextInitial: Record<number, string> = {};

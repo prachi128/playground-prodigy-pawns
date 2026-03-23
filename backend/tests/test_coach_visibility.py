@@ -15,22 +15,18 @@ def _query_mock_with_rows(rows):
 
 
 class CoachVisibilityTests(unittest.TestCase):
-    def test_roster_student_ids_is_union_of_assigned_and_batch_students(self):
+    def test_roster_student_ids_uses_assigned_coach_only(self):
         coach = MagicMock()
         coach.id = 9
         coach.role = "coach"
 
         assigned_rows = [(1,), (4,)]
-        batch_rows = [(4,), (7,)]
 
         db = MagicMock()
-        db.query.side_effect = [
-            _query_mock_with_rows(assigned_rows),
-            _query_mock_with_rows(batch_rows),
-        ]
+        db.query.return_value = _query_mock_with_rows(assigned_rows)
 
         roster = _coach_roster_student_ids(coach, db)
-        self.assertEqual(roster, {1, 4, 7})
+        self.assertEqual(roster, {1, 4})
 
     def test_coach_can_access_student_when_directly_assigned(self):
         coach = MagicMock()
@@ -43,6 +39,18 @@ class CoachVisibilityTests(unittest.TestCase):
 
         can_access = _coach_can_access_student(coach, db, student_id=3)
         self.assertTrue(can_access)
+
+    def test_coach_cannot_access_student_when_not_assigned(self):
+        coach = MagicMock()
+        coach.id = 9
+        coach.role = "coach"
+
+        assigned_query = _query_mock_with_rows([])
+        db = MagicMock()
+        db.query.return_value = assigned_query
+
+        can_access = _coach_can_access_student(coach, db, student_id=3)
+        self.assertFalse(can_access)
 
 
 if __name__ == "__main__":

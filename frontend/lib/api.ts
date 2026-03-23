@@ -755,6 +755,17 @@ export interface CoachInvite {
   used_by?: number | null;
 }
 
+export interface AdminAuditLogRow {
+  id: number;
+  admin_id: number;
+  admin_name?: string | null;
+  action: string;
+  target_type: string;
+  target_id?: number | null;
+  details?: Record<string, unknown>;
+  created_at: string;
+}
+
 export const batchAPI = {
   create: async (data: { name: string; description?: string; schedule?: string; monthly_fee?: number }): Promise<Batch> => {
     const response = await api.post('/api/batches', data);
@@ -816,6 +827,10 @@ export const adminAPI = {
   },
   revokeCoachInvite: async (id: number): Promise<void> => {
     await api.post(`/api/admin/coach-invites/${id}/revoke`);
+  },
+  listAuditLogs: async (params?: { action?: string; limit?: number }): Promise<AdminAuditLogRow[]> => {
+    const response = await api.get('/api/admin/audit-logs', { params });
+    return response.data;
   },
 };
 
