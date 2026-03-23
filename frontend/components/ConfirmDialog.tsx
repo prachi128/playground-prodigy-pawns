@@ -60,17 +60,19 @@ export default function ConfirmDialog({
         {/* Actions */}
         <div className="flex gap-3 p-6 pt-0">
           <button
+            type="button"
             onClick={onCancel}
-            className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl transition-colors"
+            className="flex-1 rounded-xl bg-muted px-4 py-3 font-bold text-foreground transition-colors hover:bg-muted/80"
           >
             {cancelText}
           </button>
           <button
+            type="button"
             onClick={onConfirm}
-            className={`flex-1 px-4 py-3 font-bold rounded-xl transition-colors ${
+            className={`flex-1 rounded-xl px-4 py-3 font-bold transition-colors ${
               isDanger
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-primary-500 hover:bg-primary-600 text-white'
+                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
             }`}
           >
             {confirmText}
