@@ -789,6 +789,38 @@ export interface AdminOperationalMetrics {
   }>;
 }
 
+export interface BotProfileRow {
+  id: number;
+  bot_id: string;
+  display_name: string;
+  target_rating: number;
+  is_active: boolean;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface BotCalibrationRunRow {
+  id: number;
+  profile_version_id?: number | null;
+  status: string;
+  run_type: string;
+  estimated_rating?: number | null;
+  confidence_low?: number | null;
+  confidence_high?: number | null;
+  acceptance_passed?: boolean | null;
+  summary_json?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export interface BotCoverageRow {
+  bot_id: string;
+  finished_games: number;
+  remaining_to_target: number;
+  ready: boolean;
+}
+
 export const batchAPI = {
   create: async (data: { name: string; description?: string; schedule?: string; monthly_fee?: number }): Promise<Batch> => {
     const response = await api.post('/api/batches', data);
@@ -861,6 +893,42 @@ export const adminAPI = {
   },
   getOperationalMetrics: async (): Promise<AdminOperationalMetrics> => {
     const response = await api.get('/api/admin/operational-metrics');
+    return response.data;
+  },
+};
+
+export const adminBotsAPI = {
+  listProfiles: async (): Promise<BotProfileRow[]> => {
+    const response = await api.get('/api/admin/bots/profiles');
+    return response.data;
+  },
+  createCalibrationRun: async (data: { profile_version_id?: number | null; run_type?: string }): Promise<BotCalibrationRunRow> => {
+    const response = await api.post('/api/admin/bots/calibration-runs', data);
+    return response.data;
+  },
+  executeCalibrationRun: async (
+    runId: number,
+    params?: {
+      target_rating?: number;
+      sample_source?: 'auto' | 'games' | 'telemetry';
+      games_scope?: 'persona' | 'profile_version';
+      min_samples?: number;
+      tolerance?: number;
+      games_limit?: number;
+      telemetry_limit?: number;
+    }
+  ): Promise<BotCalibrationRunRow> => {
+    const response = await api.post(`/api/admin/bots/calibration-runs/${runId}/execute`, null, { params: params ?? {} });
+    return response.data;
+  },
+  getCalibrationCoverage: async (targetSamples: number = 80): Promise<{ target_samples: number; rows: BotCoverageRow[] }> => {
+    const response = await api.get('/api/admin/bots/calibration/coverage', {
+      params: { target_samples: targetSamples },
+    });
+    return response.data;
+  },
+  listRecentCalibrationRuns: async (params?: { bot_id?: string; limit?: number }): Promise<{ runs: BotCalibrationRunRow[] }> => {
+    const response = await api.get('/api/admin/bots/calibration-runs/recent', { params: params ?? {} });
     return response.data;
   },
 };

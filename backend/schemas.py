@@ -207,6 +207,107 @@ class BotGameCreate(BaseModel):
     bot_depth: int
     player_color: str  # 'white' or 'black'
 
+# Production Bot Management Schemas
+class BotProfileResponse(BaseModel):
+    id: int
+    bot_id: str
+    display_name: str
+    target_rating: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotProfileCreate(BaseModel):
+    bot_id: str
+    display_name: str
+    target_rating: int = 1200
+
+
+class BotProfileVersionCreate(BaseModel):
+    config_json: str
+    status: str = "draft"
+
+
+class BotProfileVersionResponse(BaseModel):
+    id: int
+    profile_id: int
+    version_number: int
+    config_json: str
+    status: str
+    created_by: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotProfileRolloutCreate(BaseModel):
+    profile_version_id: int
+    traffic_percent: int = Field(default=100, ge=0, le=100)
+    is_enabled: bool = False
+    note: Optional[str] = None
+
+
+class BotProfileRolloutResponse(BaseModel):
+    id: int
+    profile_version_id: int
+    traffic_percent: int
+    is_enabled: bool
+    note: Optional[str] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    created_by: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotCalibrationRunCreate(BaseModel):
+    profile_version_id: Optional[int] = None
+    run_type: str = "simulation"
+
+
+class BotCalibrationRunResponse(BaseModel):
+    id: int
+    profile_version_id: Optional[int] = None
+    status: str
+    run_type: str
+    estimated_rating: Optional[int] = None
+    confidence_low: Optional[int] = None
+    confidence_high: Optional[int] = None
+    acceptance_passed: Optional[bool] = None
+    summary_json: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BotMoveTelemetryResponse(BaseModel):
+    id: int
+    game_id: int
+    move_number: int
+    bot_id: str
+    profile_version_id: Optional[int] = None
+    target_rating: Optional[int] = None
+    selected_move_uci: Optional[str] = None
+    selected_rank: Optional[int] = None
+    eval_cp: Optional[int] = None
+    eval_loss_cp: Optional[int] = None
+    policy_name: Optional[str] = None
+    decision_meta_json: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Notification Schemas
 class NotificationResponse(BaseModel):
     id: int

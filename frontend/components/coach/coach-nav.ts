@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Puzzle, Users, Layers, BookOpen, Trophy, Shield, Presentation, Wallet, UserPlus, UserCog, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Puzzle, Users, Layers, BookOpen, Trophy, Shield, Presentation, Wallet, UserPlus, UserCog, ClipboardList, Bot } from "lucide-react";
 
 export interface CoachNavItem {
   label: string;
@@ -22,4 +22,5 @@ export const coachNav: CoachNavItem[] = [
   { label: "Admin: payments", href: "/admin/payments", icon: Wallet, adminOnly: true },
   { label: "Admin: students", href: "/coach/admin/students", icon: Shield, adminOnly: true },
   { label: "Admin: audit logs", href: "/coach/admin/audit-logs", icon: ClipboardList, adminOnly: true },
+  { label: "Admin: bot calibration", href: "/coach/admin/bot-calibration", icon: Bot, adminOnly: true },
 ];

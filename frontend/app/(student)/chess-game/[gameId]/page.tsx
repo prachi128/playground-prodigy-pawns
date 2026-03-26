@@ -7,6 +7,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI, Game, User, usersAPI } from '@/lib/api';
 import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from '@/lib/avatar';
+import { getBotById } from '@/lib/bot-opponents';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { Loader2, Trophy, Users, Flag, X, LogOut } from 'lucide-react';
@@ -45,13 +46,8 @@ export default function ChessGamePage() {
 
   // Map bot difficulty to friendly name and avatar
   const getBotInfo = (difficulty: string | null | undefined): { name: string; avatar: string } => {
-    if (!difficulty) return { name: 'Pawny', avatar: '♟️' };
-    const difficultyLower = difficulty.toLowerCase();
-    if (difficultyLower === 'beginner') return { name: 'Pawny', avatar: '♟️' };
-    if (difficultyLower === 'intermediate') return { name: 'Knighty', avatar: '♞' };
-    if (difficultyLower === 'advanced') return { name: 'Rookie', avatar: '♜' };
-    if (difficultyLower === 'expert') return { name: 'Queen Chess', avatar: '♛' };
-    return { name: 'Pawny', avatar: '♟️' };
+    const bot = getBotById(difficulty);
+    return { name: bot.name, avatar: bot.avatar };
   };
 
   // Show game-over modal for auto_resign, timeout, or resign (both players get a clear end screen)
@@ -152,15 +148,16 @@ export default function ChessGamePage() {
       // Load player info - include names/avatars when available, and mark bot player
       if (isBotGameCheck) {
         // One player is the current user, the other is the bot
+        const botInfo = getBotInfo(gameData.bot_difficulty);
         if (gameData.white_player_id === user?.id) {
           setWhitePlayer(user as User);
-          setBlackPlayer({ id: gameData.black_player_id, full_name: botName, avatar_url: '', isBot: true });
+          setBlackPlayer({ id: gameData.black_player_id, full_name: botInfo.name, avatar_url: '', isBot: true });
         } else if (gameData.black_player_id === user?.id) {
           setBlackPlayer(user as User);
-          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, avatar_url: '', isBot: true });
+          setWhitePlayer({ id: gameData.white_player_id, full_name: botInfo.name, avatar_url: '', isBot: true });
         } else {
           // Fallback: treat non-current user as bot
-          setWhitePlayer({ id: gameData.white_player_id, full_name: botName, avatar_url: '', isBot: true });
+          setWhitePlayer({ id: gameData.white_player_id, full_name: botInfo.name, avatar_url: '', isBot: true });
           setBlackPlayer({ id: gameData.black_player_id });
         }
       } else {
@@ -562,6 +559,7 @@ export default function ChessGamePage() {
   }
 
   const isBotGameCheck = !!game.bot_difficulty;
+  const botTheme = getBotById(game.bot_difficulty);
   const isWhite = game.white_player_id === user?.id;
   const isBlack = game.black_player_id === user?.id;
   const myColor = isWhite ? 'white' : 'black';
@@ -686,7 +684,9 @@ export default function ChessGamePage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Chess Board */}
         <div className="lg:col-span-2">
-          <div className="rounded-2xl border-2 border-border bg-card p-4 shadow-xl">
+          <div className={`rounded-2xl border-2 p-4 shadow-xl ${
+            isBotGameCheck ? `${botTheme.borderColor} bg-gradient-to-br ${botTheme.panelGradient}` : 'border-border bg-card'
+          }`}>
             {/* Player Info - Opponent (top); style by opponent's piece color (white = light bar, black = dark bar) */}
             <div className={`mb-1.5 flex items-center justify-between rounded-lg border-2 p-1.5 ${
               opponentColor === 'white'
@@ -765,8 +765,8 @@ export default function ChessGamePage() {
                       boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
                       opacity: isMakingMove ? 0.7 : 1,
                     },
-                    darkSquareStyle: { backgroundColor: '#769656' },
-                    lightSquareStyle: { backgroundColor: '#eeeed2' },
+                    darkSquareStyle: { backgroundColor: isBotGameCheck ? botTheme.boardDark : '#769656' },
+                    lightSquareStyle: { backgroundColor: isBotGameCheck ? botTheme.boardLight : '#eeeed2' },
                     squareStyles: lastMove ? {
                       [lastMove.from]: {
                         backgroundColor: 'rgba(255, 255, 0, 0.4)',

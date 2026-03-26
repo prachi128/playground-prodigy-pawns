@@ -36,7 +36,7 @@ export function PlayContent() {
   const { user } = useAuthStore()
 
   return (
-    <div className="mx-auto max-w-6xl pt-6">
+    <div className="mx-auto max-w-6xl pt-2">
       {/* Mascot Speech Bubble */}
       <section className="mb-5">
         <div className="flex items-start gap-3">

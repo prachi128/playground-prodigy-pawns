@@ -73,6 +73,16 @@ from schemas import (
     PuzzleRaceNameSet,
 )
 from stockfish_service import get_stockfish_service
+from bot_opponents import get_bot_rating_for_game
+from bot_runtime import (
+    complete_bot_move_job,
+    enqueue_bot_move_job,
+    log_bot_move_telemetry,
+    mark_job_processing,
+    resolve_runtime_profile,
+)
+from bot_worker import process_pending_jobs
+from bot_openings import choose_opening_move
 from hint_service import get_hint_service
 from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router, admin_router as admin_students_router
@@ -80,6 +90,7 @@ from parent_endpoints import router as parent_router
 from batch_endpoints import router as batch_router, admin_router
 from assignment_endpoints import router as assignment_router
 from attendance_endpoints import router as attendance_router
+from bot_admin_endpoints import router as bot_admin_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
@@ -338,6 +349,7 @@ app.include_router(batch_router)
 app.include_router(admin_router)
 app.include_router(assignment_router)
 app.include_router(attendance_router)
+app.include_router(bot_admin_router)
 
 
 @app.get("/api/server-time")
@@ -1799,9 +1811,46 @@ def get_bot_move(
     if game.white_player_id != bot_user.id and game.black_player_id != bot_user.id:
         raise HTTPException(status_code=400, detail="This is not a bot game")
     
-    _make_bot_move_if_needed(game, db, bot_user.id)
+    job = enqueue_bot_move_job(db, game_id=game.id, requested_by=current_user_id, priority=100)
+    mark_job_processing(db, job)
+    try:
+        _make_bot_move_if_needed(game, db, bot_user.id)
+        complete_bot_move_job(db, job, success=True)
+    except Exception as exc:
+        complete_bot_move_job(db, job, success=False, error_message=str(exc))
+        raise
     db.refresh(game)
     return game
+
+
+@app.post("/api/admin/bots/jobs/process")
+def process_bot_jobs(
+    limit: int = 50,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Worker-style endpoint to drain pending bot jobs.
+    Intended for internal cron/worker calls.
+    """
+    admin = db.query(User).filter(User.id == current_user_id).first()
+    if not admin or admin.role not in [UserRole.admin, "admin"]:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+
+    bot_user = get_or_create_bot_user(db)
+
+    def _exec(game_id: int) -> None:
+        game = db.query(Game).filter(Game.id == game_id).first()
+        if not game:
+            raise RuntimeError(f"Game not found: {game_id}")
+        _make_bot_move_if_needed(game, db, bot_user.id)
+
+    result = process_pending_jobs(db, limit=limit, execute_move_for_game=_exec)
+    return {
+        "processed": result["processed"],
+        "failed": result["failed"],
+        "limit": max(1, min(500, limit)),
+    }
 
 def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     """Make bot move if it's bot's turn"""
@@ -1867,18 +1916,37 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
     
     print(f"Bot has {len(legal_moves)} legal moves available")
     
-    # Get bot difficulty/depth
+    runtime_profile = resolve_runtime_profile(db, game)
+    bot_rating = runtime_profile.get("target_rating") or get_bot_rating_for_game(
+        game.bot_difficulty, getattr(game, "bot_depth", None)
+    )
     bot_depth = getattr(game, 'bot_depth', 15)
     if not bot_depth:
         bot_depth = 15
     
-    print(f"Bot making move: depth={bot_depth}, position={board.fen()}")
+    print(
+        f"Bot making move: rating={bot_rating}, depth={bot_depth}, "
+        f"profile_version={runtime_profile.get('profile_version_id')}, position={board.fen()}"
+    )
     
-    # Get Stockfish service and make move
-    sf = get_stockfish_service()
-    analysis = sf.analyze_position(board.fen(), depth=bot_depth)
+    opening_cfg = runtime_profile.get("config", {}).get("openings", {})
+    opening_max_ply = int(opening_cfg.get("max_ply", 8)) if isinstance(opening_cfg, dict) else 8
+    opening_move = choose_opening_move(board, runtime_profile.get("bot_id") or "default", max_ply=opening_max_ply)
+
+    if opening_move:
+        analysis = {
+            "success": True,
+            "best_move": opening_move,
+            "selected_rank": 1,
+            "eval_cp": None,
+            "eval_loss_cp": None,
+            "decision_meta_json": "{\"policy\": \"opening_book\"}",
+        }
+    else:
+        sf = get_stockfish_service()
+        analysis = sf.choose_bot_move(board.fen(), bot_rating, runtime_profile.get("config") or {})
     
-    print(f"Stockfish analysis result: {analysis}")
+    print(f"Stockfish bot-move result: {analysis}")
     
     if not analysis.get("success"):
         error_msg = analysis.get("error", "Unknown error")
@@ -1899,6 +1967,22 @@ def _make_bot_move_if_needed(game: Game, db: Session, bot_user_id: int):
         print(f"Using fallback move: {best_move_uci}")
     else:
         print(f"Bot best move: {best_move_uci}")
+
+    try:
+        move_number = (game.total_moves or 0) + 1
+        log_bot_move_telemetry(
+            db,
+            game=game,
+            runtime_profile=runtime_profile,
+            move_number=move_number,
+            selected_move_uci=best_move_uci,
+            selected_rank=analysis.get("selected_rank"),
+            eval_cp=analysis.get("eval_cp"),
+            eval_loss_cp=analysis.get("eval_loss_cp"),
+            decision_meta_json=analysis.get("decision_meta_json"),
+        )
+    except Exception as telemetry_err:
+        print(f"Warning: failed to write bot telemetry: {telemetry_err}")
     
     # Make the move
     try:

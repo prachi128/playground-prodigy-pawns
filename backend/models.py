@@ -461,6 +461,127 @@ class CoachSignupInvite(Base):
     used_user = relationship("User", foreign_keys=[used_by])
 
 # ─────────────────────────────────────────────────────────────
+# Production Bot Orchestration Models
+# ─────────────────────────────────────────────────────────────
+
+class BotProfile(Base):
+    __tablename__ = "bot_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(String(64), unique=True, nullable=False, index=True)  # e.g. "martin"
+    display_name = Column(String(128), nullable=False)
+    target_rating = Column(Integer, nullable=False, default=1200)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    versions = relationship(
+        "BotProfileVersion",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="BotProfileVersion.version_number.desc()",
+    )
+
+
+class BotProfileVersion(Base):
+    __tablename__ = "bot_profile_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    profile_id = Column(Integer, ForeignKey("bot_profiles.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False, default=1)
+    # JSON payload (policy knobs, opening weights, error model)
+    config_json = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="draft")  # draft|approved|active|archived
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile = relationship("BotProfile", back_populates="versions")
+    creator = relationship("User", foreign_keys=[created_by])
+    rollouts = relationship(
+        "BotProfileRollout",
+        back_populates="profile_version",
+        cascade="all, delete-orphan",
+        order_by="BotProfileRollout.created_at.desc()",
+    )
+
+
+class BotProfileRollout(Base):
+    __tablename__ = "bot_profile_rollouts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    profile_version_id = Column(Integer, ForeignKey("bot_profile_versions.id"), nullable=False, index=True)
+    traffic_percent = Column(Integer, nullable=False, default=100)  # 0..100
+    is_enabled = Column(Boolean, nullable=False, default=False)
+    note = Column(String(512), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile_version = relationship("BotProfileVersion", back_populates="rollouts")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class BotCalibrationRun(Base):
+    __tablename__ = "bot_calibration_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    profile_version_id = Column(Integer, ForeignKey("bot_profile_versions.id"), nullable=True, index=True)
+    status = Column(String(32), nullable=False, default="queued")  # queued|running|completed|failed
+    run_type = Column(String(32), nullable=False, default="simulation")  # simulation|benchmark|live_sample
+    estimated_rating = Column(Integer, nullable=True)
+    confidence_low = Column(Integer, nullable=True)
+    confidence_high = Column(Integer, nullable=True)
+    acceptance_passed = Column(Boolean, nullable=True)
+    summary_json = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile_version = relationship("BotProfileVersion")
+
+
+class BotMoveJob(Base):
+    __tablename__ = "bot_move_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=False, index=True)
+    requested_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String(32), nullable=False, default="pending")  # pending|processing|completed|failed
+    priority = Column(Integer, nullable=False, default=100)
+    attempts = Column(Integer, nullable=False, default=0)
+    error_message = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    game = relationship("Game", foreign_keys=[game_id])
+    requester = relationship("User", foreign_keys=[requested_by])
+
+
+class BotMoveTelemetry(Base):
+    __tablename__ = "bot_move_telemetry"
+
+    id = Column(Integer, primary_key=True, index=True)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=False, index=True)
+    move_number = Column(Integer, nullable=False, default=0)
+    bot_id = Column(String(64), nullable=False, index=True)
+    profile_version_id = Column(Integer, ForeignKey("bot_profile_versions.id"), nullable=True, index=True)
+    target_rating = Column(Integer, nullable=True)
+    selected_move_uci = Column(String(16), nullable=True)
+    selected_rank = Column(Integer, nullable=True)  # rank in top moves, 1-based
+    eval_cp = Column(Integer, nullable=True)        # selected line eval if available
+    eval_loss_cp = Column(Integer, nullable=True)   # delta vs top candidate
+    clock_ms_before = Column(Integer, nullable=True)
+    clock_ms_after = Column(Integer, nullable=True)
+    policy_name = Column(String(64), nullable=True)
+    decision_meta_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    game = relationship("Game", foreign_keys=[game_id])
+    profile_version = relationship("BotProfileVersion", foreign_keys=[profile_version_id])
+
+# ─────────────────────────────────────────────────────────────
 # Assignment Engine Models  (append to the bottom of models.py)
 # ─────────────────────────────────────────────────────────────
 

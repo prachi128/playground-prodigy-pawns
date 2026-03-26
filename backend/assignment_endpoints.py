@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Set
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models import (
     Assignment, AssignmentPuzzle, AssignmentCompletion,
@@ -278,7 +278,10 @@ def get_my_assignments(
             .count()
         )
         pct = round(completed / total_puzzles * 100, 1) if total_puzzles > 0 else 0.0
-        is_overdue = bool(a.due_date and a.due_date < now and completed < total_puzzles)
+        due_date = a.due_date
+        if due_date and due_date.tzinfo is not None:
+            due_date = due_date.astimezone(timezone.utc).replace(tzinfo=None)
+        is_overdue = bool(due_date and due_date < now and completed < total_puzzles)
 
         result.append(StudentAssignmentResponse(
             id=a.id,
