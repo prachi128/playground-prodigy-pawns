@@ -113,6 +113,8 @@ class Game(Base):
     # High-level reason for result: "checkmate", "resign", "timeout", "auto_resign", "draw", etc.
     result_reason = Column(String(32), nullable=True)
     winner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    draw_offered_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    draw_offered_at = Column(DateTime, nullable=True)
     
     # Game metadata
     time_control = Column(String)
@@ -321,6 +323,7 @@ class GameInvite(Base):
     
     # Invite status: pending, accepted, rejected, expired
     status = Column(String, default="pending")
+    time_control = Column(String, default="unlimited")
     
     # Game details (set when invite is accepted)
     game_id = Column(Integer, ForeignKey("games.id"), nullable=True)

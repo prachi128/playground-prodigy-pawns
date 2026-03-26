@@ -96,6 +96,10 @@ export default function ChessGamePage() {
     try {
       setIsLoading(true);
       const gameData = await gameAPI.getGame(gameId);
+      if (!gameData.bot_difficulty) {
+        router.replace(`/chess-game?gameId=${gameId}`);
+        return;
+      }
       setGame(gameData);
       // Initialize chess board: use PGN when available (preserves move history), else FEN
       const startingFen = gameData.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

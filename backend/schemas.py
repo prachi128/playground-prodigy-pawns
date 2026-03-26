@@ -125,6 +125,8 @@ class GameResponse(BaseModel):
     bot_difficulty: Optional[str] = None
     bot_depth: Optional[int] = None
     winner_id: Optional[int] = None
+    draw_offered_by: Optional[int] = None
+    draw_offered_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -183,12 +185,14 @@ class UserUpdate(BaseModel):
 # Game Invite Schemas
 class GameInviteCreate(BaseModel):
     invitee_id: int
+    time_control: Optional[str] = "unlimited"
 
 class GameInviteResponse(BaseModel):
     id: int
     inviter_id: int
     invitee_id: int
     status: str
+    time_control: Optional[str] = "unlimited"
     game_id: Optional[int]
     created_at: datetime
     responded_at: Optional[datetime]

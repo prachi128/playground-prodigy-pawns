@@ -33,6 +33,7 @@ export default function BeatTheBotPage() {
   const { user } = useAuthStore();
   const [selectedBotId, setSelectedBotId] = useState(BOT_OPPONENTS[0].id);
   const [isCreatingGame, setIsCreatingGame] = useState(false);
+  const [isCheckingExistingBotGame, setIsCheckingExistingBotGame] = useState(true);
   const [colorChoice, setColorChoice] = useState<PlayColorChoice>('white');
   const [activeGameId, setActiveGameId] = useState<number | null>(null);
   const [game, setGame] = useState<Game | null>(null);
@@ -126,6 +127,38 @@ export default function BeatTheBotPage() {
   useEffect(() => {
     loadActiveGame();
   }, [loadActiveGame]);
+
+  // Always resume an ongoing bot game first when entering this page.
+  useEffect(() => {
+    if (!user?.id) {
+      setIsCheckingExistingBotGame(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const games = await gameAPI.getGames({ user_id: user.id, limit: 50 });
+        if (cancelled) return;
+        const ongoingBot = (games || []).find(
+          (g) =>
+            !!g.bot_difficulty &&
+            !(g.result != null && String(g.result).trim() !== '') &&
+            !(g.ended_at != null && String(g.ended_at).trim() !== '')
+        );
+        if (ongoingBot) {
+          setActiveGameId(ongoingBot.id);
+          await hydrateFromGame(ongoingBot);
+        }
+      } catch (error) {
+        console.error('Failed to detect ongoing bot game:', error);
+      } finally {
+        if (!cancelled) setIsCheckingExistingBotGame(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, hydrateFromGame]);
 
   useEffect(() => {
     if (!activeGameId || !game || game.result) return;
@@ -332,9 +365,10 @@ export default function BeatTheBotPage() {
     if (!activeGameId || !game || game.result || isResigning) return;
     try {
       setIsResigning(true);
-      const updated = await gameAPI.resign(activeGameId);
-      hydrateFromGame(updated);
+      await gameAPI.resign(activeGameId);
       setShowResignDialog(false);
+      // After resign, return to setup panel (start game / choose opponent)
+      startNewSetup();
       toast('You resigned');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to resign');
@@ -555,10 +589,15 @@ export default function BeatTheBotPage() {
 
                   <button
                     onClick={handleStartGame}
-                    disabled={isCreatingGame}
+                    disabled={isCreatingGame || isCheckingExistingBotGame}
                     className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 px-5 py-3 font-heading text-base font-bold text-white transition-all hover:scale-[1.01] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                   >
-                    {isCreatingGame ? (
+                    {isCheckingExistingBotGame ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Checking existing game...
+                      </>
+                    ) : isCreatingGame ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Starting Game...
@@ -877,6 +916,20 @@ export default function BeatTheBotPage() {
 
       {showWinCelebration && game?.winner_id === user?.id && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            {Array.from({ length: 42 }).map((_, i) => (
+              <span
+                key={`confetti-${i}`}
+                className="absolute top-[-12%] block h-2.5 w-2.5 rounded-[2px]"
+                style={{
+                  left: `${(i * 13) % 100}%`,
+                  backgroundColor: ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#14b8a6'][i % 6],
+                  animation: `confettiFall ${2100 + (i % 8) * 210}ms linear ${((i * 73) % 900)}ms infinite`,
+                  transform: `rotate(${(i * 37) % 360}deg)`,
+                }}
+              />
+            ))}
+          </div>
           <div
             className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-emerald-300 bg-gradient-to-b from-emerald-100 via-teal-50 to-lime-100 p-6 text-center shadow-2xl"
             style={{ animation: 'winPop 500ms cubic-bezier(0.2, 0.9, 0.2, 1)' }}
@@ -970,6 +1023,11 @@ export default function BeatTheBotPage() {
         @keyframes bounceSoft {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-4px); }
+        }
+        @keyframes confettiFall {
+          0% { transform: translate3d(0, -12vh, 0) rotate(0deg); opacity: 0; }
+          8% { opacity: 1; }
+          100% { transform: translate3d(24px, 112vh, 0) rotate(640deg); opacity: 0.95; }
         }
       `}</style>
     </div>

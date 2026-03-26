@@ -32,8 +32,14 @@ const playCards = [
   },
 ]
 
-export function PlayContent() {
+interface PlayContentProps {
+  hrefPrefix?: string;
+}
+
+export function PlayContent({ hrefPrefix = "" }: PlayContentProps) {
   const { user } = useAuthStore()
+  const withPrefix = (path: string) => `${hrefPrefix}${path}`
+  const cards = playCards.map((card) => ({ ...card, href: withPrefix(card.href) }))
 
   return (
     <div className="mx-auto max-w-6xl pt-2">
@@ -58,7 +64,7 @@ export function PlayContent() {
       {/* Play Cards - Matching dashboard action cards style */}
       <section className="mb-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {playCards.map((card, idx) => (
+          {cards.map((card, idx) => (
             <a
               key={card.title}
               href={card.href}

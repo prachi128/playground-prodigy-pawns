@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Set
 import io
@@ -180,6 +180,21 @@ INACTIVITY_AUTO_RESIGN_SECONDS = int(2.5 * 60)  # 2.5 minutes per turn
 # Total clock per player (for display and flag-on-time). Used when deducting time in make_move.
 INITIAL_CLOCK_MS = 10 * 60 * 1000  # 10 minutes
 
+
+def base_clock_ms_from_time_control(time_control: Optional[str]) -> Optional[int]:
+    """Parse base clock minutes from controls like '5+0'. Unlimited -> None."""
+    value = (time_control or "").strip().lower()
+    if not value or value == "unlimited":
+        return None
+    base_part = value.split("+", 1)[0].strip()
+    try:
+        minutes = int(base_part)
+    except (TypeError, ValueError):
+        return INITIAL_CLOCK_MS
+    if minutes <= 0:
+        return INITIAL_CLOCK_MS
+    return minutes * 60 * 1000
+
 # Puzzle Racer countdown length (seconds) – must match frontend COUNTDOWN_SECONDS
 PUZZLE_RACER_COUNTDOWN_SECONDS = 10
 
@@ -188,6 +203,14 @@ PUZZLE_RACER_TOTAL_CARS = 7
 PUZZLE_RACER_COUNTDOWN_SECONDS = 10
 PUZZLE_RACER_RACE_DURATION_SECONDS = 150
 PUZZLE_RACER_TOTAL_RACE_SECONDS = PUZZLE_RACER_COUNTDOWN_SECONDS + PUZZLE_RACER_RACE_DURATION_SECONDS
+
+
+def to_utc_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def check_auto_resign_timeout(game: Game, db: Session) -> None:
@@ -221,7 +244,7 @@ def check_auto_resign_timeout(game: Game, db: Session) -> None:
             game.result = "1-0"
             game.winner_id = game.white_player_id
         game.result_reason = "auto_resign"
-        game.ended_at = datetime.utcnow()
+        game.ended_at = datetime.now(timezone.utc)
         if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
             game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
         update_ratings_after_game(game, db)
@@ -236,6 +259,70 @@ def check_auto_resign_timeout(game: Game, db: Session) -> None:
         # Don't re-raise: allow get_game to return the game so the frontend doesn't 500/loop
 
 
+def check_clock_flag_timeout(game: Game, db: Session) -> None:
+    """If a timed game's active player's clock is <= 0, end game immediately by timeout."""
+    try:
+        if game.result:
+            return
+        # Bot and unlimited games are untimed.
+        if getattr(game, "bot_difficulty", None):
+            return
+        if (str(getattr(game, "time_control", "") or "").strip().lower() == "unlimited"):
+            return
+
+        # Resolve current turn start
+        if (game.total_moves or 0) == 0:
+            turn_started = game.started_at
+        else:
+            turn_started = getattr(game, "last_move_at", None) or game.started_at
+        turn_started_utc = to_utc_aware(turn_started)
+        if not turn_started_utc:
+            return
+
+        base_clock_ms = base_clock_ms_from_time_control(game.time_control) or INITIAL_CLOCK_MS
+        white_time_ms = game.white_time_ms if game.white_time_ms is not None else base_clock_ms
+        black_time_ms = game.black_time_ms if game.black_time_ms is not None else base_clock_ms
+
+        fen = (game.final_fen or game.starting_fen or "").strip()
+        parts = fen.split()
+        turn_token = parts[1] if len(parts) > 1 else "w"
+        white_to_move = turn_token.lower() == "w"
+
+        now_utc = datetime.now(timezone.utc)
+        elapsed_ms = int(max(0, (now_utc - turn_started_utc).total_seconds() * 1000))
+
+        if white_to_move:
+            white_remaining = white_time_ms - elapsed_ms
+            if white_remaining > 0:
+                return
+            game.white_time_ms = 0
+            game.result = "0-1"
+            game.winner_id = game.black_player_id
+        else:
+            black_remaining = black_time_ms - elapsed_ms
+            if black_remaining > 0:
+                return
+            game.black_time_ms = 0
+            game.result = "1-0"
+            game.winner_id = game.white_player_id
+
+        game.result_reason = "timeout"
+        game.ended_at = now_utc
+        game.draw_offered_by = None
+        game.draw_offered_at = None
+        if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+            game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
+        update_ratings_after_game(game, db)
+        db.commit()
+        db.refresh(game)
+    except Exception:
+        db.rollback()
+        try:
+            db.refresh(game)
+        except Exception:
+            pass
+
+
 def run_auto_resign_for_all_games() -> None:
     """Background job: find all ongoing games that have exceeded the turn timeout and end them."""
     db = SessionLocal()
@@ -246,6 +333,7 @@ def run_auto_resign_for_all_games() -> None:
             .all()
         )
         for game in games:
+            check_clock_flag_timeout(game, db)
             check_auto_resign_timeout(game, db)
     finally:
         db.close()
@@ -904,7 +992,7 @@ def search_users(
     current_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Search for users/students by username or full name"""
+    """Search for students/coaches by username or full name"""
     # Return empty list if query is None, empty, or too short
     if not query or not query.strip() or len(query.strip()) < 2:
         return []
@@ -920,7 +1008,7 @@ def search_users(
     
     search_term = f"%{query.lower()}%"
     users = db.query(User).filter(
-        User.role == UserRole.student,
+        User.role.in_([UserRole.student, UserRole.coach]),
         User.is_active == True,
         User.id != current_user_id,
         (
@@ -1450,6 +1538,7 @@ def get_game(
     if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
         raise HTTPException(status_code=403, detail="You are not part of this game")
 
+    check_clock_flag_timeout(game, db)
     check_auto_resign_timeout(game, db)
 
     return game
@@ -1474,10 +1563,13 @@ def create_game(
     
     # If no explicit time control is provided, default to 10+0
     time_control = game_data.time_control or "10+0"
+    base_clock_ms = base_clock_ms_from_time_control(time_control)
     new_game = Game(
         white_player_id=game_data.white_player_id,
         black_player_id=game_data.black_player_id,
-        time_control=time_control
+        time_control=time_control,
+        white_time_ms=base_clock_ms,
+        black_time_ms=base_clock_ms,
     )
     db.add(new_game)
     db.commit()
@@ -1547,8 +1639,9 @@ def make_move(
         raise HTTPException(status_code=400, detail="It's not your turn")
 
     now = datetime.utcnow()
-    # Bot games are untimed: skip all clock deduction and timeout adjudication.
-    if not getattr(game, "bot_difficulty", None):
+    # Bot games and unlimited games are untimed: skip clock deduction and timeout adjudication.
+    is_unlimited_game = (str(getattr(game, "time_control", "") or "").strip().lower() == "unlimited")
+    if not getattr(game, "bot_difficulty", None) and not is_unlimited_game:
         # Deduct elapsed time from the clock of the player whose turn it is (they are about to move).
         turn_started = game.last_move_at if (game.total_moves or 0) > 0 else game.started_at
         turn_started = turn_started or game.started_at
@@ -1608,6 +1701,9 @@ def make_move(
     # Update game state
     game.total_moves += 1
     game.final_fen = board.fen()
+    # Any move implicitly declines/invalidates prior draw offer.
+    game.draw_offered_by = None
+    game.draw_offered_at = None
     
     # Update PGN - rebuild by replaying existing PGN and appending new move
     pgn_board = chess.Board(game.starting_fen) if game.starting_fen else chess.Board()
@@ -1683,11 +1779,11 @@ def make_move(
             game.winner_id = current_user_id
         else:
             game.winner_id = current_user_id
-        game.ended_at = datetime.utcnow()
+        game.ended_at = datetime.now(timezone.utc)
     elif board.is_stalemate() or board.is_insufficient_material() or board.is_seventyfive_moves() or board.is_fivefold_repetition():
         game.result = "1/2-1/2"
         game.result_reason = "draw"
-        game.ended_at = datetime.utcnow()
+        game.ended_at = datetime.now(timezone.utc)
     
     if game.result:
         update_ratings_after_game(game, db)
@@ -1723,9 +1819,81 @@ def resign_game(
         game.winner_id = game.white_player_id
     game.result_reason = "resign"
     game.ended_at = datetime.utcnow()
+    game.draw_offered_by = None
+    game.draw_offered_at = None
     if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
         game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
     update_ratings_after_game(game, db)
+    db.commit()
+    db.refresh(game)
+    return game
+
+
+@app.post("/api/games/{game_id}/draw", response_model=GameResponse)
+def draw_game(
+    game_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Offer draw or accept opponent's draw offer."""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+
+    if game.result:
+        raise HTTPException(status_code=400, detail="Game is already over")
+
+    # If opponent has offered draw, accept and end game as draw.
+    if game.draw_offered_by and game.draw_offered_by != current_user_id:
+        game.result = "1/2-1/2"
+        game.result_reason = "draw"
+        game.winner_id = None
+        game.ended_at = datetime.now(timezone.utc)
+        game.draw_offered_by = None
+        game.draw_offered_at = None
+        if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+            game.pgn = (game.pgn.rstrip() + " 1/2-1/2").strip()
+        update_ratings_after_game(game, db)
+        db.commit()
+        db.refresh(game)
+        return game
+
+    # Otherwise create/update draw offer from current user.
+    game.draw_offered_by = current_user_id
+    game.draw_offered_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(game)
+    return game
+
+
+@app.post("/api/games/{game_id}/draw/reject", response_model=GameResponse)
+def reject_draw_offer(
+    game_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Reject opponent's draw offer and continue game."""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    if game.white_player_id != current_user_id and game.black_player_id != current_user_id:
+        raise HTTPException(status_code=403, detail="You are not part of this game")
+
+    if game.result:
+        raise HTTPException(status_code=400, detail="Game is already over")
+
+    if not game.draw_offered_by:
+        raise HTTPException(status_code=400, detail="No active draw offer to reject")
+
+    if game.draw_offered_by == current_user_id:
+        raise HTTPException(status_code=400, detail="You cannot reject your own draw offer")
+
+    game.draw_offered_by = None
+    game.draw_offered_at = None
     db.commit()
     db.refresh(game)
     return game
@@ -2092,13 +2260,13 @@ def create_game_invite(
     db: Session = Depends(get_db)
 ):
     """Create a game invite"""
-    # Verify invitee exists and is a student
+    # Verify invitee exists and is a student or coach
     invitee = db.query(User).filter(User.id == invite_data.invitee_id).first()
     if not invitee:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if invitee.role != UserRole.student:
-        raise HTTPException(status_code=400, detail="Can only invite students")
+    if invitee.role not in [UserRole.student, UserRole.coach]:
+        raise HTTPException(status_code=400, detail="Can only invite students or coaches")
     
     if invite_data.invitee_id == current_user_id:
         raise HTTPException(status_code=400, detail="Cannot invite yourself")
@@ -2114,10 +2282,12 @@ def create_game_invite(
         raise HTTPException(status_code=400, detail="You already have a pending invite with this user")
     
     # Create new invite
+    selected_time_control = (invite_data.time_control or "unlimited").strip() or "unlimited"
     new_invite = GameInvite(
         inviter_id=current_user_id,
         invitee_id=invite_data.invitee_id,
-        expires_at=datetime.utcnow() + timedelta(hours=24)
+        time_control=selected_time_control,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
     )
     db.add(new_invite)
     db.flush()  # ensure invite is in session so commit persists both
@@ -2191,16 +2361,21 @@ def accept_game_invite(
         raise HTTPException(status_code=400, detail="Invite has already been responded to")
     
     # Check if invite expired
-    if invite.expires_at and invite.expires_at < datetime.utcnow():
+    expires_at_utc = to_utc_aware(invite.expires_at)
+    if expires_at_utc and expires_at_utc < datetime.now(timezone.utc):
         invite.status = "expired"
         db.commit()
         raise HTTPException(status_code=400, detail="Invite has expired")
     
-    # Create the game - default to a simple 10+0 time control for now
+    # Create the game with inviter-selected time control (fallback to unlimited)
+    selected_time_control = (invite.time_control or "unlimited")
+    base_clock_ms = base_clock_ms_from_time_control(selected_time_control)
     new_game = Game(
         white_player_id=invite.inviter_id,
         black_player_id=invite.invitee_id,
-        time_control="10+0"
+        time_control=selected_time_control,
+        white_time_ms=base_clock_ms,
+        black_time_ms=base_clock_ms,
     )
     db.add(new_game)
     db.commit()
@@ -2209,7 +2384,7 @@ def accept_game_invite(
     # Update invite status
     invite.status = "accepted"
     invite.game_id = new_game.id
-    invite.responded_at = datetime.utcnow()
+    invite.responded_at = datetime.now(timezone.utc)
     invitee_user = db.query(User).filter(User.id == invite.invitee_id).first()
     create_notification(
         db,
@@ -2243,7 +2418,7 @@ def reject_game_invite(
         raise HTTPException(status_code=400, detail="Invite has already been responded to")
     
     invite.status = "rejected"
-    invite.responded_at = datetime.utcnow()
+    invite.responded_at = datetime.now(timezone.utc)
     invitee_user = db.query(User).filter(User.id == invite.invitee_id).first()
     create_notification(
         db,

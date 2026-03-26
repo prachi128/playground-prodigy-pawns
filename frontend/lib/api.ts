@@ -460,6 +460,7 @@ export interface GameInvite {
   inviter_id: number;
   invitee_id: number;
   status: string;
+  time_control?: string;
   game_id?: number;
   created_at: string;
   responded_at?: string;
@@ -469,6 +470,7 @@ export interface GameInvite {
 
 export interface GameInviteCreate {
   invitee_id: number;
+  time_control?: string;
 }
 
 export interface Game {
@@ -488,6 +490,8 @@ export interface Game {
   starting_fen?: string;
   final_fen?: string;
   winner_id?: number;
+  draw_offered_by?: number;
+  draw_offered_at?: string;
   bot_difficulty?: string;
   bot_depth?: number;
 }
@@ -560,8 +564,8 @@ export const gameAPI = {
     }
   },
 
-  createInvite: async (inviteeId: number): Promise<GameInvite> => {
-    const response = await api.post('/api/game-invites', { invitee_id: inviteeId });
+  createInvite: async (inviteeId: number, timeControl: string = 'unlimited'): Promise<GameInvite> => {
+    const response = await api.post('/api/game-invites', { invitee_id: inviteeId, time_control: timeControl });
     return response.data;
   },
 
@@ -591,6 +595,16 @@ export const gameAPI = {
 
   resign: async (gameId: number): Promise<Game> => {
     const response = await api.post(`/api/games/${gameId}/resign`);
+    return response.data;
+  },
+
+  draw: async (gameId: number): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/draw`);
+    return response.data;
+  },
+
+  rejectDraw: async (gameId: number): Promise<Game> => {
+    const response = await api.post(`/api/games/${gameId}/draw/reject`);
     return response.data;
   },
 
