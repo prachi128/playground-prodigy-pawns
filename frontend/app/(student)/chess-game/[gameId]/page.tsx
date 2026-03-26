@@ -75,7 +75,7 @@ export default function ChessGamePage() {
 
   // Tick every 500ms so effective clocks (and low-time styling) update smoothly
   useEffect(() => {
-    if (!game || game.result) return;
+    if (!game || game.result || !!game.bot_difficulty) return;
     const id = window.setInterval(() => setClockTick((t) => t + 1), 500);
     return () => clearInterval(id);
   }, [game?.id, game?.result]);
@@ -566,6 +566,7 @@ export default function ChessGamePage() {
   const opponentColor = isWhite ? 'black' : 'white';
   const myPlayer = isWhite ? whitePlayer : blackPlayer;
   const opponentPlayer = isWhite ? blackPlayer : whitePlayer;
+  const showClock = !isBotGameCheck;
 
   // Parse backend datetimes as UTC so client clock matches server clock.
   const toUtcMs = (value: string | Date | null | undefined): number => {
@@ -734,9 +735,15 @@ export default function ChessGamePage() {
                   </p>
                 </div>
               </div>
-              <div className={`shrink-0 font-mono text-sm font-bold tabular-nums ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
-                {formatClock(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
-              </div>
+              {showClock ? (
+                <div className={`shrink-0 font-mono text-sm font-bold tabular-nums ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
+                  {formatClock(opponentColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
+                </div>
+              ) : (
+                <div className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  No clock
+                </div>
+              )}
             </div>
 
             {/* Chess Board */}
@@ -832,9 +839,15 @@ export default function ChessGamePage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className={`font-mono text-sm font-bold tabular-nums ${myColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
-                  {formatClock(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
-                </span>
+                {showClock ? (
+                  <span className={`font-mono text-sm font-bold tabular-nums ${myColor === 'white' ? 'text-gray-900' : 'text-white'} ${clockClass(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}`}>
+                    {formatClock(myColor === 'white' ? effectiveWhiteMs : effectiveBlackMs)}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    No clock
+                  </span>
+                )}
                 <div className={`rounded px-1.5 py-0.5 ${myColor === 'white' ? 'bg-orange-100' : 'bg-gray-700'}`}>
                   <span className={`font-heading text-[10px] font-bold ${myColor === 'white' ? 'text-orange-700' : 'text-white'}`}>You</span>
                 </div>
@@ -854,7 +867,7 @@ export default function ChessGamePage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Time Control</span>
-                <span className="font-heading font-bold">{game.time_control || 'Unlimited'}</span>
+                <span className="font-heading font-bold">{isBotGameCheck ? 'Unlimited' : (game.time_control || 'Unlimited')}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Moves</span>

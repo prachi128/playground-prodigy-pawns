@@ -195,6 +195,9 @@ def check_auto_resign_timeout(game: Game, db: Session) -> None:
     try:
         if game.result:
             return
+        # Beat-the-bot mode is intentionally untimed.
+        if getattr(game, "bot_difficulty", None):
+            return
         # When did the current turn start?
         if (game.total_moves or 0) == 0:
             turn_started = game.started_at
@@ -1543,36 +1546,38 @@ def make_move(
     if is_white_turn != is_current_user_white:
         raise HTTPException(status_code=400, detail="It's not your turn")
 
-    # Deduct elapsed time from the clock of the player whose turn it is (they are about to move).
     now = datetime.utcnow()
-    turn_started = game.last_move_at if (game.total_moves or 0) > 0 else game.started_at
-    turn_started = turn_started or game.started_at
-    elapsed_ms = int((now - turn_started).total_seconds() * 1000)
-    white_time = getattr(game, "white_time_ms", None) or INITIAL_CLOCK_MS
-    black_time = getattr(game, "black_time_ms", None) or INITIAL_CLOCK_MS
-    if is_white_turn:
-        white_time = max(0, white_time - elapsed_ms)
-        game.white_time_ms = white_time
-    else:
-        black_time = max(0, black_time - elapsed_ms)
-        game.black_time_ms = black_time
-
-    # Flag on time: if the moving player's clock hit zero, they lose.
-    if white_time <= 0 or black_time <= 0:
-        if white_time <= 0:
-            game.result = "0-1"
-            game.winner_id = game.black_player_id
+    # Bot games are untimed: skip all clock deduction and timeout adjudication.
+    if not getattr(game, "bot_difficulty", None):
+        # Deduct elapsed time from the clock of the player whose turn it is (they are about to move).
+        turn_started = game.last_move_at if (game.total_moves or 0) > 0 else game.started_at
+        turn_started = turn_started or game.started_at
+        elapsed_ms = int((now - turn_started).total_seconds() * 1000)
+        white_time = getattr(game, "white_time_ms", None) or INITIAL_CLOCK_MS
+        black_time = getattr(game, "black_time_ms", None) or INITIAL_CLOCK_MS
+        if is_white_turn:
+            white_time = max(0, white_time - elapsed_ms)
+            game.white_time_ms = white_time
         else:
-            game.result = "1-0"
-            game.winner_id = game.white_player_id
-        game.result_reason = "timeout"
-        game.ended_at = now
-        if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
-            game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
-        update_ratings_after_game(game, db)
-        db.commit()
-        db.refresh(game)
-        return game
+            black_time = max(0, black_time - elapsed_ms)
+            game.black_time_ms = black_time
+
+        # Flag on time: if the moving player's clock hit zero, they lose.
+        if white_time <= 0 or black_time <= 0:
+            if white_time <= 0:
+                game.result = "0-1"
+                game.winner_id = game.black_player_id
+            else:
+                game.result = "1-0"
+                game.winner_id = game.white_player_id
+            game.result_reason = "timeout"
+            game.ended_at = now
+            if game.pgn and not game.pgn.rstrip().endswith(("1-0", "0-1", "1/2-1/2")):
+                game.pgn = (game.pgn.rstrip() + " " + game.result).strip()
+            update_ratings_after_game(game, db)
+            db.commit()
+            db.refresh(game)
+            return game
 
     # Create move in UCI format (e.g., "e2e4" or "e7e8q" for promotion)
     # Only add promotion if the move actually requires it (pawn reaching 8th/1st rank)
@@ -1768,11 +1773,11 @@ def create_bot_game(
         white_player_id = bot_user.id
         black_player_id = current_user_id
     
-    # Create game - for now use a simple "10+0" style label even though bot games don't enforce clocks yet
+    # Create untimed bot game (played on beat-the-bot board, no clock semantics).
     new_game = Game(
         white_player_id=white_player_id,
         black_player_id=black_player_id,
-        time_control="10+0",
+        time_control="unlimited",
         bot_difficulty=bot_data.bot_difficulty,
         bot_depth=bot_data.bot_depth
     )

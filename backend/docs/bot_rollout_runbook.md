@@ -11,6 +11,12 @@
 
 - Use `/api/admin/bots/profiles/{bot_id}/rollback` to restore previous active rollout.
 
+## One-time migration (untimed bot games)
+
+- Run `backend/migrations/set_bot_games_unlimited_time_control.sql` once after deploying untimed bot mode.
+- Purpose: normalize historical bot rows to `time_control='unlimited'`.
+- Safety: migration only updates rows where `bot_difficulty IS NOT NULL`.
+
 ## Statistical gates
 
 - Run `/api/admin/bots/calibration-runs` then `/api/admin/bots/calibration-runs/{run_id}/execute`.
