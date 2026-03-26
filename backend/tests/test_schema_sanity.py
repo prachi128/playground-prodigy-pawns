@@ -14,6 +14,7 @@ class SchemaSanityTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 validate_required_schema()
         self.assertIn("users.primary_coach_id", str(ctx.exception))
+        self.assertIn("users.star_balance", str(ctx.exception))
 
     def test_schema_validation_passes_when_required_columns_exist(self):
         inspector = MagicMock()
@@ -22,6 +23,7 @@ class SchemaSanityTests(unittest.TestCase):
             {"name": "id"},
             {"name": "email"},
             {"name": "primary_coach_id"},
+            {"name": "star_balance"},
         ]
 
         with patch("database.inspect", return_value=inspector):

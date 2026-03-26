@@ -25,6 +25,7 @@ class UserResponse(UserBase):
     gender: Optional[str] = None
     avatar_url: str
     total_xp: int
+    star_balance: int
     level: int
     rating: int
     level_category: Optional[str] = None  # Pawn, Knight, Bishop, Rook, Queen, King (from rating)

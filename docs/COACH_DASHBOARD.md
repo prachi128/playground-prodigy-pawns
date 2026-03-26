@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Coach Dashboard is a comprehensive puzzle management system designed for coaches and administrators. It provides tools to create, manage, validate, and track chess puzzles using Stockfish integration for automated analysis and validation.
+The Coach Dashboard is a comprehensive coaching operations system designed for coaches and administrators. It provides tools to create, manage, validate, and track chess puzzles using Stockfish integration, and is expanding toward richer student progress tracking (rating, level, stars, XP), assignment workflows, and bot calibration operations.
 
 ---
 
@@ -36,9 +36,9 @@ The Coach Dashboard empowers chess coaches and administrators to:
 - **Benefit**: Consistent difficulty ratings across all puzzles
 
 #### Problem 4: Lack of Student Performance Insights
-- **Challenge**: Coaches need visibility into how students are performing on puzzles
-- **Solution**: Comprehensive statistics showing attempts, success rates, and difficulty distribution
-- **Benefit**: Data-driven decisions about which puzzles to activate or modify
+- **Challenge**: Coaches need visibility into how students are performing beyond puzzle outcomes
+- **Solution**: Puzzle statistics + student progression metrics (XP now; rating/level/stars targeted for coach-wide visibility)
+- **Benefit**: Data-driven decisions for both curriculum and student growth planning
 
 #### Problem 5: Managing Large Puzzle Collections
 - **Challenge**: Organizing and maintaining hundreds of puzzles becomes unwieldy
@@ -115,7 +115,24 @@ The Coach Dashboard empowers chess coaches and administrators to:
 - Data supports curriculum adjustments
 - Better student learning outcomes
 
-#### 5. Automated Puzzle Generation
+#### 5. Student Progress Metrics (Platform Direction)
+**What it does**: Aligns coaching analytics with platform progression systems.
+
+**Current state**:
+- XP is visible and used in puzzle reward/hint flows.
+- Rating and level are available in platform data, where:
+  - level is driven by rating bands,
+  - XP is separate from level progression.
+- Stars are now part of the rewards economy (1 star = 200 XP), but coach-facing visibility is still limited.
+
+**Target coaching value**:
+- Coaches should review all progression signals together to guide student plans:
+  - rating trend,
+  - level progression,
+  - star economy behavior,
+  - XP accumulation/spend patterns.
+
+#### 6. Automated Puzzle Generation
 **What it does**: Automatically generates puzzle solutions, difficulty, theme, and XP rewards
 **Business Value**:
 - Reduces manual work significantly
@@ -1099,20 +1116,39 @@ The frontend uses `coachAPI` object with methods:
 
 ---
 
-## Future Enhancements
+## Future Scope
 
-Potential improvements for the coach dashboard:
+Planned high-impact improvements for the coach panel:
 
-1. **Bulk Operations**: Select multiple puzzles for batch actions
-2. **Advanced Filtering**: Filter by difficulty, theme, date created
-3. **Search Functionality**: Search puzzles by title or description
-4. **Export/Import**: Export puzzles to PGN or import from files
-5. **Analytics Dashboard**: More detailed student performance analytics
-6. **Puzzle Collections**: Group puzzles into themed collections
-7. **Scheduled Activation**: Schedule puzzles to activate at specific times
-8. **Student Progress**: View individual student progress on puzzles
-9. **Puzzle Templates**: Save common puzzle configurations
-10. **Version History**: Track changes to puzzles over time
+1. **Unified Student Progress Board**  
+   Coaches should track rating, levels, stars and XP everything, currently only XP is being tracked.
+
+2. **Rating + Level Cohort Analytics**  
+   Batch-wise and class-wise trend charts for rating movement and level transitions.
+
+3. **Stars Economy Visibility**  
+   Coach view for XP-to-star conversion activity, shop purchases, and reward behavior.
+
+4. **Assignment Outcome Intelligence**  
+   Correlate assignments with puzzle accuracy, rating changes, and completion quality.
+
+5. **Intervention Alerts**  
+   Flag students with sudden rating drops, low puzzle accuracy streaks, or stalled progress.
+
+6. **Curriculum Coverage Heatmaps**  
+   Show tactical theme coverage across batches and identify under-trained themes.
+
+7. **Bot Progression Coaching**  
+   Recommend bot opponents per student based on current rating and recent puzzle/game trends.
+
+8. **Bulk Puzzle Operations**  
+   Multi-select revalidate, activate/deactivate, retag, and assignment mapping.
+
+9. **Advanced Search and Filters**  
+   Query by theme, difficulty, success rate band, recency, and assignment usage.
+
+10. **Versioned Puzzle Change Log**  
+   Track puzzle edits, who changed what, and post-change performance impact.
 
 ---
 

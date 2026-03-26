@@ -77,6 +77,7 @@ class User(Base):
     gender = Column(String, nullable=True)  # 'girl' | 'boy' for students
     avatar_url = Column(String, default="/avatars/default.png")
     total_xp = Column(Integer, default=0)
+    star_balance = Column(Integer, default=0)
     level = Column(Integer, default=1)
     rating = Column(Integer, default=100)
     
@@ -445,6 +446,20 @@ class Payment(Base):
     parent = relationship("User", foreign_keys=[parent_id])
     student = relationship("User", foreign_keys=[student_id])
     batch = relationship("Batch", back_populates="payments")
+
+
+class ShopPurchase(Base):
+    __tablename__ = "shop_purchases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    item_key = Column(String(64), nullable=False)
+    item_name = Column(String(128), nullable=False)
+    stars_spent = Column(Integer, nullable=False)
+    delivery_status = Column(String(32), default="pending", nullable=False)
+    purchased_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class CoachSignupInvite(Base):

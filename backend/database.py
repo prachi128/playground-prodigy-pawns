@@ -34,7 +34,7 @@ Base.metadata.create_all(bind=engine)
 
 
 REQUIRED_SCHEMA_COLUMNS = {
-    "users": {"primary_coach_id"},
+    "users": {"primary_coach_id", "star_balance"},
 }
 
 

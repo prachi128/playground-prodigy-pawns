@@ -29,3 +29,30 @@
   - **Rich presence**: "Opponent is online/offline", "typing" or similar indicators; requires push (WebSockets or equivalent) so clients receive connect/disconnect/activity events.  
   - **Push-style notifications**: Replace polling for the bell and invite list with server-push events (e.g. "new notification", "invite accepted") so the UI updates instantly.  
   - **Scaling to hundreds of players**: When opening to the market, move hot paths (game updates, invites, notifications) to WebSockets to reduce DB/HTTP load and improve latency; keep REST for initial load and reconnection. Design APIs to be stateless and event-friendly so a WebSocket layer can be added without reworking game logic.
+
+- **Unified progression analytics for coaches (rating + level + stars + XP)**  
+  - Add a single coach-facing progression panel where each student’s **rating, level, stars, and XP** are visible together (not XP-only).  
+  - Show trend lines (weekly/monthly) and milestone events (level-up, star conversion, major rating jumps).  
+  - Add intervention flags (e.g., high XP but flat rating, high hint usage, sudden rating drop) to guide targeted coaching.
+
+- **Rewards economy maturation (XP ↔ stars ↔ shop operations)**  
+  - Expand star shop into a configurable catalog with availability windows, stock control, and seasonal rewards.  
+  - Add purchase lifecycle states (`pending`, `approved`, `ordered`, `shipped`, `delivered`, `cancelled`) with parent/coach visibility.  
+  - Introduce anti-abuse guardrails for reward economy (velocity limits, anomaly detection, audit logs for manual adjustments).  
+  - Add fulfillment integrations (Amazon/marketplace/manual dispatch workflows) for real-world gift operations.
+
+- **Bot platform hardening and pedagogy tuning**  
+  - Continue profile-version rollouts with canary gates and automatic rollback triggers based on telemetry regressions.  
+  - Add stronger calibration confidence methods and periodic scheduled calibration by persona/time-control bucket.  
+  - Build student-to-bot recommendation logic ("next best bot") based on tactical accuracy, recent form, and rating trajectory.  
+  - Add coach-facing bot performance dashboards (difficulty fairness, engagement, conversion to human PvP).
+
+- **Durable multiplayer state and reliability**  
+  - Move in-memory Puzzle Racer room state to Redis/DB-backed session storage for restart safety and horizontal scaling.  
+  - Add idempotency/replay safety for critical game and invite transitions to reduce race-condition edge cases.  
+  - Introduce richer operational SLO dashboards (queue backlog, bot move latency p95, invite acceptance latency, timeout adjudication health).
+
+- **Engineering quality and release governance**  
+  - Systematically reduce lint/type debt (`no-explicit-any`, hook rule violations, purity/ref issues) in high-risk gameplay surfaces first.  
+  - Add full E2E coverage for critical journeys: PvP invite lifecycle, rewards/shop purchase flow, bot gameplay, and parent payments.  
+  - Enforce doc-versioning cadence so product docs (`COMPANY_PITCH`, dashboard docs, function/technical design) stay aligned with shipped behavior.

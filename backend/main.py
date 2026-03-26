@@ -33,6 +33,7 @@ from models import (
     AssignmentPuzzle,
     AssignmentCompletion,
     StudentBatch,
+    ShopPurchase,
 )
 from database import get_db, SessionLocal, validate_required_schema
 from auth import (
@@ -102,6 +103,7 @@ _AVATAR_UPLOAD_DIR = _UPLOAD_ROOT / "avatars"
 _MAX_AVATAR_BYTES = 2 * 1024 * 1024
 # Rating thresholds: level 2 starts at 300, level 3 at 500, ..., level 15 at 2900+
 _RATING_THRESHOLDS = [300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900]
+XP_PER_STAR = 200
 
 
 def level_from_rating(rating: int) -> int:
@@ -2586,6 +2588,138 @@ def dismiss_notification(
     return None
 
 
+# ==================== STAR WALLET + SHOP ENDPOINTS ====================
+
+class ConvertXpToStarsRequest(BaseModel):
+    stars: int
+
+
+class ShopPurchaseRequest(BaseModel):
+    item_key: str
+
+
+SHOP_CATALOG = [
+    {"item_key": "cool_sunglasses", "name": "Cool Sunglasses", "stars_cost": 5, "rarity": "Common"},
+    {"item_key": "golden_crown", "name": "Golden Crown", "stars_cost": 8, "rarity": "Rare"},
+    {"item_key": "fire_trail", "name": "Fire Trail", "stars_cost": 12, "rarity": "Epic"},
+    {"item_key": "space_theme", "name": "Space Theme", "stars_cost": 15, "rarity": "Epic"},
+    {"item_key": "castle_theme", "name": "Castle Theme", "stars_cost": 13, "rarity": "Rare"},
+    {"item_key": "dragon_pet", "name": "Dragon Pet", "stars_cost": 25, "rarity": "Legendary"},
+]
+SHOP_CATALOG_BY_KEY = {item["item_key"]: item for item in SHOP_CATALOG}
+
+
+@app.get("/api/rewards/wallet")
+def get_rewards_wallet(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "xp_per_star": XP_PER_STAR,
+        "total_xp": user.total_xp,
+        "star_balance": user.star_balance,
+        "max_convertible_stars": user.total_xp // XP_PER_STAR,
+    }
+
+
+@app.post("/api/rewards/convert-xp-to-stars")
+def convert_xp_to_stars(
+    payload: ConvertXpToStarsRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.stars <= 0:
+        raise HTTPException(status_code=400, detail="stars must be greater than 0")
+
+    xp_cost = payload.stars * XP_PER_STAR
+    if user.total_xp < xp_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough XP! You need {xp_cost} XP but only have {user.total_xp}.",
+        )
+
+    user.total_xp -= xp_cost
+    user.star_balance += payload.stars
+    db.commit()
+    db.refresh(user)
+    return {
+        "converted_stars": payload.stars,
+        "xp_spent": xp_cost,
+        "remaining_xp": user.total_xp,
+        "star_balance": user.star_balance,
+    }
+
+
+@app.get("/api/shop/catalog")
+def get_shop_catalog(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"items": SHOP_CATALOG, "star_balance": user.star_balance}
+
+
+@app.post("/api/shop/purchase")
+def purchase_shop_item(
+    payload: ShopPurchaseRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    item = SHOP_CATALOG_BY_KEY.get(payload.item_key)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    stars_cost = int(item["stars_cost"])
+    if user.star_balance < stars_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough stars! You need {stars_cost} stars but only have {user.star_balance}.",
+        )
+
+    user.star_balance -= stars_cost
+    purchase = ShopPurchase(
+        user_id=user.id,
+        item_key=item["item_key"],
+        item_name=item["name"],
+        stars_spent=stars_cost,
+        delivery_status="pending",
+    )
+    db.add(purchase)
+    db.commit()
+    db.refresh(purchase)
+
+    create_notification(
+        db,
+        user.id,
+        "achievement",
+        "Shop purchase successful",
+        f"Purchased {item['name']} for {stars_cost} stars. Delivery will be coordinated soon.",
+        link_url="/dashboard",
+    )
+
+    return {
+        "purchase_id": purchase.id,
+        "item_key": purchase.item_key,
+        "item_name": purchase.item_name,
+        "stars_spent": purchase.stars_spent,
+        "star_balance": user.star_balance,
+        "delivery_status": purchase.delivery_status,
+        "purchased_at": purchase.purchased_at,
+    }
+
+
 # ==================== STATS ENDPOINTS ====================
 
 @app.get("/api/users/me/stats")
@@ -2627,6 +2761,7 @@ def get_user_stats(
         "puzzle_attempts": puzzle_attempts,
         "puzzle_accuracy": (puzzles_solved / puzzle_attempts * 100) if puzzle_attempts > 0 else 0,
         "total_xp": current_user.total_xp,
+        "star_balance": current_user.star_balance,
         "level": current_user.level,
         "rating": current_user.rating
     }

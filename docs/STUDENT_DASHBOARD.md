@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Student Dashboard is a gamified chess learning platform designed for students to practice tactics, track progress, and compete with peers. It provides an engaging, kid-friendly interface with XP rewards, level progression, and interactive puzzle solving.
+The Student Dashboard is a gamified chess learning platform designed for students to practice tactics, track progress, and compete with peers. It provides an engaging, kid-friendly interface with interactive puzzle solving, rating-based level progression, XP usage, and stars economy features.
 
 ---
 
@@ -12,9 +12,9 @@ The Student Dashboard is a gamified chess learning platform designed for student
 
 The Student Dashboard empowers chess students to:
 
-1. **Track Learning Progress**: Visualize improvement through levels, XP, and statistics
+1. **Track Learning Progress**: Visualize improvement through rating, levels, stars, XP, and statistics
 2. **Practice Tactical Skills**: Solve chess puzzles at appropriate difficulty levels
-3. **Earn Rewards**: Gain XP points and level up through successful puzzle solving
+3. **Earn Rewards**: Gain XP from puzzle solving and convert XP to stars for shop rewards
 4. **Compete & Compare**: See rankings on leaderboards and compare with peers
 5. **Stay Motivated**: Gamification elements keep learning fun and engaging
 
@@ -81,8 +81,8 @@ The Student Dashboard empowers chess students to:
 - Better chess skills
 - Sense of accomplishment
 
-#### 3. XP & Leveling System
-**What it does**: Rewards students with XP points and levels them up
+#### 3. Progression & Rewards System
+**What it does**: Rewards students with XP, supports star economy, and tracks levels from rating
 **Business Value**:
 - Increases engagement through gamification
 - Provides clear progression milestones
@@ -90,7 +90,8 @@ The Student Dashboard empowers chess students to:
 
 **User Goals**:
 - Earn XP by solving puzzles
-- Level up to show progress
+- Use XP strategically (hints or star conversion)
+- Track rating growth and level progression
 - Compete with peers
 
 **Outcomes**:
@@ -152,14 +153,14 @@ The Student Dashboard empowers chess students to:
 **Scenario**: A student is close to leveling up and wants to reach the next level
 
 **Steps**:
-1. Student views XP progress bar
-2. Sees they need 20 more XP to level up
-3. Calculates: Need to solve 2-3 puzzles (depending on difficulty)
-4. Selects puzzles matching their skill level
-5. Solves puzzles successfully
-6. Earns XP and levels up
-7. Sees celebration/confirmation of level up
-8. Views new level badge
+1. Student checks current rating and next target band
+2. Identifies the rating needed for next level
+3. Practices through puzzles and games
+4. Uses hints strategically (XP cost tradeoff)
+5. Improves tactical quality and game outcomes
+6. Rating increases into the next level band
+7. Student sees updated level on dashboard
+8. Student reviews XP and stars for reward planning
 
 **Outcome**: Sense of achievement and motivation to continue
 
@@ -168,9 +169,9 @@ The Student Dashboard empowers chess students to:
 
 **Steps**:
 1. Student views current leaderboard position
-2. Identifies how much XP needed to move up
-3. Plans puzzle-solving session to earn XP
-4. Focuses on puzzles with higher XP rewards
+2. Identifies whether next rank target is on XP or rating leaderboard
+3. Plans puzzle-solving and game session accordingly
+4. Focuses on relevant activities (XP gain and/or rating improvement)
 5. Solves puzzles efficiently (minimal hints)
 6. Checks leaderboard after session
 7. Sees improved rank
@@ -222,7 +223,7 @@ This "at-a-glance" view helps students understand their progress, stay motivated
 - **Purpose**: Creates welcoming, personalized experience
 - **Visual**: Large, friendly text with emoji
 
-### Level Badge & XP Progress
+### Level, Rating, Stars & XP
 
 #### Level Badge Card
 - **Display**: Large level number (e.g., "5")
@@ -234,7 +235,7 @@ This "at-a-glance" view helps students understand their progress, stay motivated
   - Provides sense of accomplishment
   - Motivates to reach next level
 
-#### XP Progress Bar
+#### XP Progress
 - **Component**: `XPBar` component
 - **Display**: 
   - Progress bar showing XP in current level
@@ -242,10 +243,10 @@ This "at-a-glance" view helps students understand their progress, stay motivated
   - Percentage complete
   - Total XP earned
 - **Visual**: Gradient progress bar with sparkle icon
-- **Purpose**: Shows progress toward next level
+- **Purpose**: Shows XP accumulation and resource availability
 - **Functional Value**:
-  - Clear visualization of progress
-  - Shows how close to leveling up
+  - Clear visualization of earned XP
+  - Helps students decide hint usage vs star conversion
   - Motivates continued practice
 
 ### Statistics Cards
@@ -370,7 +371,7 @@ Each puzzle is displayed as an interactive card with:
    - Clickable to navigate to puzzle page
 
 2. **XP Reward Badge**
-   - Star icon with XP amount
+   - XP amount shown for puzzle reward
    - Yellow color scheme
    - Prominently displayed in top-right
 
@@ -545,11 +546,12 @@ The puzzle solving page provides a **complete learning experience** where studen
 - **Minimum XP**: 5 XP minimum (even with hints)
 - **Formula**: `max(5, base_xp - (hints_used * 2))`
 
-### Level Progression
+### Rating / Level / Stars Rules
 
-- **XP per Level**: 100 XP required per level
-- **Level Calculation**: `level = (total_xp // 100) + 1`
-- **Automatic Update**: Level updates when XP threshold reached
+- **Level Source**: Level is derived from **rating bands**, not XP.
+- **XP Role**: XP is used for puzzle rewards and hint costs.
+- **Stars Economy**: `1 star = 200 XP`.
+- **Star Shop**: Students can spend stars on shop items; purchases are tracked.
 
 ---
 
@@ -573,6 +575,7 @@ All endpoints are prefixed with `/api` and require authentication for protected 
     "puzzle_attempts": int,
     "puzzle_accuracy": float,
     "total_xp": int,
+    "star_balance": int,
     "level": int,
     "rating": int
   }
@@ -580,7 +583,7 @@ All endpoints are prefixed with `/api` and require authentication for protected 
 - **Calculations**:
   - `win_rate` = `(games_won / games_played) * 100` (0 if no games)
   - `puzzle_accuracy` = `(puzzles_solved / puzzle_attempts) * 100` (0 if no attempts)
-  - `level` = `(total_xp // 100) + 1`
+  - `level` is derived from rating bands (backend-controlled)
 
 ### Puzzle Endpoints
 
@@ -621,7 +624,7 @@ All endpoints are prefixed with `/api` and require authentication for protected 
      - Base: puzzle's `xp_reward`
      - Penalty: -2 XP per hint
      - Minimum: 5 XP
-  3. Updates user XP and level
+  3. Updates user XP (level remains rating-derived)
   4. Updates puzzle statistics:
      - Increments `attempts_count`
      - Increments `success_count` if solved
@@ -662,6 +665,7 @@ All endpoints are prefixed with `/api` and require authentication for protected 
   "puzzle_attempts": int,
   "puzzle_accuracy": float,
   "total_xp": int,
+  "star_balance": int,
   "level": int,
   "rating": int
 }
@@ -674,7 +678,7 @@ All endpoints are prefixed with `/api` and require authentication for protected 
 ### XPBar Component (`components/XPBar.tsx`)
 
 #### Functional Purpose
-Visualizes student progress toward the next level through an animated progress bar.
+Visualizes student XP accumulation through an animated progress bar.
 
 #### Features
 - **Progress Calculation**: Shows XP within current level (0-100)
@@ -691,12 +695,11 @@ Visualizes student progress toward the next level through an animated progress b
 
 #### Props
 - `totalXP`: Total XP earned by student
-- `currentLevel`: Current level number
+- `currentLevel`: Current level number (display context)
 
-#### Calculations
-- `xpInCurrentLevel` = `totalXP - ((level - 1) * 100)`
-- `progress` = `(xpInCurrentLevel / 100) * 100`
-- `xpForNextLevel` = `100 - xpInCurrentLevel`
+#### Note
+- XP bar is a visual progress element.
+- Source-of-truth leveling logic is rating-based in backend.
 
 ### StatsCard Component (`components/StatsCard.tsx`)
 
@@ -894,9 +897,23 @@ xpEarned = Math.max(5, xpEarned - (hintsUsed * 2));
 
 // Update user XP
 user.total_xp += xpEarned;
+```
 
-// Calculate new level (100 XP per level)
-user.level = Math.floor(user.total_xp / 100) + 1;
+### Stars Conversion and Shop Logic
+
+```javascript
+// Convert XP to stars
+// 1 star = 200 XP
+if (user.total_xp >= starsToConvert * 200) {
+  user.total_xp -= starsToConvert * 200;
+  user.star_balance += starsToConvert;
+}
+
+// Shop purchase
+if (user.star_balance >= item.stars_cost) {
+  user.star_balance -= item.stars_cost;
+  // purchase row recorded in backend
+}
 ```
 
 ### Puzzle Validation
@@ -915,20 +932,20 @@ user.level = Math.floor(user.total_xp / 100) + 1;
 
 ---
 
-## Future Enhancements
+## Future Scope
 
-Potential improvements for the student dashboard:
+Planned high-impact improvements for the student dashboard:
 
-1. **Achievement System**: Badges for milestones and accomplishments
-2. **Daily Challenges**: Special puzzles available once per day
-3. **Puzzle Collections**: Themed puzzle sets (e.g., "Back Rank Mates")
-4. **Practice Mode**: Unlimited attempts without XP penalty
-5. **Hint Levels**: Progressive hints (subtle to explicit)
-6. **Time Challenges**: Speed solving with time limits
-7. **Streak Tracking**: Daily practice streaks
-8. **Social Features**: Share achievements, challenge friends
-9. **Learning Paths**: Guided progression through difficulty levels
-10. **Analytics Dashboard**: Detailed progress charts and graphs
+1. **Unified Progress Panel**: Show rating, level, stars, and XP in one consolidated progress widget.
+2. **Star Shop Expansion**: Add richer reward catalog, item history, and delivery-status tracking.
+3. **Smart XP Guidance**: Suggest when to spend XP on hints vs convert to stars.
+4. **Personalized Bot Ladder**: Recommend next bot opponent based on rating trend and puzzle performance.
+5. **Daily/Weekly Missions**: Structured goals that reward both XP and stars.
+6. **Streak + Consistency Rewards**: Bonus incentives for regular practice and completion streaks.
+7. **Learning Path Engine**: Auto-curated puzzle sequences by weakness/theme.
+8. **Progress Insights**: Student-friendly charts for rating movement and accuracy trends.
+9. **Parent/Coach Feedback Loop**: Surface actionable milestones to parents/coaches from student behavior.
+10. **Achievement System v2**: Tiered badges mapped to tactics, consistency, and competitive progress.
 
 ---
 

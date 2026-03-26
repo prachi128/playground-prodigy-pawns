@@ -84,6 +84,7 @@ export interface User {
   gender?: string;
   avatar_url: string;
   total_xp: number;
+  star_balance: number;
   level: number;
   rating: number;
   /** Category from rating: Pawn, Knight, Bishop, Rook, Queen, King */
@@ -124,8 +125,38 @@ export interface UserStats {
   puzzle_attempts: number;
   puzzle_accuracy: number;
   total_xp: number;
+  star_balance: number;
   level: number;
   rating: number;
+}
+
+export interface RewardsWallet {
+  xp_per_star: number;
+  total_xp: number;
+  star_balance: number;
+  max_convertible_stars: number;
+}
+
+export interface ShopCatalogItem {
+  item_key: string;
+  name: string;
+  stars_cost: number;
+  rarity: string;
+}
+
+export interface ShopCatalogResponse {
+  items: ShopCatalogItem[];
+  star_balance: number;
+}
+
+export interface ShopPurchaseResponse {
+  purchase_id: number;
+  item_key: string;
+  item_name: string;
+  stars_spent: number;
+  star_balance: number;
+  delivery_status: string;
+  purchased_at: string;
 }
 
 export interface LeaderboardEntry {
@@ -420,6 +451,28 @@ export const achievementAPI = {
 export const dailyChallengeAPI = {
   getToday: async () => {
     const response = await api.get('/api/daily-challenge');
+    return response.data;
+  },
+};
+
+export const rewardsAPI = {
+  getWallet: async (): Promise<RewardsWallet> => {
+    const response = await api.get('/api/rewards/wallet');
+    return response.data;
+  },
+  convertXpToStars: async (stars: number): Promise<{ converted_stars: number; xp_spent: number; remaining_xp: number; star_balance: number }> => {
+    const response = await api.post('/api/rewards/convert-xp-to-stars', { stars });
+    return response.data;
+  },
+};
+
+export const shopAPI = {
+  getCatalog: async (): Promise<ShopCatalogResponse> => {
+    const response = await api.get('/api/shop/catalog');
+    return response.data;
+  },
+  purchase: async (item_key: string): Promise<ShopPurchaseResponse> => {
+    const response = await api.post('/api/shop/purchase', { item_key });
     return response.data;
   },
 };

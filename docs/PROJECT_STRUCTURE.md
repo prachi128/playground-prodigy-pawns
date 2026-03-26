@@ -1,258 +1,132 @@
-# Prodigy Pawns Student Portal - Project Structure
+# Prodigy Pawns - Project Structure
 
-## 🎨 Design Philosophy
-- **Kid-Friendly**: Bright colors, large buttons, playful animations
-- **Gamified**: XP points, levels, achievements, rewards
-- **Engaging**: Interactive elements, progress bars, celebrations
-- **Intuitive**: Simple navigation, clear feedback
+This document describes the current repository structure and where major product capabilities live.
 
-## 📁 Backend Structure (FastAPI)
+## Design Principles
 
-```
-my-backend/
-├── main.py                 # Main FastAPI application
-├── models.py              # Database models
-├── .env                   # Environment variables
-├── requirements.txt       # Python dependencies
-├── routers/
-│   ├── auth.py           # Authentication routes
-│   ├── users.py          # User management
-│   ├── games.py          # Game endpoints
-│   ├── puzzles.py        # Puzzle endpoints
-│   ├── challenges.py     # Daily challenges
-│   └── leaderboard.py    # Leaderboard endpoints
-├── services/
-│   ├── auth_service.py   # Authentication logic
-│   ├── xp_service.py     # XP calculation and leveling
-│   ├── game_service.py   # Game logic
-│   └── puzzle_service.py # Puzzle validation
-└── utils/
-    ├── security.py       # Password hashing, JWT
-    └── database.py       # Database connection
-```
+- Kid-friendly UX with clear feedback loops.
+- Strong gameplay correctness (server-authoritative chess logic).
+- Clear separation of progression systems: rating/level vs XP vs stars.
+- Role-aware platform layers: student, coach/admin, parent.
+- Documentation-first for fast onboarding.
 
-## 📁 Frontend Structure (Next.js)
+## Repository Layout
 
-```
-my-frontend/
-├── app/
-│   ├── layout.tsx              # Root layout
-│   ├── page.tsx                # Landing page
-│   ├── login/
-│   │   └── page.tsx           # Login page
-│   ├── dashboard/
-│   │   └── page.tsx           # Student dashboard
-│   ├── play/
-│   │   └── page.tsx           # Play games
-│   ├── puzzles/
-│   │   ├── page.tsx           # Puzzle list
-│   │   └── [id]/page.tsx      # Individual puzzle
-│   ├── puzzle-racer/
-│   │   └── page.tsx           # Puzzle race mode
-│   ├── challenges/
-│   │   └── page.tsx           # Daily challenges
-│   ├── leaderboard/
-│   │   └── page.tsx           # Leaderboard
-│   └── profile/
-│       └── page.tsx           # User profile
-├── components/
-│   ├── ui/                    # Shadcn UI components
-│   ├── chess/
-│   │   ├── ChessBoard.tsx    # Interactive chess board
-│   │   ├── PieceSelector.tsx
-│   │   └── MoveHistory.tsx
-│   ├── puzzles/
-│   │   ├── PuzzleCard.tsx
-│   │   ├── PuzzleTimer.tsx
-│   │   └── HintButton.tsx
-│   ├── dashboard/
-│   │   ├── XPBar.tsx         # XP progress bar
-│   │   ├── LevelBadge.tsx
-│   │   ├── StatsCard.tsx
-│   │   └── RecentActivity.tsx
-│   ├── leaderboard/
-│   │   ├── LeaderboardTable.tsx
-│   │   └── UserRankCard.tsx
-│   └── common/
-│       ├── Navbar.tsx
-│       ├── Sidebar.tsx
-│       ├── LoadingSpinner.tsx
-│       └── Avatar.tsx
-├── lib/
-│   ├── api.ts                # API client
-│   ├── auth.ts              # Auth utilities
-│   └── utils.ts             # Helper functions
-├── hooks/
-│   ├── useUser.ts           # User state hook
-│   ├── useAuth.ts           # Authentication hook
-│   └── useChessboard.ts     # Chess logic hook
-├── styles/
-│   └── globals.css          # Global styles
-└── public/
-    ├── avatars/             # Student avatars
-    ├── achievements/        # Achievement badges
-    └── sounds/              # Sound effects
-```
-
-## 🎮 Key Features
-
-### 1. Dashboard
-- Welcome message with student's name
-- XP progress bar showing progress to next level
-- Current level and rank
-- Quick stats (games played, puzzles solved, achievements)
-- Daily challenge widget
-- Recent activity feed
-
-### 2. Play Games
-- Find opponent (matchmaking by rating)
-- Play vs Computer (different difficulty levels)
-- Time controls (3+0, 5+0, 10+0, 15+10)
-- Real-time gameplay using Socket.io or WebSockets
-- Move validation and legal move highlighting
-- XP rewards based on game outcome
-
-### 3. Puzzles
-- Browse puzzles by difficulty
-- Puzzle categories (tactics, endgames, checkmate)
-- Hint system (costs XP or reduces reward)
-- Timer for speed solving
-- Solution explanation after completion
-- XP rewards on successful solve
-
-### 4. Puzzle Racer
-- Competitive timed puzzle solving
-- Race against the clock
-- Multiple puzzles in sequence
-- Leaderboard for fastest times
-- Bonus XP for high scores
-
-### 5. Daily Challenges
-- New challenge every day
-- Special XP rewards
-- Streak bonuses
-- Challenge history
-
-### 6. Leaderboard
-- Global rankings
-- Weekly/Monthly/All-time views
-- Filter by age group
-- Friend comparisons
-
-### 7. Profile & Achievements
-- Customizable avatar
-- Display achievements/badges
-- Game history
-- Statistics and graphs
-- XP and level progression
-
-## 🎨 Color Scheme (Kid-Friendly)
-
-```css
-Primary Colors:
-- Purple: #8B5CF6 (Magical, playful)
-- Blue: #3B82F6 (Trust, calm)
-- Green: #10B981 (Success, growth)
-- Yellow: #FBBF24 (Energy, fun)
-- Orange: #F97316 (Excitement)
-- Pink: #EC4899 (Friendly, warm)
-
-Backgrounds:
-- Light: #F9FAFB
-- Card: #FFFFFF
-- Dark mode: #1F2937
-
-Text:
-- Primary: #111827
-- Secondary: #6B7280
-- Muted: #9CA3AF
-```
-
-## 🏗️ Tech Stack
-
-### Backend
-- **FastAPI**: Modern Python web framework
-- **SQLAlchemy**: ORM for database operations
-- **PostgreSQL**: Relational database
-- **python-chess**: Chess logic and validation
-- **JWT**: Authentication tokens
-- **WebSockets**: Real-time game communication
-
-### Frontend
-- **Next.js 14**: React framework with App Router
-- **TypeScript**: Type safety
-- **Tailwind CSS**: Styling
-- **Shadcn/ui**: UI components
-- **chess.js**: Chess logic
-- **react-chessboard**: Chess board component
-- **Framer Motion**: Animations
-- **Zustand**: State management
-- **Socket.io-client**: Real-time communication
-
-## 📦 Additional Dependencies
-
-### Backend
 ```txt
-fastapi
-uvicorn[standard]
-sqlalchemy
-psycopg2-binary
-python-dotenv
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
-python-chess
-websockets
+Playground - ProdigyPawns/
+├── backend/
+├── frontend/
+├── docs/
+├── v0-dashboard-layout/
+└── v1-dashboard-layout/
 ```
 
-### Frontend
-```json
-{
-  "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "typescript": "^5.0.0",
-    "tailwindcss": "^3.0.0",
-    "chess.js": "^1.0.0",
-    "react-chessboard": "^4.0.0",
-    "framer-motion": "^10.0.0",
-    "zustand": "^4.0.0",
-    "socket.io-client": "^4.0.0",
-    "axios": "^1.0.0",
-    "@radix-ui/react-*": "Various Radix UI primitives"
-  }
-}
+## Backend Structure (FastAPI + SQLAlchemy)
+
+```txt
+backend/
+├── main.py                         # Core app + primary API endpoints
+├── models.py                       # SQLAlchemy entities
+├── schemas.py                      # Pydantic request/response schemas
+├── auth.py                         # Auth helpers, token + current-user logic
+├── database.py                     # DB/session setup and schema guards
+├── stockfish_service.py            # Engine integration
+├── hint_service.py                 # Puzzle hint generation/cost flow
+├── bot_runtime.py                  # Runtime profile resolution
+├── bot_openings.py                 # Opening-book helper logic
+├── bot_opponents.py                # Named bot roster + configs
+├── bot_worker.py                   # Bot move job execution
+├── bot_worker_loop.py              # Bot worker loop entry
+├── bot_calibration.py              # Bot strength calibration services
+├── bot_admin_endpoints.py          # Bot profiles/versions/rollouts APIs
+├── migrate_existing_db.py          # DB migration helper script
+├── migrations/                     # SQL migrations (including stars/shop)
+├── scripts/                        # Utility/admin scripts
+└── tests/                          # Unit/integration tests
 ```
 
-## 🚀 Development Phases
+### Backend Capability Map
 
-### Phase 1: Foundation (Week 1-2)
-- Setup backend and database
-- User authentication
-- Basic dashboard
-- Simple chess board display
+- **Auth/session**: cookie JWT login, refresh, logout, current user.
+- **Puzzles**: puzzle CRUD, solve attempts, hints, racer mode stats.
+- **Games**: PvP invites, live move application, bot move requests.
+- **Progression**:
+  - rating changes for PvP outcomes,
+  - level derived from rating band,
+  - XP gain/spend logic for puzzle loop.
+- **Rewards economy**:
+  - wallet endpoint (`total_xp`, `star_balance`, convertibility),
+  - XP-to-stars conversion (`1 star = 200 XP`),
+  - star shop catalog + purchases (`shop_purchases` persistence).
+- **Bot platform**:
+  - profile versioning and rollouts,
+  - calibration runs and acceptance gates,
+  - move telemetry and worker-based move jobs.
 
-### Phase 2: Core Features (Week 3-4)
-- Game playing functionality
-- Puzzle system
-- XP and leveling system
-- Basic leaderboard
+## Frontend Structure (Next.js + TypeScript)
 
-### Phase 3: Gamification (Week 5-6)
-- Achievements system
-- Daily challenges
-- Puzzle racer
-- Sound effects and animations
+```txt
+frontend/
+├── app/
+│   ├── (student)/                  # Protected student routes + layout
+│   ├── (coach)/                    # Coach route group
+│   ├── (parent)/                   # Parent route group
+│   ├── login/ signup/              # Auth pages
+│   └── api/                        # Next server actions/route handlers
+├── components/
+│   ├── dashboard/                  # Header, sidebar, star shop, cards
+│   ├── puzzles/                    # Puzzle UI widgets
+│   ├── chess/                      # Board/game components
+│   └── ui/                         # Shared primitives
+├── lib/
+│   ├── api.ts                      # Typed API modules (auth/game/puzzle/rewards/shop...)
+│   ├── store.ts                    # Zustand auth/session store
+│   ├── data/                       # Learning content/constants
+│   └── utils.ts
+├── hooks/
+├── public/
+└── styles/
+```
 
-### Phase 4: Polish (Week 7-8)
-- UI/UX improvements
-- Mobile responsiveness
-- Performance optimization
-- Testing and bug fixes
+### Frontend Capability Map
 
-### Phase 5: Launch (Week 9-10)
-- Deploy backend (Railway, Render, or AWS)
-- Deploy frontend (Vercel)
-- User testing
-- Documentation
+- **Session bootstrap** in protected layouts via `loadSession()`.
+- **Cookie-first API client** with refresh interceptors.
+- **Dashboard progression UI** shows rating, level, XP, and stars separately.
+- **Star shop UI** is backend-backed (wallet, conversion, purchases).
+- **Game UX** supports PvP and bot flows.
+- **Learning UX** includes collector-style lesson mini-modes.
+
+## Core Domain Contracts
+
+- `GET /api/users/me/stats`: student progression snapshot.
+- `POST /api/puzzles/{id}/attempt`: solve submission + XP accounting.
+- `POST /api/puzzles/{id}/hint`: hint delivery + XP deduction.
+- `GET /api/rewards/wallet`: XP/stars wallet state.
+- `POST /api/rewards/convert-xp-to-stars`: conversion endpoint.
+- `GET /api/shop/catalog` and `POST /api/shop/purchase`: rewards commerce.
+- `POST /api/games/{id}/bot-move`: bot move orchestration.
+
+## Documentation Structure
+
+```txt
+docs/
+├── PROJECT_OVERVIEW.md
+├── PROJECT_STRUCTURE.md
+├── TECHNICAL_DESIGN.md
+├── FUNCTION_DESIGN.md
+├── BOT_CHESS_GUIDE.md
+├── BOT_STRENGTH_CALIBRATION.md
+├── STUDENT_DASHBOARD.md
+├── COACH_DASHBOARD.md
+├── COMPANY_PITCH.md
+├── FUTURE_SCOPE.md
+└── BUGS_AND_ERRORS_PRIORITY_TRACKER.md
+```
+
+## Notes for New Contributors
+
+- Treat backend as source of truth for rating/level/XP/stars accounting.
+- Keep rating visuals distinct from star currency visuals.
+- Prefer extending existing API modules in `frontend/lib/api.ts` before adding new request wrappers.
+- Update docs when changing progression, rewards, or bot behavior.

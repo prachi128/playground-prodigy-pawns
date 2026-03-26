@@ -102,6 +102,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
 
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
   const rating = user?.rating ?? 0
+  const stars = user?.star_balance ?? 0
 
   // Level is from rating; XP is for hints/rewards only
   const level = user?.level ?? 4
@@ -204,8 +205,8 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                     {displayName}
                   </p>
                   <div className="flex items-center gap-1.5">
-                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="font-heading text-lg font-bold leading-tight text-yellow-400">
+                    <TrendingUp className="h-4 w-4 text-emerald-300" />
+                    <span className="font-heading text-lg font-bold leading-tight text-emerald-300">
                       {rating}
                     </span>
                   </div>
@@ -222,6 +223,13 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                   <span className="text-amber-400" title="XP for hints and rewards">
                     {totalXP} XP
                   </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] font-bold">
+                  <span className="flex items-center gap-1 text-sidebar-foreground/70">
+                    <Star className="h-3 w-3 text-yellow-300 fill-yellow-300" />
+                    Stars
+                  </span>
+                  <span className="text-yellow-300">{stars}</span>
                 </div>
               </div>
             </button>

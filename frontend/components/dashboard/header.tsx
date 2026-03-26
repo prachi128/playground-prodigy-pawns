@@ -7,6 +7,7 @@ import {
   Star,
   Zap,
   Trophy,
+  TrendingUp,
   BookOpen,
   Swords,
   X,
@@ -208,6 +209,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
   const totalXP = user?.total_xp ?? 0
   const rating = user?.rating ?? 0
+  const stars = user?.star_balance ?? 0
 
   return (
     <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-gradient-to-r from-emerald-600 to-green-500 px-3 shadow-md sm:gap-3 sm:px-4 lg:px-6">
@@ -229,6 +231,10 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
         <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 transition-transform hover:scale-105">
           <Star className="h-4 w-4 fill-yellow-300 text-yellow-300" />
+          <span className="hidden font-heading text-sm font-bold text-white sm:inline">{stars}</span>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 transition-transform hover:scale-105">
+          <TrendingUp className="h-4 w-4 text-emerald-200" />
           <span className="hidden font-heading text-sm font-bold text-white sm:inline">{rating}</span>
         </div>
 

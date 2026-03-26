@@ -45,7 +45,17 @@ These are implemented mainly in `main.py` or `auth.py` and are reused by multipl
 | `_score_white_from_result(result)` | Parses PGN result string to 0–1 score for White. | |
 | `update_ratings_after_game(game, db)` | Elo update (K=32, floor 100) for **both** players. | **Skipped** if either player is `__BOT__` (bot games do not change ratings). |
 
-### 2.3 Game lifecycle helpers
+### 2.3 Rewards economy (XP, stars, shop)
+
+| Function / Constant | Responsibility | Notes |
+|----------|----------------|-------|
+| `XP_PER_STAR` | Conversion constant for rewards economy. | Current rule: **1 star = 200 XP**. |
+| `get_rewards_wallet(...)` | Returns wallet state (`total_xp`, `star_balance`, convertible stars). | Auth required. |
+| `convert_xp_to_stars(...)` | Deducts XP and increments `star_balance`. | Validates sufficient XP and positive star amount. |
+| `get_shop_catalog(...)` | Returns available shop items and user star balance. | Current catalog is server-defined. |
+| `purchase_shop_item(...)` | Deducts stars, writes `ShopPurchase` record, creates notification. | Delivery status starts as `pending`. |
+
+### 2.4 Game lifecycle helpers
 
 | Function | Responsibility | Notes |
 |----------|----------------|-------|
@@ -56,13 +66,13 @@ These are implemented mainly in `main.py` or `auth.py` and are reused by multipl
 
 **Clock model (human PvP moves):** `INITIAL_CLOCK_MS` per side; on each move, elapsed time since `last_move_at` (or `started_at`) is deducted from the mover’s clock; zero clock → timeout loss. Bot path does not fully mirror clock UX in all cases; `time_control` is stored for humans.
 
-### 2.4 Notifications
+### 2.5 Notifications
 
 | Function | Responsibility | Notes |
 |----------|----------------|-------|
 | `create_notification(db, user_id, category, title, message, link_url?)` | Inserts `Notification` row. | **Caller must `commit`.** Used for puzzle solve, invites, accept/reject. |
 
-### 2.5 Puzzle Racer (in-memory multiplayer)
+### 2.6 Puzzle Racer (in-memory multiplayer)
 
 State lives in `_puzzle_race_rooms: Dict[str, Dict]` (not durable across process restarts).
 
@@ -100,7 +110,9 @@ State lives in `_puzzle_race_rooms: Dict[str, Dict]` (not durable across process
 
 **Notifications:** list, patch read, mark-all-read, delete.
 
-**Stats:** `GET /api/users/me/stats` (games, puzzles, win rate, accuracy, XP, level, rating).
+**Rewards & Shop:** `GET /api/rewards/wallet`, `POST /api/rewards/convert-xp-to-stars`, `GET /api/shop/catalog`, `POST /api/shop/purchase`.
+
+**Stats:** `GET /api/users/me/stats` (games, puzzles, win rate, accuracy, XP, stars, level, rating).
 
 ### 3.2 Coach — `coach_endpoints.py` — prefix `/api/coach`
 
@@ -142,6 +154,22 @@ Coaching **batch** CRUD; add/remove students; class sessions; batch announcement
 | `GET /payments/history` | Past payments. |
 | `POST /payments/webhook` | Stripe webhook handler (`verify_webhook`). |
 
+### 3.6 Bot admin — `bot_admin_endpoints.py` — `/api/admin/bots`
+
+**Guard:** `require_admin`.
+
+| Endpoint area | Purpose |
+|------|---------|
+| `GET/POST /profiles` | List/create bot profiles (target ratings by bot id). |
+| `GET/POST /profiles/{bot_id}/versions` | Versioned config management. |
+| `POST /rollouts` | Rollout creation with traffic percentage and enable flag. |
+| `POST /profiles/{bot_id}/versions/{version_id}/promote` | Promote version with canary traffic. |
+| `POST /profiles/{bot_id}/rollback` | Restore previous active rollout. |
+| `POST /calibration-runs`, `.../{run_id}/execute` | Create and execute calibration acceptance runs. |
+| `GET /calibration/coverage`, `GET /calibration-runs/recent` | Readiness + historical calibration visibility. |
+| `GET /telemetry/recent`, `GET /telemetry/summary` | Bot move telemetry inspection and aggregates. |
+| `GET /jobs` | Bot queue job visibility. |
+
 ---
 
 ## 4. Engine services (backend)
@@ -151,6 +179,7 @@ Coaching **batch** CRUD; add/remove students; class sessions; batch announcement
 | Method | Purpose |
 |--------|---------|
 | `analyze_position(fen, depth)` | Best move, eval, top moves, mate flag. |
+| `choose_bot_move(fen, bot_rating, profile_config)` | Humanized move selection (weighted top-N, oversight/blunder, wild picks, mate forcing). |
 | `validate_puzzle(fen, solution_moves_uci)` | Compare first move to engine best move; optional line validation. |
 | `suggest_difficulty(fen)` | Heuristic difficulty string for coaches. |
 | `detect_tactic_theme(fen, moves)` | Tactical label for UI/coach tools. |
@@ -164,6 +193,16 @@ Singleton accessor: `get_stockfish_service()`.
 | `get_hint(fen, hint_level)` | Levels 1–3: vague → specific; returns `hint_text`, `xp_cost` (2/4/8). |
 
 Singleton accessor: `get_hint_service()`.
+
+### 4.3 Bot runtime services
+
+| Module | Purpose |
+|--------|---------|
+| `bot_runtime.py` | Resolve runtime bot profile config, enqueue/mark/complete jobs, write per-move telemetry, create calibration runs. |
+| `bot_openings.py` | Lightweight opening-book move selection by bot id + move history prefix. |
+| `bot_opponents.py` | Bot id → target rating mapping; legacy difficulty compatibility + fallback heuristics. |
+| `bot_worker.py` | Batch processor for pending bot move jobs. |
+| `bot_worker_loop.py` | Standalone polling loop for dedicated worker process. |
 
 ---
 
@@ -182,6 +221,8 @@ Each exported object groups **typed async functions** that mirror backend routes
 | `achievementAPI`, `dailyChallengeAPI` | Read-only content. |
 | `notificationsAPI` | Bell feed CRUD semantics. |
 | `gameAPI` | Games, invites, moves, bot, analysis, user search. |
+| `rewardsAPI` | Wallet + XP-to-stars conversion. |
+| `shopAPI` | Shop catalog + purchase. |
 | `parentAPI` | Parent dashboard namespace. |
 | `batchAPI` | Coach batch management. |
 | `coachAPI` | Coach puzzles + stats + helpers calling shared analyze/auto-solve endpoints. |
@@ -190,7 +231,7 @@ Each exported object groups **typed async functions** that mirror backend routes
 
 ## 6. Server actions and local UI logic (frontend)
 
-- **`frontend/app/(student)/actions/game-actions.ts`:** `updateStudentStats` delegates to `addXpAndCoins` in `app/actions/update-progress` (local/progress persistence pattern—not the same as backend XP from puzzles).
+- **`frontend/app/(student)/actions/game-actions.ts`:** `updateStudentStats` delegates to `addXpAndCoins` in `app/actions/update-progress`; this path remains separate from authoritative backend puzzle/reward accounting.
 - **Learn modes (e.g. Star Collector):** Curriculum and move validation often live in `frontend/lib/data/*` and components using `chess.js`; completion may be **client-only** unless wired to an API.
 
 ---
@@ -198,10 +239,11 @@ Each exported object groups **typed async functions** that mirror backend routes
 ## 7. Design invariants and constraints
 
 1. **Level vs XP:** Display **level** follows **rating** (Elo from PvP). **XP** tracks engagement (puzzles, hints cost XP); `total_xp` does not drive level in the current backend rules.
-2. **Bot games:** No rating change for humans or bot user when `__BOT__` participates.
-3. **Puzzle Racer rooms:** In-memory only; scaling out or restart clears rooms unless replaced with Redis/DB later.
-4. **Auth:** Tokens are HttpOnly; frontend relies on cookies + `user` in Zustand.
-5. **Route ordering:** e.g. `/api/users/search` before `/api/users/{user_id}`; `/api/coach/students/stats/overview` before `/{student_id}`.
+2. **Stars vs XP:** Stars are a separate currency (`1 star = 200 XP`) and are persisted in `users.star_balance`; shop purchases spend stars, not rating.
+3. **Bot games:** No rating change for humans or bot user when `__BOT__` participates.
+4. **Puzzle Racer rooms:** In-memory only; scaling out or restart clears rooms unless replaced with Redis/DB later.
+5. **Auth:** Tokens are HttpOnly; frontend relies on cookies + `user` in Zustand.
+6. **Route ordering:** e.g. `/api/users/search` before `/api/users/{user_id}`; `/api/coach/students/stats/overview` before `/{student_id}`.
 
 ---
 

@@ -2,11 +2,11 @@
 
 ## Overview
 
-Puzzle Racer is a multiplayer timed puzzle-solving race mode. Students compete to solve as many chess puzzles as they can within a fixed time limit. Each correctly solved puzzle advances their car on a visual race track.
+Puzzle Racer is a multiplayer timed puzzle-solving race mode. Students compete to solve as many chess puzzles as possible within a fixed time limit. Each correctly solved puzzle advances their car on a visual race track.
 
 **Route:** `/puzzles/racer`  
 **Frontend:** `frontend/app/(student)/puzzles/racer/page.tsx`  
-**Backend:** `backend/main.py` (in-memory room endpoints)  
+**Backend:** `backend/main.py` (in-memory room endpoints + server-time sync)  
 **Schemas:** `backend/schemas.py` (`PuzzleRaceRoomState`, `PuzzleRaceRoomCreate`, `PuzzleRaceCarSelect`, `PuzzleRaceNameSet`)  
 **API client:** `frontend/lib/api.ts` (`puzzleRacerRoomsAPI`)
 
@@ -36,12 +36,13 @@ The race progresses through four phases:
 - Players can customize their racer name and choose their car
 - Invite link is displayed and copyable
 
-### 2. Countdown (`phase: 'countdown'`)
+### 2. Countdown (`phase: 'countdown'`, client-side)
 - Full-screen blurred overlay with a large countdown number (10 → 1)
 - All participant names and cars shown in badges
 - Audio beeps play: tick sound for each number, "go" sound at the end
 - Text changes: "Focus…" → "Almost…" → "GO!"
 - Puzzle pool is loaded and shuffled during this phase
+- Countdown is derived on the client from `race_end_at` and server time sync (`GET /api/server-time`)
 
 ### 3. Racing (`phase: 'racing'`)
 - Timer counts down from 2:30
@@ -110,12 +111,14 @@ Each room contains:
 |---|---|---|
 | `id` | `str` | Room ID (format: `{userId}-{timestamp}`) |
 | `host_user_id` | `int` | User ID of the room creator |
-| `status` | `str` | `"waiting"` → `"racing"` → `"finished"` |
+| `status` | `str` | Runtime room state. In practice: `"waiting"` → `"racing"` → `"finished"` |
 | `created_at` | `datetime` | Room creation timestamp |
 | `participants` | `Set[int]` | Set of user IDs in the room |
 | `countdown_start_at` | `datetime?` | When host clicked start |
+| `race_end_at` | `datetime?` | Server timestamp when race should end |
 | `car_assignments` | `Dict[int, int]` | Maps user ID → car emoji index |
 | `racer_names` | `Dict[int, str]` | Maps user ID → custom display name |
+| `scores` | `Dict[int, int]` | Maps user ID → solved count (server-synced) |
 
 ### Room Lifecycle
 
@@ -131,16 +134,18 @@ Each room contains:
 
 3. **Host clicks "Start Race"**
    - `POST /api/puzzle-racer/rooms/{roomId}/start` sets status to `"racing"`
+   - Backend sets `countdown_start_at` and `race_end_at`
    - Both host and guests detect this via polling and bootstrap the race locally
 
 4. **During race**
    - Room state polled every 1 second by all clients
    - Puzzle solving is fully client-side (no move sync between players)
-   - Score is tracked locally per client (no server-side score)
+   - On each solve, client calls `POST /api/puzzle-racer/rooms/{roomId}/update-score`
+   - Other players' scores are synced from backend via polling (`scores`)
 
 ### Polling
 - All clients poll `GET /api/puzzle-racer/rooms/{roomId}` every 1 second
-- This syncs: participant list, car assignments, racer names, room status
+- This syncs: participant list, car assignments, racer names, scores, room status/timestamps
 - Polling runs continuously from room join until page unmount
 
 ---
@@ -241,6 +246,7 @@ Start the race. Only the host can call this.
 - **Auth:** required
 - **Returns:** `PuzzleRaceRoomState`
 - **Error:** `403` if not host, `404` if room not found
+- **Note:** backend currently allows solo start for testing; UI still enables start only when 2+ racers are in lobby.
 
 ### `POST /api/puzzle-racer/rooms/{room_id}/select-car`
 Change the current user's car.
@@ -248,6 +254,25 @@ Change the current user's car.
 - **Body:** `{ car_index: number }` (0–6)
 - **Returns:** `PuzzleRaceRoomState`
 - **Errors:** `400` if racing or invalid index, `403` if not in room, `409` if car taken
+
+### `POST /api/puzzle-racer/rooms/{room_id}/update-score`
+Increment the caller's score by 1 (used on each correctly solved puzzle).
+- **Auth:** required
+- **Returns:** `PuzzleRaceRoomState`
+- **Error:** `403` if caller is not in room, `404` if room not found
+
+### `POST /api/puzzle-racer/rooms/{room_id}/reset`
+Reset room to lobby (`waiting`) and re-add caller as participant.
+- **Auth:** required
+- **Returns:** `PuzzleRaceRoomState`
+- **Behavior:** first reset caller clears race state (countdown/timer/scores) and participants set; each caller then re-joins themselves.
+
+### `GET /api/server-time`
+Get server UTC time for client clock sync.
+- **Auth:** not required (utility endpoint)
+- **Returns:** `{ now: string }` ISO timestamp
+
+---
 
 ### `POST /api/puzzle-racer/rooms/{room_id}/set-name`
 Set custom display name.
@@ -268,8 +293,10 @@ class PuzzleRaceRoomState(BaseModel):
     created_at: datetime
     participants: List[int]
     countdown_start_at: Optional[datetime] = None
+    race_end_at: Optional[datetime] = None
     car_assignments: dict[int, int] = {}
     racer_names: dict[int, str] = {}
+    scores: dict[int, int] = {}
 
 class PuzzleRaceRoomCreate(BaseModel):
     difficulty: Optional[str] = "beginner"
@@ -326,7 +353,7 @@ class PuzzleRaceNameSet(BaseModel):
 
 ## XP and Scoring
 
-- **Score:** +1 per correctly solved puzzle (local, not synced to backend)
+- **Score:** +1 per correctly solved puzzle, mirrored to backend via `/update-score` for multiplayer sync.
 - **XP:** Awarded by the backend when `POST /api/puzzles/{id}/attempt` returns with `is_solved: true`. The `xp_earned` value is added to the local total and the user's global `total_xp` in the auth store.
 - **Wrong move:** `is_solved: false` attempt recorded. No score, no XP.
 - **Skip:** `is_solved: false` attempt recorded with empty moves. No score, no XP.
@@ -341,7 +368,7 @@ Shows:
 - **Final standings** — all participants sorted by score, with medal emojis for top 3
 - **Puzzles solved** — count of correct solves
 - **XP earned** — total XP accumulated during the race
-- **Play again** — resets to lobby phase (clears puzzle pool, keeps room)
+- **Re-join Match** — resets to lobby phase using `POST /reset` (clears race state, keeps room ID)
 - **Back to Puzzles** — navigates to `/puzzles`
 
 ---
@@ -350,7 +377,7 @@ Shows:
 
 - **During a race:** If a non-host player navigates away or closes the page, an unmount effect calls `POST /leave` to remove them from the room. Their car, name, and score are cleared server-side.
 - **Returning during an ongoing race:** If the removed player revisits the room link while the race is still ongoing, they see a "Race is Ongoing — please wait" screen. They cannot rejoin mid-race.
-- **After the race ends:** Once the room transitions to `waiting` (host clicked "Re-join Match"), the waiting screen dismisses and the player sees the lobby with a "Join Race" button.
+- **After the race ends:** Once the room transitions to `waiting` (via `POST /reset`), the waiting screen dismisses and the player sees the lobby with a "Join Race" button.
 - **Host is persistent:** The host is never removed from a racing room. If the host disconnects and returns, they resync into the ongoing race.
 
 ---
@@ -359,8 +386,8 @@ Shows:
 
 1. **Puzzle difficulty is hardcoded to `"beginner"`** — the `PuzzleRaceRoomCreate` schema has `difficulty` and `puzzle_count` fields but they are unused by the frontend.
 2. **Puzzle pool is limited to 20** — the default `PUZZLES_PAGE_SIZE` is 20. Each client fetches independently.
-3. **Scores are synced via polling** — each correct solve calls `POST /update-score`, and other clients read `latest.scores` during polling to update non-local players' track positions.
+3. **Scores are eventually consistent via polling** — each solve calls `POST /update-score`; other clients reflect updates on the next poll tick.
 4. **Room state is in-memory** — rooms are lost on server restart. Not persisted to database.
 5. **No room cleanup** — old rooms accumulate in `_puzzle_race_rooms` dict indefinitely.
 6. **Puzzle order differs per client** — each client shuffles independently, so players solve puzzles in different orders.
-7. **"Play again" does not create a new room** — it resets local state but uses the same room. The `raceBootstrapped` flag is not reset, so re-racing may not work correctly without a page reload.
+7. **Race participation and host start rules differ by layer** — UI requires 2+ players to enable host start, while backend start endpoint currently permits solo starts for testing.
