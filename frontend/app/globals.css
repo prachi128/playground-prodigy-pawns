@@ -148,6 +148,11 @@
   font-feature-settings: "kern" 1, "liga" 1;
 }
 
+.parent-fonts {
+  font-family: var(--font-parent, var(--font-coach)), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
 [data-coach-shell] .font-heading {
   font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
   font-weight: 700;
@@ -163,6 +168,19 @@
 }
 
 [data-coach-shell] .coach-main {
+  background: linear-gradient(
+    180deg,
+    hsl(210 40% 98%) 0%,
+    hsl(220 16% 96%) 48%,
+    hsl(210 32% 97%) 100%
+  );
+}
+
+[data-parent-shell] {
+  color: hsl(var(--foreground));
+}
+
+[data-parent-shell] .parent-main {
   background: linear-gradient(
     180deg,
     hsl(210 40% 98%) 0%,

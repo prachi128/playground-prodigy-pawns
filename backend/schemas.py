@@ -437,6 +437,7 @@ class AssignmentUpdate(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime] = None
     is_active: Optional[bool] = None
+    puzzle_ids: Optional[List[int]] = None
 
 
 # ── Small nested schemas ─────────────────────────────────────
@@ -528,6 +529,21 @@ class StudentAssignmentDetailResponse(BaseModel):
     description: Optional[str]
     due_date: Optional[datetime]
     puzzles: List[StudentAssignmentPuzzleRow] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ParentChildAssignmentResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    puzzle_count: int
+    puzzles_completed: int
+    completion_pct: float
+    is_complete: bool
+    is_overdue: bool
 
     class Config:
         from_attributes = True

@@ -3,9 +3,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { parentAPI, ChildInfo } from '@/lib/api';
-import { Loader2, Users, Trophy, Star, TrendingUp, Zap } from 'lucide-react';
+import api, { parentAPI, ChildInfo } from '@/lib/api';
+import { Loader2, Users, Trophy, Star, TrendingUp, Zap, BookOpen, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface ChildAssignment {
+  id: number
+  title: string
+  description: string | null
+  due_date: string | null
+  puzzle_count: number
+  puzzles_completed: number
+  completion_pct: number
+  is_complete: boolean
+  is_overdue: boolean
+}
 
 const rankColors: Record<string, string> = {
   Pawn: 'from-gray-400 to-gray-500',
@@ -28,12 +40,35 @@ const rankEmojis: Record<string, string> = {
 export default function ParentChildrenPage() {
   const [children, setChildren] = useState<ChildInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [childAssignments, setChildAssignments] = useState<Record<number, ChildAssignment[]>>({});
 
   useEffect(() => {
-    parentAPI.getChildren()
-      .then(setChildren)
-      .catch(() => toast.error('Failed to load children data'))
-      .finally(() => setLoading(false));
+    const loadChildren = async () => {
+      try {
+        const children = await parentAPI.getChildren();
+        setChildren(children);
+
+        const results = await Promise.allSettled(
+          children.map(child =>
+            api.get(`/api/parent/children/${child.id}/assignments`)
+              .then(res => ({ childId: child.id, data: res.data }))
+          )
+        );
+        const map: Record<number, ChildAssignment[]> = {};
+        results.forEach(r => {
+          if (r.status === 'fulfilled') {
+            map[r.value.childId] = r.value.data;
+          }
+        });
+        setChildAssignments(map);
+      } catch {
+        toast.error('Failed to load children data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChildren();
   }, []);
 
   if (loading) {
@@ -56,6 +91,7 @@ export default function ParentChildrenPage() {
           const rank = child.level_category || 'Pawn';
           const gradient = rankColors[rank] || rankColors.Pawn;
           const emoji = rankEmojis[rank] || '♟️';
+          const assignmentsForChild = childAssignments[child.id] ?? [];
 
           return (
             <div key={child.id} className="bg-white rounded-2xl border-2 border-gray-200 overflow-hidden hover:shadow-lg transition">
@@ -123,6 +159,55 @@ export default function ParentChildrenPage() {
                 ) : (
                   <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400 text-sm">
                     Not assigned to a batch yet
+                  </div>
+                )}
+
+                {assignmentsForChild.length > 0 && (
+                  <div className="mt-4 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" /> Assignments
+                    </p>
+                    <div className="space-y-2">
+                      {assignmentsForChild.slice(0, 3).map(a => (
+                        <div key={a.id} className="space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className={`text-sm font-medium truncate flex-1 ${
+                              a.is_complete ? 'text-gray-400 line-through' : 'text-gray-800'
+                            }`}>
+                              {a.title}
+                            </p>
+                            {a.is_complete ? (
+                              <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                            ) : a.is_overdue ? (
+                              <span className="text-xs font-semibold text-red-500 shrink-0">Overdue</span>
+                            ) : a.due_date ? (
+                              <span className="text-xs text-gray-400 shrink-0">
+                                Due {new Date(a.due_date).toLocaleDateString('en-IN', {
+                                  day: 'numeric', month: 'short'
+                                })}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full transition-all ${
+                                a.is_complete ? 'bg-green-500' : 'bg-primary-500'
+                              }`}
+                              style={{ width: `${Math.min(a.completion_pct, 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-xs text-gray-400">
+                            {a.puzzles_completed}/{a.puzzle_count} puzzles
+                            {' '}· {a.completion_pct}%
+                          </p>
+                        </div>
+                      ))}
+                      {assignmentsForChild.length > 3 && (
+                        <p className="text-xs text-primary-600 font-medium mt-1">
+                          +{assignmentsForChild.length - 3} more assignments
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

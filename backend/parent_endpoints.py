@@ -13,7 +13,7 @@ from auth import get_current_user
 from database import get_db
 from schemas import (
     ClassSessionResponse, AnnouncementResponse,
-    PaymentCheckoutCreate, PaymentResponse, ChildResponse,
+    PaymentCheckoutCreate, PaymentResponse, ChildResponse, ParentChildAssignmentResponse,
 )
 from stripe_service import create_checkout_session, verify_webhook
 
@@ -172,6 +172,78 @@ def get_children(parent: User = Depends(require_parent), db: Session = Depends(g
 
 
 # ==================== CLASSES ====================
+
+@router.get("/children/{child_id}/assignments", response_model=List[ParentChildAssignmentResponse])
+def get_child_assignments(
+    child_id: int,
+    parent: User = Depends(require_parent),
+    db: Session = Depends(get_db),
+):
+    children_ids = _get_children_ids(parent.id, db)
+    if child_id not in children_ids:
+        raise HTTPException(status_code=403, detail="Not your child")
+
+    batch_ids = [
+        sb.batch_id
+        for sb in db.query(StudentBatch).filter(
+            StudentBatch.student_id == child_id,
+            StudentBatch.is_active == True,
+        ).all()
+    ]
+
+    from sqlalchemy import or_
+    from models import Assignment, AssignmentPuzzle, AssignmentCompletion
+
+    assignments = (
+        db.query(Assignment)
+        .filter(
+            Assignment.is_active == True,
+            or_(
+                Assignment.student_id == child_id,
+                Assignment.batch_id.in_(batch_ids) if batch_ids else False,
+            ),
+        )
+        .order_by(Assignment.due_date.asc().nulls_last(), Assignment.created_at.desc())
+        .all()
+    )
+
+    now = datetime.utcnow()
+    result = []
+    for assignment in assignments:
+        total_puzzles = len(assignment.puzzles)
+        completed = (
+            db.query(AssignmentCompletion)
+            .filter(
+                AssignmentCompletion.assignment_id == assignment.id,
+                AssignmentCompletion.student_id == child_id,
+            )
+            .count()
+        )
+        pct = round(completed / total_puzzles * 100, 1) if total_puzzles > 0 else 0.0
+        due_date = assignment.due_date
+        if due_date is not None and due_date.tzinfo is not None:
+            due_date = due_date.replace(tzinfo=None)
+
+        is_overdue = bool(
+            due_date and due_date < now and completed < total_puzzles
+        )
+
+        result.append(
+            {
+                "id": assignment.id,
+                "title": assignment.title,
+                "description": assignment.description,
+                "due_date": assignment.due_date,
+                "puzzle_count": total_puzzles,
+                "puzzles_completed": completed,
+                "completion_pct": pct,
+                "is_complete": completed >= total_puzzles,
+                "is_overdue": is_overdue,
+            }
+        )
+
+    return result
+
 
 @router.get("/classes", response_model=List[ClassSessionResponse])
 def get_classes(parent: User = Depends(require_parent), db: Session = Depends(get_db)):

@@ -79,6 +79,7 @@ from student_management_backend import router as student_router, admin_router as
 from parent_endpoints import router as parent_router
 from batch_endpoints import router as batch_router, admin_router
 from assignment_endpoints import router as assignment_router
+from attendance_endpoints import router as attendance_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
@@ -336,6 +337,7 @@ app.include_router(parent_router)
 app.include_router(batch_router)
 app.include_router(admin_router)
 app.include_router(assignment_router)
+app.include_router(attendance_router)
 
 
 @app.get("/api/server-time")

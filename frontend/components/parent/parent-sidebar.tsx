@@ -7,6 +7,7 @@ import {
   Calendar,
   CreditCard,
   Users,
+  Megaphone,
   X,
   LogOut,
   Sparkles,
@@ -18,6 +19,7 @@ import toast from "react-hot-toast";
 const navItems = [
   { label: "Home", icon: LayoutDashboard, href: "/parent", color: "text-yellow-400" },
   { label: "Classes", icon: Calendar, href: "/parent/classes", color: "text-cyan-400" },
+  { label: "Announcements", icon: Megaphone, href: "/parent/announcements", color: "text-amber-400" },
   { label: "Payments", icon: CreditCard, href: "/parent/payments", color: "text-emerald-400" },
   { label: "Children", icon: Users, href: "/parent/children", color: "text-pink-400" },
 ];

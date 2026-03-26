@@ -364,7 +364,7 @@ def update_assignment(
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """Update title, description, due_date, or is_active."""
+    """Update title, description, due_date, is_active, and puzzle list."""
     a = db.query(Assignment).filter(
         Assignment.id == assignment_id,
         Assignment.coach_id == coach.id,
@@ -372,7 +372,42 @@ def update_assignment(
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    puzzle_ids = payload.pop("puzzle_ids", None)
+
+    if puzzle_ids is not None:
+        # Validate all puzzles exist and are active
+        for pid in puzzle_ids:
+            puzzle = db.query(Puzzle).filter(Puzzle.id == pid, Puzzle.is_active == True).first()
+            if not puzzle:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Puzzle {pid} not found or inactive",
+                )
+
+        kept_ids = set(puzzle_ids)
+        removed_ids = {ap.puzzle_id for ap in a.puzzles if ap.puzzle_id not in kept_ids}
+
+        # Replace puzzle order/composition
+        a.puzzles.clear()
+        db.flush()
+        for position, puzzle_id in enumerate(puzzle_ids):
+            db.add(
+                AssignmentPuzzle(
+                    assignment_id=a.id,
+                    puzzle_id=puzzle_id,
+                    position=position,
+                )
+            )
+
+        # Remove completion rows for puzzles no longer in this assignment.
+        if removed_ids:
+            db.query(AssignmentCompletion).filter(
+                AssignmentCompletion.assignment_id == a.id,
+                AssignmentCompletion.puzzle_id.in_(removed_ids),
+            ).delete(synchronize_session=False)
+
+    for field, value in payload.items():
         setattr(a, field, value)
 
     db.commit()

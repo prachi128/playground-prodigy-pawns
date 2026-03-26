@@ -8,6 +8,13 @@ import { useAuthStore } from '@/lib/store';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ParentLayout as ParentShell } from '@/components/parent/parent-layout';
+import { Inter } from 'next/font/google';
+
+const parentFont = Inter({
+  subsets: ['latin'],
+  variable: '--font-parent',
+  display: 'swap',
+});
 
 export default function ParentRouteLayout({
   children,
@@ -36,10 +43,12 @@ export default function ParentRouteLayout({
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-blue-50 flex items-center justify-center">
+      <div
+        className={`${parentFont.variable} parent-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50/80 via-slate-100 to-slate-200/90 backdrop-blur-md`}
+      >
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 font-semibold">Loading...</p>
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />
+          <p className="font-semibold text-foreground/90">Loading...</p>
         </div>
       </div>
     );
@@ -48,5 +57,9 @@ export default function ParentRouteLayout({
   if (!isAuthenticated) return null;
   if (user && user.role !== 'parent') return null;
 
-  return <ParentShell>{children}</ParentShell>;
+  return (
+    <div className={`${parentFont.variable} parent-fonts antialiased`}>
+      <ParentShell>{children}</ParentShell>
+    </div>
+  );
 }

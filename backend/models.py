@@ -518,6 +518,37 @@ class AssignmentCompletion(Base):
     puzzle     = relationship("Puzzle", foreign_keys=[puzzle_id])
 
 
+class Attendance(Base):
+    __tablename__ = "attendance"
+
+    id               = Column(Integer, primary_key=True, 
+                              index=True)
+    class_session_id = Column(Integer, 
+                              ForeignKey("class_sessions.id"), 
+                              nullable=False)
+    student_id       = Column(Integer, 
+                              ForeignKey("users.id"), 
+                              nullable=False)
+    status           = Column(String(10), 
+                              default="absent", 
+                              nullable=False)
+    marked_by        = Column(Integer, 
+                              ForeignKey("users.id"), 
+                              nullable=False)
+    marked_at        = Column(DateTime, 
+                              default=datetime.utcnow, 
+                              nullable=False)
+    notes            = Column(Text, nullable=True)
+
+    # Relationships
+    class_session = relationship("ClassSession", 
+                                 foreign_keys=[class_session_id])
+    student       = relationship("User", 
+                                 foreign_keys=[student_id])
+    marker        = relationship("User", 
+                                 foreign_keys=[marked_by])
+
+
 class AdminAuditLog(Base):
     __tablename__ = "admin_audit_logs"
 

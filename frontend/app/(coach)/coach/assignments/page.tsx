@@ -19,6 +19,7 @@ import {
   Loader2,
   X,
   Trash2,
+  Pencil,
 } from 'lucide-react';
 
 const cardBase =
@@ -59,6 +60,7 @@ interface Assignment {
   is_active: boolean;
   created_at: string;
   puzzle_count: number;
+  puzzles?: Array<{ puzzle_id: number; title: string; difficulty: string; xp_reward: number }>;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -102,7 +104,10 @@ export default function AssignmentsPage() {
   const [students, setStudents]       = useState<Student[]>([]);
   const [loading, setLoading]         = useState(true);
   const [showCreate, setShowCreate]   = useState(false);
+  const [showEdit, setShowEdit]       = useState(false);
   const [creating, setCreating]       = useState(false);
+  const [editing, setEditing]         = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<number | null>(null);
   const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('active');
 
   // Create form state
@@ -221,6 +226,66 @@ export default function AssignmentsPage() {
     }
   };
 
+  const openEdit = async (id: number) => {
+    setEditingAssignmentId(id);
+    try {
+      const res = await api.get(`/api/assignments/${id}`);
+      const a: Assignment = res.data;
+      setForm({
+        title: a.title ?? '',
+        description: a.description ?? '',
+        target: a.batch_id ? 'batch' : 'student',
+        batch_id: a.batch_id ? String(a.batch_id) : '',
+        student_id: a.student_id ? String(a.student_id) : '',
+        due_date: a.due_date ? new Date(a.due_date).toISOString().slice(0, 16) : '',
+      });
+
+      const puzzleIds = (a.puzzles ?? []).map((p) => p.puzzle_id);
+      setSelectedPuzzles(puzzleIds);
+      setSelectedPuzzleDetails(
+        new Map((a.puzzles ?? []).map((p) => [p.puzzle_id, {
+          id: p.puzzle_id,
+          title: p.title,
+          difficulty: p.difficulty,
+          xp_reward: p.xp_reward,
+          is_active: true,
+        }]))
+      );
+      setPuzzleQuery('');
+      setPuzzleResults([]);
+      setPuzzleSearching(false);
+      setShowEdit(true);
+    } catch {
+      toast.error('Failed to load assignment for editing');
+      setEditingAssignmentId(null);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingAssignmentId) return;
+    if (!form.title.trim()) { toast.error('Title is required'); return; }
+    if (selectedPuzzles.length === 0) { toast.error('Select at least one puzzle'); return; }
+
+    setEditing(true);
+    try {
+      await api.put(`/api/assignments/${editingAssignmentId}`, {
+        title: form.title,
+        description: form.description || null,
+        due_date: form.due_date ? new Date(form.due_date).toISOString() : null,
+        puzzle_ids: selectedPuzzles,
+      });
+      toast.success('Assignment updated!');
+      setShowEdit(false);
+      setEditingAssignmentId(null);
+      resetForm();
+      loadAll();
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || 'Failed to update assignment');
+    } finally {
+      setEditing(false);
+    }
+  };
+
   const resetForm = () => {
     setForm({ title: '', description: '', target: 'batch', batch_id: '', student_id: '', due_date: '' });
     setSelectedPuzzles([]);
@@ -331,6 +396,16 @@ export default function AssignmentsPage() {
                   {a.is_active && (
                     <button
                       type="button"
+                      onClick={() => openEdit(a.id)}
+                      className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                      title="Edit assignment"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                  {a.is_active && (
+                    <button
+                      type="button"
                       onClick={() => handleDeactivate(a.id)}
                       className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                       title="Deactivate"
@@ -387,12 +462,14 @@ export default function AssignmentsPage() {
         </div>
       )}
 
-      {showCreate && (
+      {(showCreate || showEdit) && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-8 backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowCreate(false);
+              setShowEdit(false);
+              setEditingAssignmentId(null);
               resetForm();
             }
           }}
@@ -410,12 +487,14 @@ export default function AssignmentsPage() {
                 id="new-assignment-title"
                 className="font-heading text-xl font-bold text-card-foreground"
               >
-                New assignment
+                {showEdit ? 'Edit assignment' : 'New assignment'}
               </h2>
               <button
                 type="button"
                 onClick={() => {
                   setShowCreate(false);
+                  setShowEdit(false);
+                  setEditingAssignmentId(null);
                   resetForm();
                 }}
                 className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted"
@@ -447,6 +526,7 @@ export default function AssignmentsPage() {
                 />
               </div>
 
+              {!showEdit && (
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-foreground">Assign to *</label>
                 <div className="mb-3 flex gap-3">
@@ -504,6 +584,7 @@ export default function AssignmentsPage() {
                   </select>
                 )}
               </div>
+              )}
 
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-foreground">
@@ -623,6 +704,8 @@ export default function AssignmentsPage() {
                 type="button"
                 onClick={() => {
                   setShowCreate(false);
+                  setShowEdit(false);
+                  setEditingAssignmentId(null);
                   resetForm();
                 }}
                 className="flex-1 rounded-xl border border-border bg-muted py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80"
@@ -631,17 +714,17 @@ export default function AssignmentsPage() {
               </button>
               <button
                 type="button"
-                onClick={handleCreate}
-                disabled={creating}
+                onClick={showEdit ? handleUpdate : handleCreate}
+                disabled={showEdit ? editing : creating}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
-                {creating ? (
+                {(showEdit ? editing : creating) ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Creating…
+                    {showEdit ? 'Saving…' : 'Creating…'}
                   </>
                 ) : (
-                  'Create assignment'
+                  showEdit ? 'Save changes' : 'Create assignment'
                 )}
               </button>
             </div>

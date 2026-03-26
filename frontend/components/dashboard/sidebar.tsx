@@ -18,6 +18,7 @@ import {
   LogOut,
   Settings,
   User,
+  CalendarCheck,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 
@@ -28,6 +29,7 @@ const navItems = [
   { label: "Puzzles", icon: Puzzle, href: "/puzzles", color: "text-cyan-400", badge: "3 new", progress: 64 },
   { label: "Assignments", icon: BookOpen, href: "/assignments", color: "text-indigo-400", badge: null, progress: null },
   { label: "Learn", icon: GraduationCap, href: "/learn", color: "text-pink-400", badge: "1 new", progress: 45 },
+  { label: "Attendance", icon: CalendarCheck, href: "/attendance", color: "text-teal-300", badge: null, progress: null },
   { label: "Progress", icon: TrendingUp, href: "/progress", color: "text-emerald-300", badge: null, progress: 87 },
   { label: "Settings", icon: Settings, href: "/settings", color: "text-blue-300", badge: null, progress: null },
   { label: "Profile", icon: User, href: "/profile", color: "text-purple-300", badge: null, progress: null },
