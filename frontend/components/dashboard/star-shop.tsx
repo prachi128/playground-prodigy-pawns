@@ -41,7 +41,7 @@ export function StarShopPreview() {
     }
   }
 
-  const maxConvertibleStars = useMemo(() => Math.floor((user?.total_xp ?? 0) / 200), [user?.total_xp])
+  const maxConvertibleStars = useMemo(() => Math.floor((user?.total_xp ?? 0) / 250), [user?.total_xp])
 
   const convertOneStar = async () => {
     setConverting(true)
@@ -49,7 +49,7 @@ export function StarShopPreview() {
       const res = await rewardsAPI.convertXpToStars(1)
       setStars(res.star_balance)
       updateUser({ star_balance: res.star_balance, total_xp: res.remaining_xp })
-      toast.success("Converted 200 XP into 1 star")
+      toast.success("Converted 250 XP into 1 star")
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? "XP conversion failed")
     } finally {
@@ -80,7 +80,7 @@ export function StarShopPreview() {
               <Crown className="h-6 w-6 text-white" />
               <div>
                 <h3 className="font-heading text-lg font-bold text-white">Star Shop</h3>
-                <p className="text-xs font-semibold text-white/80">1 star = 200 XP</p>
+                <p className="text-xs font-semibold text-white/80">1 star = 250 XP</p>
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -93,7 +93,7 @@ export function StarShopPreview() {
                 disabled={converting || maxConvertibleStars < 1}
                 className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Convert 200 XP -> 1 Star
+                Convert 250 XP {"->"} 1 Star
               </button>
             </div>
           </div>

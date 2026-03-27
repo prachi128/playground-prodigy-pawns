@@ -49,7 +49,7 @@ These are implemented mainly in `main.py` or `auth.py` and are reused by multipl
 
 | Function / Constant | Responsibility | Notes |
 |----------|----------------|-------|
-| `XP_PER_STAR` | Conversion constant for rewards economy. | Current rule: **1 star = 200 XP**. |
+| `XP_PER_STAR` | Conversion constant for rewards economy. | Current rule: **1 star = 250 XP**. |
 | `get_rewards_wallet(...)` | Returns wallet state (`total_xp`, `star_balance`, convertible stars). | Auth required. |
 | `convert_xp_to_stars(...)` | Deducts XP and increments `star_balance`. | Validates sufficient XP and positive star amount. |
 | `get_shop_catalog(...)` | Returns available shop items and user star balance. | Current catalog is server-defined. |
@@ -239,7 +239,7 @@ Each exported object groups **typed async functions** that mirror backend routes
 ## 7. Design invariants and constraints
 
 1. **Level vs XP:** Display **level** follows **rating** (Elo from PvP). **XP** tracks engagement (puzzles, hints cost XP); `total_xp` does not drive level in the current backend rules.
-2. **Stars vs XP:** Stars are a separate currency (`1 star = 200 XP`) and are persisted in `users.star_balance`; shop purchases spend stars, not rating.
+2. **Stars vs XP:** Stars are a separate currency (`1 star = 250 XP`) and are persisted in `users.star_balance`; shop purchases spend stars, not rating.
 3. **Bot games:** No rating change for humans or bot user when `__BOT__` participates.
 4. **Puzzle Racer rooms:** In-memory only; scaling out or restart clears rooms unless replaced with Redis/DB later.
 5. **Auth:** Tokens are HttpOnly; frontend relies on cookies + `user` in Zustand.

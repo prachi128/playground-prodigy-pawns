@@ -71,7 +71,7 @@ These express what “success” looks like as the product matures; they guide p
 3. **Progress and motivation** — Elo-style rating for PvP games, rating-driven level bands, leaderboards (XP and rating), stats on profile.
 4. **Coach tools** — Puzzle CRUD with optional auto-difficulty/theme from analysis; student lists and detailed stats; batch lifecycle.
 5. **Parent and program layer** — Dashboard, children linkage, classes and announcements, payment creation and history (Stripe-oriented backend).
-6. **Rewards economy** — XP usage for hints, XP-to-stars conversion (`1 star = 200 XP`), and star-shop purchase flows.
+6. **Rewards economy** — XP usage for hints, XP-to-stars conversion (`1 star = 250 XP`), and star-shop purchase flows.
 7. **Social and competitive modes** — Puzzle Racer multiplayer rooms (shared race state, scores, display names).
 
 ---
@@ -81,7 +81,7 @@ These express what “success” looks like as the product matures; they guide p
 - **Kid-first UX** combined with **serious chess**: not only animations and XP, but **python-chess + Stockfish** on the server for legality, PGN/FEN state, and analysis.
 - **Coach-authored content** inside the same app students use—no export/import to a separate puzzle database.
 - **Roles that match real programs**: student, coach/admin, parent—not a single generic “user.”
-- **Clear separation of progression mechanics**: **rating** drives competitive levels; **XP** powers hints/reward flow; **stars** provide a separate economy layer (`1 star = 200 XP`) for shop-style rewards.
+- **Clear separation of progression mechanics**: **rating** drives competitive levels; **XP** powers hints/reward flow; **stars** provide a separate economy layer (`1 star = 250 XP`) for shop-style rewards.
 - **Bot platform maturity**: named bot roster with target ratings, telemetry, and rollout/calibration controls (not just fixed depth presets).
 
 ---

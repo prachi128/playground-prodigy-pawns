@@ -123,7 +123,7 @@ The Coach Dashboard empowers chess coaches and administrators to:
 - Rating and level are available in platform data, where:
   - level is driven by rating bands,
   - XP is separate from level progression.
-- Stars are now part of the rewards economy (1 star = 200 XP), but coach-facing visibility is still limited.
+- Stars are now part of the rewards economy (1 star = 250 XP), but coach-facing visibility is still limited.
 
 **Target coaching value**:
 - Coaches should review all progression signals together to guide student plans:

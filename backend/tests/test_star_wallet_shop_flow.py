@@ -32,7 +32,7 @@ class StarWalletShopFlowTests(unittest.TestCase):
         self.assertEqual(response["xp_per_star"], XP_PER_STAR)
         self.assertEqual(response["total_xp"], 450)
         self.assertEqual(response["star_balance"], 3)
-        self.assertEqual(response["max_convertible_stars"], 2)
+        self.assertEqual(response["max_convertible_stars"], 1)
 
     def test_convert_xp_to_stars_updates_both_balances(self):
         user = SimpleNamespace(id=5, total_xp=900, star_balance=1)
@@ -41,10 +41,10 @@ class StarWalletShopFlowTests(unittest.TestCase):
         payload = ConvertXpToStarsRequest(stars=3)
         response = convert_xp_to_stars(payload=payload, user_id=5, db=db)
 
-        self.assertEqual(response["xp_spent"], 600)
-        self.assertEqual(response["remaining_xp"], 300)
+        self.assertEqual(response["xp_spent"], 750)
+        self.assertEqual(response["remaining_xp"], 150)
         self.assertEqual(response["star_balance"], 4)
-        self.assertEqual(user.total_xp, 300)
+        self.assertEqual(user.total_xp, 150)
         self.assertEqual(user.star_balance, 4)
 
     def test_convert_xp_to_stars_rejects_insufficient_xp(self):

@@ -103,7 +103,7 @@ _AVATAR_UPLOAD_DIR = _UPLOAD_ROOT / "avatars"
 _MAX_AVATAR_BYTES = 2 * 1024 * 1024
 # Rating thresholds: level 2 starts at 300, level 3 at 500, ..., level 15 at 2900+
 _RATING_THRESHOLDS = [300, 500, 700, 900, 1100, 1300, 1500, 1700, 1900, 2100, 2300, 2500, 2700, 2900]
-XP_PER_STAR = 200
+XP_PER_STAR = 250
 
 
 def level_from_rating(rating: int) -> int:

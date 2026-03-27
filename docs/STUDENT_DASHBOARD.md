@@ -550,7 +550,7 @@ The puzzle solving page provides a **complete learning experience** where studen
 
 - **Level Source**: Level is derived from **rating bands**, not XP.
 - **XP Role**: XP is used for puzzle rewards and hint costs.
-- **Stars Economy**: `1 star = 200 XP`.
+- **Stars Economy**: `1 star = 250 XP`.
 - **Star Shop**: Students can spend stars on shop items; purchases are tracked.
 
 ---
@@ -903,9 +903,9 @@ user.total_xp += xpEarned;
 
 ```javascript
 // Convert XP to stars
-// 1 star = 200 XP
-if (user.total_xp >= starsToConvert * 200) {
-  user.total_xp -= starsToConvert * 200;
+// 1 star = 250 XP
+if (user.total_xp >= starsToConvert * 250) {
+  user.total_xp -= starsToConvert * 250;
   user.star_balance += starsToConvert;
 }
 

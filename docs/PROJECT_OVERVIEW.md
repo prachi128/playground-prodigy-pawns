@@ -15,7 +15,7 @@ This document explains the project functionally and technically so you can answe
 Core progression model:
 - **Rating** drives **levels**.
 - **XP** is earned/spent for puzzle ecosystem.
-- **Stars** are a separate rewards currency (`1 star = 200 XP`).
+- **Stars** are a separate rewards currency (`1 star = 250 XP`).
 
 ---
 
@@ -83,7 +83,7 @@ Route families:
 
 6. **Rewards economy**
    - Wallet endpoint for XP + star balance.
-   - XP-to-stars conversion (`1 star = 200 XP`).
+   - XP-to-stars conversion (`1 star = 250 XP`).
    - Star shop catalog and purchase persistence.
 
 7. **Coach/admin operations**
@@ -149,7 +149,7 @@ Core entities:
   Levels are derived from rating bands, not XP.
 
 - **How does rewards economy work?**
-  XP can be converted to stars at `1 star = 200 XP`; stars are spent via shop purchases.
+  XP can be converted to stars at `1 star = 250 XP`; stars are spent via shop purchases.
 
 - **How does bot strength work?**
   Runtime resolves bot rating/profile config and uses humanized Stockfish selection policies plus telemetry/calibration tooling.

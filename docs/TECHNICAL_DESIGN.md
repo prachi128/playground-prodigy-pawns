@@ -60,7 +60,7 @@ Design intent:
   - Deducted for hints (tiered costs).
 - **Stars**:
   - Separate wallet currency (`users.star_balance`).
-  - Conversion rule: `1 star = 200 XP`.
+  - Conversion rule: `1 star = 250 XP`.
   - Spent in shop purchases persisted in `shop_purchases`.
 
 ## 4.2 Games

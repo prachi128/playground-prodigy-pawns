@@ -56,7 +56,7 @@ backend/
   - XP gain/spend logic for puzzle loop.
 - **Rewards economy**:
   - wallet endpoint (`total_xp`, `star_balance`, convertibility),
-  - XP-to-stars conversion (`1 star = 200 XP`),
+  - XP-to-stars conversion (`1 star = 250 XP`),
   - star shop catalog + purchases (`shop_purchases` persistence).
 - **Bot platform**:
   - profile versioning and rollouts,

@@ -74,11 +74,11 @@ Whenever rating changes, level is recalculated from rating.
 
 ### Rules now implemented
 
-- Conversion rate: `1 star = 200 XP` (`XP_PER_STAR = 200`).
+- Conversion rate: `1 star = 250 XP` (`XP_PER_STAR = 250`).
 - Stars are persisted per user in `users.star_balance`.
 - XP-to-star conversion endpoint:
   - `POST /api/rewards/convert-xp-to-stars`
-  - Deducts XP (`stars * 200`) and adds to `star_balance`.
+  - Deducts XP (`stars * 250`) and adds to `star_balance`.
 - Wallet endpoint:
   - `GET /api/rewards/wallet`
   - Returns XP, stars, and convertible amount.
