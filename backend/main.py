@@ -12,6 +12,8 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Set
 import io
 import random
+import re
+import chess
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -1196,6 +1198,50 @@ def _record_assignment_completion_if_eligible(
     )
 
 
+_UCI_MOVE_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbnQRBN]?$")
+
+
+def _split_move_sequence(moves: str | None) -> List[str]:
+    if not moves:
+        return []
+    return [token for token in str(moves).strip().split() if token]
+
+
+def _normalize_move_token(board: chess.Board, token: str) -> str:
+    cleaned = token.strip()
+    if not cleaned:
+        raise ValueError("Empty move token")
+
+    if _UCI_MOVE_RE.fullmatch(cleaned):
+        move = chess.Move.from_uci(cleaned.lower())
+        if move not in board.legal_moves:
+            raise ValueError(f"Illegal UCI move: {cleaned}")
+        board.push(move)
+        return move.uci()
+
+    move = board.parse_san(cleaned)
+    board.push(move)
+    return move.uci()
+
+
+def _normalize_move_sequence(fen: str, moves: str | None) -> List[str]:
+    board = chess.Board(fen)
+    normalized: List[str] = []
+    for token in _split_move_sequence(moves):
+        normalized.append(_normalize_move_token(board, token))
+    return normalized
+
+
+def _is_puzzle_solution_correct(fen: str, solution_moves: str | None, attempted_moves: str | None) -> bool:
+    try:
+        normalized_solution = _normalize_move_sequence(fen, solution_moves)
+        normalized_attempt = _normalize_move_sequence(fen, attempted_moves)
+    except ValueError:
+        return False
+
+    return normalized_attempt == normalized_solution
+
+
 @app.post("/api/puzzles/{puzzle_id}/attempt", response_model=PuzzleAttemptResponse)
 def submit_puzzle_attempt(
     puzzle_id: int,
@@ -1213,9 +1259,15 @@ def submit_puzzle_attempt(
     if not puzzle:
         raise HTTPException(status_code=404, detail="Puzzle not found")
     
+    authoritative_solved = _is_puzzle_solution_correct(
+        puzzle.fen,
+        puzzle.moves,
+        attempt.moves_made,
+    )
+
     # Calculate XP earned
     xp_earned = 0
-    if attempt.is_solved:
+    if authoritative_solved:
         xp_earned = puzzle.xp_reward
         # Reduce XP for hints used
         xp_earned = max(5, xp_earned - (attempt.hints_used * 2))
@@ -1232,7 +1284,7 @@ def submit_puzzle_attempt(
     puzzle_attempt = PuzzleAttempt(
         user_id=current_user.id,
         puzzle_id=puzzle_id,
-        is_solved=attempt.is_solved,
+        is_solved=authoritative_solved,
         moves_made=attempt.moves_made,
         time_taken=attempt.time_taken,
         hints_used=attempt.hints_used,
@@ -1240,7 +1292,7 @@ def submit_puzzle_attempt(
     )
     
     db.add(puzzle_attempt)
-    if attempt.is_solved:
+    if authoritative_solved:
         create_notification(
             db,
             current_user.id,
@@ -1249,7 +1301,7 @@ def submit_puzzle_attempt(
             f"You earned {xp_earned} XP. Great work!",
             link_url=f"/puzzles/{puzzle_id}",
         )
-    if assignment_id is not None and attempt.is_solved:
+    if assignment_id is not None and authoritative_solved:
         _record_assignment_completion_if_eligible(
             db, current_user.id, assignment_id, puzzle_id
         )

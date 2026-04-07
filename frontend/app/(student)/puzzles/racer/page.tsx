@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Zap, Trophy, Clock, Play, RotateCcw, Star, UserPlus, Copy, Home } from 'lucide-react';
@@ -10,6 +10,7 @@ import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { puzzleAPI, Puzzle, puzzleRacerRoomsAPI, PuzzleRaceRoomState, usersAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
+import { normalizePuzzleMoves } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 /** Fixed race duration: 2.5 minutes */
@@ -61,6 +62,10 @@ export default function PuzzleRacerPage() {
   const [showCorrect, setShowCorrect] = useState(false);
   const [showWrong, setShowWrong] = useState(false);
   const [loadingPuzzle, setLoadingPuzzle] = useState(false);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [legalTargets, setLegalTargets] = useState<string[]>([]);
+  const [captureTargets, setCaptureTargets] = useState<string[]>([]);
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
 
   const [participants, setParticipants] = useState<RacerParticipant[]>([]);
   const [roomState, setRoomState] = useState<PuzzleRaceRoomState | null>(null);
@@ -373,6 +378,10 @@ export default function PuzzleRacerPage() {
     setMovesMade([]);
     setShowCorrect(false);
     setShowWrong(false);
+    setSelectedSquare(null);
+    setLegalTargets([]);
+    setCaptureTargets([]);
+    setLastMove(null);
     startTimeRef.current = Date.now();
   }, [puzzlePool, poolIndex]);
 
@@ -475,6 +484,10 @@ export default function PuzzleRacerPage() {
       setCurrentPuzzle(first);
       setGame(new Chess(first.fen));
       setMovesMade([]);
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+      setLastMove(null);
       startTimeRef.current = Date.now();
 
       // Sync timing with server
@@ -633,6 +646,17 @@ export default function PuzzleRacerPage() {
     }
   }, [phase]);
 
+  const getLegalTargets = useCallback((square: string) => {
+    if (!game || showCorrect || showWrong) return [];
+    const piece = game.get(square);
+    if (!piece || piece.color !== game.turn()) return [];
+    const moves = game.moves({ square, verbose: true });
+    return moves.map((move) => ({
+      to: move.to,
+      isCapture: Boolean(move.captured) || move.flags.includes('e'),
+    }));
+  }, [game, showCorrect, showWrong]);
+
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string) => {
       if (!game || !currentPuzzle || showCorrect || showWrong) return false;
@@ -642,14 +666,17 @@ export default function PuzzleRacerPage() {
         const newMoves = [...movesMade, `${sourceSquare}${targetSquare}`];
         setMovesMade(newMoves);
         setGame(new Chess(game.fen()));
-        const solutionMoves = currentPuzzle.moves.split(' ');
+        setLastMove({ from: sourceSquare, to: targetSquare });
+        setSelectedSquare(null);
+        setLegalTargets([]);
+        setCaptureTargets([]);
+        const solutionMoves = normalizePuzzleMoves(currentPuzzle.fen, currentPuzzle.moves);
         const timeTaken = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
         const lastMoveStr = `${sourceSquare}${targetSquare}`;
         const moveIdx = newMoves.length - 1;
         const expectedMove = solutionMoves[moveIdx];
-        const thisMoveCorrect = expectedMove &&
-          (lastMoveStr === expectedMove || lastMoveStr === expectedMove.replace(/[+=]/, ''));
+        const thisMoveCorrect = expectedMove && lastMoveStr === expectedMove;
 
         if (!thisMoveCorrect) {
           puzzleAPI
@@ -701,6 +728,74 @@ export default function PuzzleRacerPage() {
     },
     [game, currentPuzzle, movesMade, showCorrect, showWrong, user, updateUser, loadNextPuzzle]
   );
+
+  const handleSquareClick = useCallback((square: string) => {
+    if (!game || showCorrect || showWrong) return;
+
+    if (!selectedSquare) {
+      const targets = getLegalTargets(square);
+      if (targets.length === 0) return;
+      setSelectedSquare(square);
+      setLegalTargets(targets.filter((move) => !move.isCapture).map((move) => move.to));
+      setCaptureTargets(targets.filter((move) => move.isCapture).map((move) => move.to));
+      return;
+    }
+
+    if (square === selectedSquare) {
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+      return;
+    }
+
+    if (legalTargets.includes(square) || captureTargets.includes(square)) {
+      void onDrop(selectedSquare, square);
+      return;
+    }
+
+    const targets = getLegalTargets(square);
+    if (targets.length > 0) {
+      setSelectedSquare(square);
+      setLegalTargets(targets.filter((move) => !move.isCapture).map((move) => move.to));
+      setCaptureTargets(targets.filter((move) => move.isCapture).map((move) => move.to));
+    } else {
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+    }
+  }, [captureTargets, game, getLegalTargets, legalTargets, onDrop, selectedSquare, showCorrect, showWrong]);
+
+  const squareStyles = useMemo(() => {
+    const styles: Record<string, React.CSSProperties> = {};
+
+    if (lastMove) {
+      styles[lastMove.from] = { backgroundColor: 'rgba(255,255,0,0.35)' };
+      styles[lastMove.to] = { backgroundColor: 'rgba(255,255,0,0.35)' };
+    }
+
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] || {}),
+        backgroundColor: 'rgba(190,242,100,0.38)',
+      };
+    }
+
+    legalTargets.forEach((square) => {
+      styles[square] = {
+        ...(styles[square] || {}),
+        backgroundImage: 'radial-gradient(circle, rgba(163,230,53,0.82) 18%, rgba(163,230,53,0) 22%)',
+      };
+    });
+
+    captureTargets.forEach((square) => {
+      styles[square] = {
+        ...(styles[square] || {}),
+        backgroundColor: 'rgba(251,191,36,0.45)',
+      };
+    });
+
+    return styles;
+  }, [captureTargets, lastMove, legalTargets, selectedSquare]);
 
   // Join room handler for guests
   const handleJoinRoom = useCallback(async () => {
@@ -954,7 +1049,7 @@ export default function PuzzleRacerPage() {
   const lobbyGame = game ?? new Chess();
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] flex flex-col overflow-y-auto relative">
+    <div className="min-h-[calc(100vh-5rem)] -mt-2 flex flex-col overflow-y-auto relative lg:-mt-3">
       {/* Countdown overlay */}
       {phase === 'countdown' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -1083,25 +1178,18 @@ export default function PuzzleRacerPage() {
       {/* Main content: Lichess-style layout (board + lanes under it, right panel) */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem] gap-2 pl-2 sm:pl-3 pr-2 sm:pr-3 pt-0">
         {/* Left: Board + lanes */}
-        <div className="min-w-0 flex flex-col items-center gap-2">
+        <div className="min-w-0 flex flex-col items-center gap-1.5">
           {phase !== 'racing' ? (
-            <div className="flex flex-col items-center min-h-0 gap-3 w-full">
+            <div className="flex flex-col items-center min-h-0 gap-1.5 w-full">
               {/* Initial state chessboard (non-interactive in lobby) */}
               <div className="relative rounded-2xl border-2 border-border bg-card p-1 shadow-xl">
-                <div
-                  className="w-full"
-                  style={{
-                    maxWidth: 'min(1040px, calc(100vw - 1rem), calc(100vh - 10rem))',
-                  }}
-                >
+                <div className="mx-auto w-full max-w-[min(100%,360px)] sm:max-w-[420px]">
                   <Chessboard
                     key={lobbyGame.fen()}
                     options={{
                       position: lobbyGame.fen(),
                       arePiecesDraggable: false,
-                      boardStyle: { borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.2)' },
-                      darkSquareStyle: { backgroundColor: 'hsl(var(--primary))' },
-                      lightSquareStyle: { backgroundColor: 'hsl(var(--primary) / 0.15)' },
+                      boardStyle: { borderRadius: '12px', boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)' },
                     }}
                   />
                 </div>
@@ -1113,7 +1201,7 @@ export default function PuzzleRacerPage() {
               <p className="font-heading font-semibold text-muted-foreground">Loading puzzle…</p>
             </div>
           ) : currentPuzzle && game ? (
-            <div className="flex flex-col items-center min-h-0 gap-2">
+            <div className="flex flex-col items-center min-h-0 gap-1">
               <div className="relative rounded-2xl border-2 border-border bg-card p-1 shadow-xl">
                 {(showCorrect || showWrong) && (
                   <div
@@ -1126,13 +1214,7 @@ export default function PuzzleRacerPage() {
                     </span>
                   </div>
                 )}
-                <div
-                  className="w-full"
-                  style={{
-                    // Keep board large but fully within viewport on small screens
-                    maxWidth: 'min(1040px, calc(100vw - 1rem), calc(100vh - 8rem))',
-                  }}
-                >
+                <div className="mx-auto w-full max-w-[min(100%,360px)] sm:max-w-[420px]">
                   <Chessboard
                     key={game.fen()}
                     options={{
@@ -1140,14 +1222,16 @@ export default function PuzzleRacerPage() {
                       boardOrientation: game.turn() === 'w' ? 'white' : 'black',
                       onPieceDrop: ({ sourceSquare, targetSquare }) =>
                         sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
-                      boardStyle: { borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.2)' },
-                      darkSquareStyle: { backgroundColor: 'hsl(var(--primary))' },
-                      lightSquareStyle: { backgroundColor: 'hsl(var(--primary) / 0.15)' },
+                      onSquareClick: ({ square }) => {
+                        if (!square) return;
+                        handleSquareClick(square);
+                      },
+                      boardStyle: { borderRadius: '12px', boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)' },
+                      squareStyles,
                     }}
                   />
                 </div>
               </div>
-              <div className="h-2" />
             </div>
           ) : (
             <div className="rounded-2xl border-2 border-border bg-card p-8 text-center">

@@ -51,7 +51,7 @@ export default function BeatTheBotPage() {
     to: string;
     color: 'w' | 'b';
   } | null>(null);
-  const [showWinCelebration, setShowWinCelebration] = useState(false);
+  const [showGameResultDialog, setShowGameResultDialog] = useState(false);
   const [showResignDialog, setShowResignDialog] = useState(false);
   const [isGameAnalysisMode, setIsGameAnalysisMode] = useState(false);
   const previousResultRef = useRef<string | null>(null);
@@ -365,10 +365,9 @@ export default function BeatTheBotPage() {
     if (!activeGameId || !game || game.result || isResigning) return;
     try {
       setIsResigning(true);
-      await gameAPI.resign(activeGameId);
+      const updated = await gameAPI.resign(activeGameId);
       setShowResignDialog(false);
-      // After resign, return to setup panel (start game / choose opponent)
-      startNewSetup();
+      hydrateFromGame(updated);
       toast('You resigned');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to resign');
@@ -389,7 +388,7 @@ export default function BeatTheBotPage() {
     setCaptureTargets([]);
     setPendingPromotion(null);
     setShowResignDialog(false);
-    setShowWinCelebration(false);
+    setShowGameResultDialog(false);
     setIsGameAnalysisMode(false);
     previousResultRef.current = null;
     setAnalysisPly(null);
@@ -398,11 +397,59 @@ export default function BeatTheBotPage() {
   useEffect(() => {
     const currentResult = game?.result || null;
     const previousResult = previousResultRef.current;
-    if (currentResult && currentResult !== previousResult && game?.winner_id === user?.id) {
-      setShowWinCelebration(true);
+    if (currentResult && currentResult !== previousResult) {
+      setShowGameResultDialog(true);
     }
     previousResultRef.current = currentResult;
-  }, [game?.result, game?.winner_id, user?.id]);
+  }, [game?.result]);
+
+  const gameResultTone = useMemo(() => {
+    if (game?.result === '1/2-1/2') {
+      return {
+        emoji: '😐♟️',
+        title: "It's a draw!",
+        subtitle: 'Good battle. Nobody could break through this time.',
+        shellClassName: 'border-slate-300 bg-gradient-to-b from-slate-100 via-zinc-50 to-stone-100',
+        titleClassName: 'text-slate-700',
+        subtitleClassName: 'text-slate-900',
+        detailClassName: 'text-slate-700',
+        primaryButtonClassName:
+          'rounded-full bg-gradient-to-r from-slate-600 to-zinc-500 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:from-slate-500 hover:to-zinc-400',
+        secondaryButtonClassName:
+          'rounded-full border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-50',
+      };
+    }
+
+    if (game?.winner_id === user?.id) {
+      return {
+        emoji: '🎉🏆🎉',
+        title: 'You won!',
+        subtitle: game?.result_reason === 'checkmate' ? "That's a checkmate!" : `Great game against ${activeBot.name}!`,
+        shellClassName: 'border-emerald-300 bg-gradient-to-b from-emerald-100 via-teal-50 to-lime-100',
+        titleClassName: 'text-emerald-700',
+        subtitleClassName: 'text-emerald-700',
+        detailClassName: 'text-emerald-900',
+        primaryButtonClassName:
+          'rounded-full bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:from-emerald-500 hover:to-green-400',
+        secondaryButtonClassName:
+          'rounded-full border border-emerald-400 bg-white px-4 py-2 text-sm font-bold text-emerald-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-emerald-50',
+      };
+    }
+
+    return {
+      emoji: '😔♟️',
+      title: 'You lost',
+      subtitle: game?.result_reason === 'resign' ? 'This one ended in resignation.' : `${activeBot.name} got the better of this game.`,
+      shellClassName: 'border-rose-300 bg-gradient-to-b from-rose-100 via-orange-50 to-amber-100',
+      titleClassName: 'text-rose-700',
+      subtitleClassName: 'text-rose-700',
+      detailClassName: 'text-rose-950',
+      primaryButtonClassName:
+        'rounded-full bg-gradient-to-r from-rose-600 to-orange-500 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:from-rose-500 hover:to-orange-400',
+      secondaryButtonClassName:
+        'rounded-full border border-rose-300 bg-white px-4 py-2 text-sm font-bold text-rose-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-rose-50',
+    };
+  }, [activeBot.name, game?.result, game?.result_reason, game?.winner_id, user?.id]);
 
   const currentHistory = useMemo(() => (chess ? chess.history({ verbose: true }) : []), [chess, chessFen]);
   const maxPly = currentHistory.length;
@@ -914,56 +961,70 @@ export default function BeatTheBotPage() {
         </div>
       )}
 
-      {showWinCelebration && game?.winner_id === user?.id && (
+      {showGameResultDialog && game?.result && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {Array.from({ length: 42 }).map((_, i) => (
-              <span
-                key={`confetti-${i}`}
-                className="absolute top-[-12%] block h-2.5 w-2.5 rounded-[2px]"
-                style={{
-                  left: `${(i * 13) % 100}%`,
-                  backgroundColor: ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#14b8a6'][i % 6],
-                  animation: `confettiFall ${2100 + (i % 8) * 210}ms linear ${((i * 73) % 900)}ms infinite`,
-                  transform: `rotate(${(i * 37) % 360}deg)`,
-                }}
-              />
-            ))}
-          </div>
+          {game.winner_id === user?.id && (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {Array.from({ length: 42 }).map((_, i) => (
+                <span
+                  key={`confetti-${i}`}
+                  className="absolute top-[-12%] block h-2.5 w-2.5 rounded-[2px]"
+                  style={{
+                    left: `${(i * 13) % 100}%`,
+                    backgroundColor: ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#14b8a6'][i % 6],
+                    animation: `confettiFall ${2100 + (i % 8) * 210}ms linear ${((i * 73) % 900)}ms infinite`,
+                    transform: `rotate(${(i * 37) % 360}deg)`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
           <div
-            className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-emerald-300 bg-gradient-to-b from-emerald-100 via-teal-50 to-lime-100 p-6 text-center shadow-2xl"
+            className={`relative w-full max-w-md overflow-hidden rounded-3xl border-2 p-6 text-center shadow-2xl ${gameResultTone.shellClassName}`}
             style={{ animation: 'winPop 500ms cubic-bezier(0.2, 0.9, 0.2, 1)' }}
           >
             <p className="text-5xl drop-shadow-sm" style={{ animation: 'bounceSoft 1200ms ease-in-out infinite' }}>
-              🎉🏆🎉
+              {gameResultTone.emoji}
             </p>
-            <h3 className="mt-2 font-heading text-4xl font-extrabold text-emerald-700">
-              You won!
+            <h3 className={`mt-2 font-heading text-4xl font-extrabold ${gameResultTone.titleClassName}`}>
+              {gameResultTone.title}
             </h3>
-            <p className="mt-2 text-base font-extrabold text-emerald-700">
-              {game?.result_reason === 'checkmate' ? "That's a checkmate!" : 'What a brilliant finish!'}
+            <p className={`mt-2 text-base font-extrabold ${gameResultTone.subtitleClassName}`}>
+              {gameResultTone.subtitle}
             </p>
-            <p className="mt-1 text-sm font-semibold text-emerald-900">
-              Great game against {activeBot.name}!
+            <p className={`mt-1 text-sm font-semibold ${gameResultTone.detailClassName}`}>
+              {game.result_reason === 'checkmate'
+                ? "That's a checkmate!"
+                : game.result_reason === 'resign'
+                  ? 'Game ended by resignation.'
+                  : game.result_reason === 'stalemate'
+                    ? 'Game ended in stalemate.'
+                    : game.result_reason === 'insufficient_material'
+                      ? 'Draw by insufficient material.'
+                      : game.result_reason === 'threefold_repetition'
+                        ? 'Draw by repetition.'
+                        : game.result_reason === 'fifty_move_rule'
+                          ? 'Draw by the fifty-move rule.'
+                          : 'Game finished.'}
             </p>
             <div className="mt-5 flex justify-center gap-3">
               <button
                 type="button"
                 onClick={() => {
-                  setShowWinCelebration(false);
+                  setShowGameResultDialog(false);
                   setIsGameAnalysisMode(true);
                 }}
-                className="rounded-full border border-emerald-400 bg-white px-4 py-2 text-sm font-bold text-emerald-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-emerald-50"
+                className={gameResultTone.secondaryButtonClassName}
               >
                 Analyze your Game
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setShowWinCelebration(false);
+                  setShowGameResultDialog(false);
                   startNewSetup();
                 }}
-                className="rounded-full bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:from-emerald-500 hover:to-green-400"
+                className={gameResultTone.primaryButtonClassName}
               >
                 New Game
               </button>

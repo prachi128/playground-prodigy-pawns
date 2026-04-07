@@ -2,11 +2,11 @@
 
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, parseThemeList } from '@/lib/utils';
+import { getDifficultyColor, normalizePuzzleMoves, parseThemeList } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { Lightbulb, RotateCcw, Check, X, Trophy, ArrowLeft } from 'lucide-react';
@@ -35,6 +35,10 @@ function PuzzleSolvePageContent() {
   const [startTime, setStartTime] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [userXP, setUserXP] = useState(user?.total_xp ?? 0);
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
+  const [legalTargets, setLegalTargets] = useState<string[]>([]);
+  const [captureTargets, setCaptureTargets] = useState<string[]>([]);
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
 
   useEffect(() => {
     loadPuzzle();
@@ -46,6 +50,10 @@ function PuzzleSolvePageContent() {
       setPuzzle(data);
       const chess = new Chess(data.fen);
       setGame(chess);
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+      setLastMove(null);
       setStartTime(Date.now());
     } catch (error) {
       console.error('Failed to load puzzle:', error);
@@ -54,6 +62,17 @@ function PuzzleSolvePageContent() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getLegalTargets = (square: string) => {
+    if (!game || isCorrect !== null) return [];
+    const piece = game.get(square);
+    if (!piece || piece.color !== game.turn()) return [];
+    const moves = game.moves({ square, verbose: true });
+    return moves.map((move) => ({
+      to: move.to,
+      isCapture: Boolean(move.captured) || move.flags.includes('e'),
+    }));
   };
 
   const onDrop = (sourceSquare: string, targetSquare: string) => {
@@ -71,16 +90,16 @@ function PuzzleSolvePageContent() {
       const newMoves = [...movesMade, `${sourceSquare}${targetSquare}`];
       setMovesMade(newMoves);
       setGame(new Chess(game.fen()));
+      setLastMove({ from: sourceSquare, to: targetSquare });
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
 
-      const solutionMoves = puzzle.moves.split(' ');
+      const solutionMoves = normalizePuzzleMoves(puzzle.fen, puzzle.moves);
       const isComplete = newMoves.length >= solutionMoves.length;
-      const isSolutionCorrect = newMoves.every((m, i) => {
-        const sol = solutionMoves[i];
-        return m === sol || m === sol.replace(/[+=]/, '');
-      });
 
       if (isComplete) {
-        handlePuzzleSolved(isSolutionCorrect, newMoves);
+        handlePuzzleSolved(newMoves);
       }
 
       return true;
@@ -89,15 +108,50 @@ function PuzzleSolvePageContent() {
     }
   };
 
-  const handlePuzzleSolved = async (solved: boolean, moves: string[]) => {
-    setIsCorrect(solved);
+  const handleSquareClick = (square: string) => {
+    if (!game || isCorrect !== null) return;
+
+    if (!selectedSquare) {
+      const targets = getLegalTargets(square);
+      if (targets.length === 0) return;
+      setSelectedSquare(square);
+      setLegalTargets(targets.filter((move) => !move.isCapture).map((move) => move.to));
+      setCaptureTargets(targets.filter((move) => move.isCapture).map((move) => move.to));
+      return;
+    }
+
+    if (square === selectedSquare) {
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+      return;
+    }
+
+    if (legalTargets.includes(square) || captureTargets.includes(square)) {
+      void onDrop(selectedSquare, square);
+      return;
+    }
+
+    const targets = getLegalTargets(square);
+    if (targets.length > 0) {
+      setSelectedSquare(square);
+      setLegalTargets(targets.filter((move) => !move.isCapture).map((move) => move.to));
+      setCaptureTargets(targets.filter((move) => move.isCapture).map((move) => move.to));
+    } else {
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+    }
+  };
+
+  const handlePuzzleSolved = async (moves: string[]) => {
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
     try {
       const result = await puzzleAPI.submitAttempt(
         puzzle!.id,
         {
-          is_solved: solved,
+          is_solved: true,
           moves_made: moves.join(' '),
           time_taken: timeTaken,
         },
@@ -106,7 +160,9 @@ function PuzzleSolvePageContent() {
           : undefined
       );
 
-      if (solved) {
+      setIsCorrect(result.is_solved);
+
+      if (result.is_solved) {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
         if (user) {
           const newXP = user.total_xp + result.xp_earned;
@@ -159,9 +215,45 @@ function PuzzleSolvePageContent() {
       setGame(chess);
       setMovesMade([]);
       setIsCorrect(null);
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setCaptureTargets([]);
+      setLastMove(null);
       setStartTime(Date.now());
     }
   };
+
+  const squareStyles = useMemo(() => {
+    const styles: Record<string, React.CSSProperties> = {};
+
+    if (lastMove) {
+      styles[lastMove.from] = { backgroundColor: 'rgba(255,255,0,0.35)' };
+      styles[lastMove.to] = { backgroundColor: 'rgba(255,255,0,0.35)' };
+    }
+
+    if (selectedSquare) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] || {}),
+        backgroundColor: 'rgba(190,242,100,0.38)',
+      };
+    }
+
+    legalTargets.forEach((square) => {
+      styles[square] = {
+        ...(styles[square] || {}),
+        backgroundImage: 'radial-gradient(circle, rgba(163,230,53,0.82) 18%, rgba(163,230,53,0) 22%)',
+      };
+    });
+
+    captureTargets.forEach((square) => {
+      styles[square] = {
+        ...(styles[square] || {}),
+        backgroundColor: 'rgba(251,191,36,0.45)',
+      };
+    });
+
+    return styles;
+  }, [captureTargets, lastMove, legalTargets, selectedSquare]);
 
   if (isLoading || !puzzle || !game) {
     return (
@@ -176,25 +268,11 @@ function PuzzleSolvePageContent() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-4">
-        <Link
-          href={
-            assignmentIdForApi != null
-              ? `/assignments/${assignmentIdForApi}`
-              : '/puzzles/solve'
-          }
-          className="inline-flex items-center gap-1 text-primary hover:text-primary/90 font-heading font-semibold text-sm"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {assignmentIdForApi != null ? 'Back to assignment' : 'Back to Puzzles'}
-        </Link>
-      </div>
-
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2">
           <div className="bg-card rounded-xl p-2 shadow-xl border-2 border-border">
-            <div className="w-full max-w-[350px] mx-auto">
+            <div className="mx-auto w-full max-w-[min(100%,410px)] sm:max-w-[480px]">
               {game && puzzle && (
                 <Chessboard
                   key={game.fen()}
@@ -202,12 +280,15 @@ function PuzzleSolvePageContent() {
                     position: game.fen(),
                     onPieceDrop: ({ sourceSquare, targetSquare }) =>
                       sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
-                    boardStyle: {
-                      borderRadius: '8px',
-                      boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
+                    onSquareClick: ({ square }) => {
+                      if (!square) return;
+                      handleSquareClick(square);
                     },
-                    darkSquareStyle: { backgroundColor: 'hsl(var(--primary))' },
-                    lightSquareStyle: { backgroundColor: 'hsl(var(--primary) / 0.15)' },
+                    boardStyle: {
+                      borderRadius: '12px',
+                      boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)',
+                    },
+                    squareStyles,
                   }}
                 />
               )}
@@ -257,14 +338,27 @@ function PuzzleSolvePageContent() {
               </div>
               
               {isCorrect && (
-                <button
-                  type="button"
-                  onClick={goToNextPuzzleInSameDifficulty}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
-                >
-                  <Trophy className="w-3 h-3" />
-                  Next Puzzle
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href={
+                      assignmentIdForApi != null
+                        ? `/assignments/${assignmentIdForApi}`
+                        : '/puzzles/solve'
+                    }
+                    className="bg-muted hover:bg-muted/80 text-muted-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm text-xs"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Home
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={goToNextPuzzleInSameDifficulty}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
+                  >
+                    <Trophy className="w-3 h-3" />
+                    Next Puzzle
+                  </button>
+                </div>
               )}
             </div>
           )}

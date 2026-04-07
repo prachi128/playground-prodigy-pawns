@@ -50,11 +50,10 @@ export default function ChessGamePage() {
     return { name: bot.name, avatar: bot.avatar };
   };
 
-  // Show game-over modal for auto_resign, timeout, or resign (both players get a clear end screen)
+  // Show the result modal for any finished game so draws, checkmates, timeouts,
+  // resignations, and other terminal states all get the same clear end screen.
   const shouldShowGameOverModal = (g: Game | null | undefined): boolean => {
-    if (!g || !g.result) return false;
-    const r = g.result_reason;
-    return r === 'auto_resign' || r === 'timeout' || r === 'resign';
+    return !!g?.result;
   };
 
   // chess.js loadPgn expects PGN to end with a game termination (*, 1-0, 0-1, 1/2-1/2). Backend may not send it.

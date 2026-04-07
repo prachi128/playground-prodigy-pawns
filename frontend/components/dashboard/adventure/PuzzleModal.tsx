@@ -6,6 +6,7 @@ import { Chessboard } from "react-chessboard"
 import { ArrowRight, Lightbulb, RotateCcw, X } from "lucide-react"
 import { puzzleAPI, Puzzle } from "@/lib/api"
 import { useAuthStore } from "@/lib/store"
+import { normalizePuzzleMoves } from "@/lib/utils"
 import toast from "react-hot-toast"
 
 interface PuzzleModalProps {
@@ -32,35 +33,30 @@ export function PuzzleModal({ puzzle, onClose, onSolve }: PuzzleModalProps) {
         setPuzzleMoves(newMoves)
         setPuzzleGame(new Chess(puzzleGame.fen()))
 
-        const solution = puzzle.moves.split(" ")
+        const solution = normalizePuzzleMoves(puzzle.fen, puzzle.moves)
         const done = newMoves.length >= solution.length
-        const correct = newMoves.every((m, i) => {
-          const sol = solution[i]
-          return m === sol || m === sol.replace(/[+=]/, "")
-        })
 
         if (done) {
           const timeTaken = Math.floor((Date.now() - puzzleStartTime) / 1000)
           puzzleAPI
             .submitAttempt(puzzle.id, {
-              is_solved: correct,
+              is_solved: true,
               moves_made: newMoves.join(" "),
               time_taken: timeTaken,
               hints_used: puzzleHints,
             })
             .then((result) => {
-              if (correct && user && result.xp_earned) {
+              if (result.is_solved && user && result.xp_earned) {
                 updateUser({ total_xp: user.total_xp + result.xp_earned })
+              }
+              if (result.is_solved) {
+                setPuzzleResult("solved")
+                onSolve(50, 500)
+              } else {
+                setPuzzleResult("wrong")
               }
             })
             .catch(() => {})
-
-          if (correct) {
-            setPuzzleResult("solved")
-            onSolve(50, 500)
-          } else {
-            setPuzzleResult("wrong")
-          }
         }
         return true
       } catch {
@@ -71,7 +67,7 @@ export function PuzzleModal({ puzzle, onClose, onSolve }: PuzzleModalProps) {
   )
 
   const handleHint = useCallback(() => {
-    const solution = puzzle.moves.split(" ")
+    const solution = normalizePuzzleMoves(puzzle.fen, puzzle.moves)
     if (puzzleMoves.length < solution.length) {
       const next = solution[puzzleMoves.length]
       toast(`Try: ${next.substring(0, 2)} → ${next.substring(2, 4)}`, { icon: "💡", duration: 4000 })

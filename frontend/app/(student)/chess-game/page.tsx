@@ -174,10 +174,11 @@ export default function ChessGamePage() {
     };
   }, [activeGameId, loadActiveGame, user?.id]);
 
-  // Load pending invites on mount
+  // Load invites once auth state is ready, not just on first mount.
   useEffect(() => {
-    loadInvites();
-  }, []);
+    if (!user?.id) return;
+    void loadInvites();
+  }, [user?.id]);
 
   // Search users with debounce
   useEffect(() => {
@@ -278,6 +279,30 @@ export default function ChessGamePage() {
 
     return () => clearInterval(pollInterval);
   }, [user?.id]);
+
+  // Background tabs can throttle polling, so refresh immediately when the page becomes active again.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refreshInvites = () => {
+      void loadInvites();
+      void checkForAcceptedInvites();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshInvites();
+      }
+    };
+
+    window.addEventListener('focus', refreshInvites);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', refreshInvites);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user?.id, checkForAcceptedInvites]);
 
   // Poll for invite status changes (check every 2 seconds)
   useEffect(() => {

@@ -112,6 +112,26 @@
   * {
     border-color: hsl(var(--border));
   }
+
+  button,
+  a[href],
+  summary,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  [role="button"],
+  [role="link"],
+  [onclick] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 /* Sidebar only: use dark border color so borders don’t show as white lines (beats Tailwind utilities) */
 [data-sidebar] *:not(a[aria-current="page"]):not(.sidebar-avatar) {

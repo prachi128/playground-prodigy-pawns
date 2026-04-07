@@ -2,6 +2,7 @@
 
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { Chess } from "chess.js"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -105,6 +106,40 @@ export function getThemeEmoji(theme?: string): string {
 export function parseThemeList(theme?: string | null): string[] {
   if (!theme || typeof theme !== 'string') return [];
   return theme.trim().split(/\s+/).filter(Boolean);
+}
+
+const UCI_MOVE_RE = /^[a-h][1-8][a-h][1-8][qrbn]?$/i
+
+function normalizeMoveToken(game: Chess, token: string): string {
+  const cleaned = token.trim()
+  if (!cleaned) throw new Error("Empty move token")
+
+  let moveResult = null
+  if (UCI_MOVE_RE.test(cleaned)) {
+    moveResult = game.move({
+      from: cleaned.slice(0, 2),
+      to: cleaned.slice(2, 4),
+      promotion: cleaned.length > 4 ? cleaned[4].toLowerCase() : "q",
+    })
+  } else {
+    moveResult = game.move(cleaned, { sloppy: true })
+  }
+
+  if (!moveResult) {
+    throw new Error(`Could not normalize move token: ${cleaned}`)
+  }
+
+  return `${moveResult.from}${moveResult.to}${moveResult.promotion ?? ""}`
+}
+
+export function normalizePuzzleMoves(fen: string, moves: string | null | undefined): string[] {
+  const game = new Chess(fen)
+  if (!moves) return []
+  return moves
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => normalizeMoveToken(game, token))
 }
 
 // Calculate accuracy percentage

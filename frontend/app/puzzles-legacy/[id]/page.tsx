@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
+import { normalizePuzzleMoves } from '@/lib/utils';
 import { getDifficultyColor, getThemeEmoji, parseThemeList } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
@@ -66,15 +67,11 @@ export default function PuzzleSolveLegacyPage() {
       setMovesMade(newMoves);
       setGame(new Chess(game.fen()));
 
-      const solutionMoves = puzzle.moves.split(' ');
+      const solutionMoves = normalizePuzzleMoves(puzzle.fen, puzzle.moves);
       const isComplete = newMoves.length >= solutionMoves.length;
-      const isSolutionCorrect = newMoves.every((m, i) => {
-        const sol = solutionMoves[i];
-        return m === sol || m === sol.replace(/[+=]/, '');
-      });
 
       if (isComplete) {
-        handlePuzzleSolved(isSolutionCorrect, newMoves);
+        handlePuzzleSolved(newMoves);
       }
 
       return true;
@@ -83,19 +80,20 @@ export default function PuzzleSolveLegacyPage() {
     }
   };
 
-  const handlePuzzleSolved = async (solved: boolean, moves: string[]) => {
-    setIsCorrect(solved);
+  const handlePuzzleSolved = async (moves: string[]) => {
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
     try {
       const result = await puzzleAPI.submitAttempt(puzzle!.id, {
-        is_solved: solved,
+        is_solved: true,
         moves_made: moves.join(' '),
         time_taken: timeTaken,
         hints_used: hintsUsed,
       });
 
-      if (solved) {
+      setIsCorrect(result.is_solved);
+
+      if (result.is_solved) {
         toast.success(`Correct! +${result.xp_earned} XP 🎉`, { duration: 5000 });
         if (user) {
           const newXP = user.total_xp + result.xp_earned;
@@ -112,7 +110,7 @@ export default function PuzzleSolveLegacyPage() {
 
   const showHint = () => {
     if (!puzzle) return;
-    const solutionMoves = puzzle.moves.split(' ');
+    const solutionMoves = normalizePuzzleMoves(puzzle.fen, puzzle.moves);
     if (movesMade.length < solutionMoves.length) {
       const nextMove = solutionMoves[movesMade.length];
       toast(`Hint: Try moving from ${nextMove.substring(0, 2)} to ${nextMove.substring(2, 4)}`, {

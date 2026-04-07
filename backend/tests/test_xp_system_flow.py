@@ -24,13 +24,20 @@ class XPSystemFlowTests(unittest.TestCase):
     @patch("main.create_notification")
     def test_submit_puzzle_awards_xp_minus_hint_penalty_with_min_floor(self, _notif_mock):
         user = SimpleNamespace(id=7, total_xp=20)
-        puzzle = SimpleNamespace(id=11, xp_reward=10, success_count=0, attempts_count=0)
+        puzzle = SimpleNamespace(
+            id=11,
+            fen="r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+            moves="Nxe5 Nxe5",
+            xp_reward=10,
+            success_count=0,
+            attempts_count=0,
+        )
         db = self._db_for_attempt(user, puzzle)
 
         attempt = PuzzleAttemptCreate(
             puzzle_id=11,
             is_solved=True,
-            moves_made="e2e4 e7e5",
+            moves_made="f3e5 c6e5",
             time_taken=35,
             hints_used=4,  # 10 - 8 => 2, but floor should keep 5
         )
@@ -45,7 +52,14 @@ class XPSystemFlowTests(unittest.TestCase):
 
     def test_submit_unsolved_puzzle_does_not_award_xp(self):
         user = SimpleNamespace(id=7, total_xp=20)
-        puzzle = SimpleNamespace(id=11, xp_reward=25, success_count=0, attempts_count=0)
+        puzzle = SimpleNamespace(
+            id=11,
+            fen="r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+            moves="Nxe5 Nxe5",
+            xp_reward=25,
+            success_count=0,
+            attempts_count=0,
+        )
         db = self._db_for_attempt(user, puzzle)
 
         attempt = PuzzleAttemptCreate(
@@ -62,6 +76,59 @@ class XPSystemFlowTests(unittest.TestCase):
         self.assertEqual(user.total_xp, 20)
         self.assertEqual(puzzle.success_count, 0)
         self.assertEqual(puzzle.attempts_count, 1)
+
+    @patch("main.create_notification")
+    def test_submit_puzzle_accepts_uci_attempt_for_san_solution(self, _notif_mock):
+        user = SimpleNamespace(id=7, total_xp=20)
+        puzzle = SimpleNamespace(
+            id=12,
+            fen="6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
+            moves="Re8#",
+            xp_reward=15,
+            success_count=0,
+            attempts_count=0,
+        )
+        db = self._db_for_attempt(user, puzzle)
+
+        attempt = PuzzleAttemptCreate(
+            puzzle_id=12,
+            is_solved=False,
+            moves_made="e1e8",
+            time_taken=12,
+            hints_used=0,
+        )
+
+        result = submit_puzzle_attempt(puzzle_id=12, attempt=attempt, user_id=7, assignment_id=None, db=db)
+
+        self.assertTrue(result.is_solved)
+        self.assertEqual(result.xp_earned, 15)
+        self.assertEqual(user.total_xp, 35)
+
+    def test_submit_puzzle_rejects_incorrect_attempt_even_if_client_claims_solved(self):
+        user = SimpleNamespace(id=7, total_xp=20)
+        puzzle = SimpleNamespace(
+            id=12,
+            fen="6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1",
+            moves="Re8#",
+            xp_reward=15,
+            success_count=0,
+            attempts_count=0,
+        )
+        db = self._db_for_attempt(user, puzzle)
+
+        attempt = PuzzleAttemptCreate(
+            puzzle_id=12,
+            is_solved=True,
+            moves_made="g1h1",
+            time_taken=12,
+            hints_used=0,
+        )
+
+        result = submit_puzzle_attempt(puzzle_id=12, attempt=attempt, user_id=7, assignment_id=None, db=db)
+
+        self.assertFalse(result.is_solved)
+        self.assertEqual(result.xp_earned, 0)
+        self.assertEqual(user.total_xp, 20)
 
     @patch("main.get_hint_service")
     def test_get_hint_deducts_xp_when_balance_is_sufficient(self, hint_service_mock):

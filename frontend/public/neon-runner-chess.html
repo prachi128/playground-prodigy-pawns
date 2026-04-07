@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Runner × Chess</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#08080f; --fg:#dde0ee; --accent:#00ffaa; --red:#ff3355;
+  --gold:#ffcc00; --blue:#00aaff; --purple:#cc66ff; --muted:#1e1e30;
+  --glow:rgba(0,255,170,0.4);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:'Space Mono',monospace;
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+}
+#shell{
+  position:relative; border:2px solid #1a1a28; border-radius:10px;
+  overflow:hidden;
+  box-shadow:0 0 60px rgba(0,255,170,0.12), 0 0 120px rgba(0,0,0,0.8);
+}
+canvas{display:block;}
+
+/* ── HUD ── */
+#hud{
+  position:absolute;top:0;left:0;right:0;
+  padding:14px 16px; display:flex; justify-content:space-between;
+  align-items:flex-start; pointer-events:none; z-index:10;
+}
+.hud-left{display:flex;flex-direction:column;gap:9px;}
+.hud-box{
+  background:rgba(8,8,15,0.88); border-radius:6px;
+  padding:8px 14px; border:1px solid #2a2a42;
+}
+.hud-box.accent{border-color:var(--accent);box-shadow:0 0 14px var(--glow);}
+.hud-box.gold  {border-color:var(--gold);  box-shadow:0 0 14px rgba(255,204,0,0.35);}
+.hud-box.blue  {border-color:var(--blue);  box-shadow:0 0 14px rgba(0,170,255,0.35);}
+.hud-label{font-size:8px;text-transform:uppercase;letter-spacing:2.5px;opacity:.6;font-family:'Orbitron',sans-serif;}
+.hud-label.accent{color:var(--accent);}
+.hud-label.gold  {color:var(--gold);}
+.hud-label.blue  {color:var(--blue);}
+.hud-val{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;color:var(--fg);}
+.hud-small{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;}
+
+/* ── FUEL BAR ── */
+#fuelWrap{
+  position:absolute;bottom:0;left:0;right:0;
+  pointer-events:none; z-index:10;
+}
+.fuel-track{
+  height:6px; background:#111; position:relative;
+  box-shadow:inset 0 1px 4px #000;
+}
+.fuel-fill{
+  height:100%; width:100%;
+  background:linear-gradient(90deg,#ff3355,#ffcc00,#00ffaa);
+  transition:width 0.4s ease;
+  box-shadow:0 0 10px var(--glow);
+}
+.fuel-label-row{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:5px 16px 10px;
+  background:rgba(8,8,15,0.85);
+}
+.fuel-txt{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--accent);opacity:.8;}
+.fuel-icons{display:flex;gap:6px;align-items:center;}
+.fuel-icon{font-size:13px;opacity:.3;transition:opacity .3s,transform .3s;}
+.fuel-icon.lit{opacity:1;transform:scale(1.2);}
+
+/* ── SCREENS ── */
+.screen{
+  position:absolute;inset:0;
+  background:rgba(8,8,15,0.96);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .4s;z-index:30;
+}
+.screen.on{opacity:1;pointer-events:all;}
+
+.big-title{
+  font-family:'Orbitron',sans-serif;font-size:54px;font-weight:900;
+  color:var(--accent);text-shadow:0 0 50px rgba(0,255,170,.7);
+  margin-bottom:4px;
+}
+.big-sub{
+  font-family:'Orbitron',sans-serif;font-size:14px;
+  color:var(--gold);letter-spacing:5px;margin-bottom:28px;
+}
+.info-row{display:flex;gap:20px;margin-bottom:24px;flex-wrap:wrap;justify-content:center;}
+.info-card{
+  background:#0f0f18;border:1px solid #2a2a40;border-radius:8px;
+  padding:14px 18px;text-align:center;min-width:105px;
+}
+.info-card-icon{font-size:26px;margin-bottom:6px;}
+.info-card-text{font-size:11px;color:#888;line-height:1.6;}
+.info-card-text span{color:var(--accent);display:block;margin-bottom:3px;font-weight:700;}
+
+.btn{
+  font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;
+  padding:12px 38px; background:transparent;
+  border:2px solid var(--accent);color:var(--accent);
+  border-radius:5px;cursor:pointer;transition:all .25s;
+  text-transform:uppercase;letter-spacing:2px;margin:5px;
+}
+.btn:hover{background:var(--accent);color:var(--bg);box-shadow:0 0 28px var(--glow);transform:scale(1.04);}
+.btn.red{border-color:var(--red);color:var(--red);}
+.btn.red:hover{background:var(--red);color:#fff;box-shadow:0 0 28px rgba(255,51,85,.5);}
+.btn.gold{border-color:var(--gold);color:var(--gold);}
+.btn.gold:hover{background:var(--gold);color:#000;box-shadow:0 0 28px rgba(255,204,0,.5);}
+
+#lvlScreen .big-title{font-size:38px;color:var(--gold);}
+.tactic-badge{
+  background:rgba(255,204,0,.1);border:1px solid var(--gold);
+  border-radius:6px;padding:10px 24px;margin:14px 0;
+  font-family:'Orbitron',sans-serif;font-size:11px;color:var(--gold);
+  letter-spacing:2px;
+}
+
+/* ── PUZZLE PANEL ── */
+#puzzlePanel{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  z-index:20;pointer-events:none;opacity:0;
+  transition:opacity .3s;
+}
+#puzzlePanel.on{opacity:1;pointer-events:all;}
+
+.puzzle-card{
+  background:rgba(6,6,14,0.97);
+  border:2px solid var(--gold);
+  border-radius:12px;
+  padding:18px 22px;
+  box-shadow:0 0 60px rgba(255,204,0,0.25), 0 0 120px rgba(0,0,0,0.9);
+  display:flex;gap:20px;align-items:flex-start;
+  max-width:740px;width:96%;
+}
+.puzzle-left{flex-shrink:0;}
+
+.puzzle-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:8px;
+}
+.puzzle-title{
+  font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;
+  color:var(--gold);letter-spacing:2px;
+}
+.puzzle-timer{
+  font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;
+  color:var(--red);min-width:42px;text-align:right;
+  transition:color .3s;
+}
+.puzzle-timer.ok{color:var(--accent);}
+
+.cboard{
+  display:grid;grid-template-columns:repeat(8,46px);grid-template-rows:repeat(8,46px);
+  border:2px solid var(--gold);
+  box-shadow:0 0 30px rgba(255,204,0,.3);
+}
+.cc{
+  width:46px;height:46px;display:flex;align-items:center;justify-content:center;
+  font-size:27px;cursor:pointer;position:relative;user-select:none;
+  transition:background .12s;
+}
+.cc.lt{background:#16192a;} .cc.dk{background:#0c0e1c;}
+.cc.sel{background:rgba(255,204,0,.4)!important;}
+.cc.vm::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:rgba(0,255,170,.55);}
+.cc.vc::after{content:'';position:absolute;inset:0;border:3px solid rgba(255,51,85,.6);}
+.cc.lf{background:rgba(0,255,170,.12)!important;}
+.cc.lt2{background:rgba(0,255,170,.22)!important;}
+@keyframes hintGlow{0%,100%{filter:brightness(1);}50%{filter:brightness(2.5) drop-shadow(0 0 8px gold);}}
+.cc.hint-glow{animation:hintGlow .6s ease-in-out 4;}
+.cc-rank{position:absolute;left:2px;top:1px;font-size:8px;color:#3a3a55;font-family:'Space Mono',monospace;}
+.cc-file{position:absolute;bottom:1px;right:2px;font-size:8px;color:#3a3a55;font-family:'Space Mono',monospace;}
+
+.puzzle-progress{width:100%;height:3px;background:#1a1a28;border-radius:2px;margin-bottom:12px;overflow:hidden;}
+.puzzle-progress-fill{height:100%;background:var(--gold);transition:width .5s linear;}
+
+.puzzle-right{flex:1;min-width:155px;}
+.fuel-reward{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(0,255,170,.08);border:1px solid rgba(0,255,170,.3);
+  border-radius:5px;padding:8px 10px;margin-bottom:9px;
+  font-size:11px;
+}
+.fuel-reward-icon{font-size:20px;}
+.fuel-reward-txt{color:var(--accent);}
+.fuel-reward-txt strong{display:block;font-size:13px;}
+
+.puzzle-hint-txt{
+  font-size:11px;color:#aaa;line-height:1.7;margin-bottom:9px;
+  padding:8px 10px;background:#0f0f1a;border-radius:5px;border-left:3px solid var(--gold);
+}
+.puzzle-hint-txt strong{color:var(--gold);}
+
+.attempts-row{display:flex;gap:5px;align-items:center;margin-bottom:8px;}
+.att-dot{width:9px;height:9px;border-radius:50%;background:var(--gold);transition:all .3s;}
+.att-dot.used{background:#2a2a3a;}
+
+.puzzle-status{
+  font-family:'Orbitron',sans-serif;font-size:11px;
+  padding:7px 10px;border-radius:4px;margin-bottom:8px;min-height:32px;
+  display:flex;align-items:center;
+}
+.puzzle-status.neu{color:#666;border:1px solid #2a2a3a;}
+.puzzle-status.win{color:var(--accent);border:1px solid var(--accent);background:rgba(0,255,170,.07);}
+.puzzle-status.fail{color:var(--red);border:1px solid var(--red);background:rgba(255,51,85,.07);}
+
+.moves-log{font-size:10px;line-height:2;color:#666;max-height:80px;overflow-y:auto;margin-bottom:8px;}
+.moves-log .ok{color:var(--accent);}
+.moves-log .bad{color:var(--red);}
+
+.puzzle-btns{display:flex;gap:6px;flex-wrap:wrap;}
+.pbtn{
+  font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;
+  padding:6px 12px;background:transparent;border-radius:4px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:1px;transition:all .2s;
+}
+.pbtn.skip{border:1px solid #444;color:#777;}
+.pbtn.skip:hover{border-color:#888;color:#aaa;}
+.pbtn.hint-btn{border:1px solid var(--gold);color:var(--gold);}
+.pbtn.hint-btn:hover{background:rgba(255,204,0,.15);}
+
+/* ── BOSS BAR ── */
+#bossBar{
+  position:absolute;top:0;left:0;right:0;
+  background:rgba(6,6,14,0.92);border-bottom:1px solid var(--red);
+  padding:8px 16px;display:none;align-items:center;gap:12px;z-index:15;
+}
+#bossBar.on{display:flex;}
+.boss-name{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--red);font-weight:700;letter-spacing:2px;white-space:nowrap;}
+.boss-hp-track{flex:1;height:12px;background:#1a1a28;border-radius:3px;overflow:hidden;border:1px solid #2a2a3a;}
+.boss-hp-fill{height:100%;background:linear-gradient(90deg,var(--red),#ff8844);transition:width .4s;box-shadow:0 0 8px rgba(255,51,85,.5);}
+.boss-hp-lbl{font-family:'Orbitron',sans-serif;font-size:9px;color:var(--red);min-width:36px;text-align:right;}
+
+/* ── TOAST ── */
+#toast{
+  position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);
+  font-family:'Orbitron',sans-serif;font-size:32px;font-weight:900;
+  pointer-events:none;z-index:40;text-align:center;
+  opacity:0;transition:opacity .2s;text-shadow:0 0 40px currentColor;
+}
+#toast.on{opacity:1;}
+
+/* ── LEVEL BANNER ── */
+#lvlBanner{
+  position:absolute;inset:0;background:rgba(6,6,14,.97);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:35;opacity:0;pointer-events:none;transition:opacity .4s;
+}
+#lvlBanner.on{opacity:1;pointer-events:all;}
+.lb-num{font-family:'Orbitron',sans-serif;font-size:76px;font-weight:900;
+  background:linear-gradient(135deg,var(--accent),var(--blue));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1;}
+.lb-name{font-family:'Orbitron',sans-serif;font-size:20px;color:var(--gold);letter-spacing:5px;margin:8px 0;}
+.lb-desc{font-size:12px;color:#777;text-align:center;max-width:380px;line-height:1.8;margin-bottom:26px;}
+
+/* checkpoint dots */
+#gateHint{display:flex;gap:5px;}
+.gate-dot{width:8px;height:8px;border-radius:50%;background:#1e1e30;transition:background .3s;}
+.gate-dot.passed{background:var(--accent);}
+.gate-dot.next{background:var(--gold);animation:gp 1s ease-in-out infinite;}
+@keyframes gp{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(.75);}}
+
+.ctrl-hint{font-size:9px;color:#555;text-align:right;line-height:2;}
+.ctrl-hint b{color:var(--accent);}
+</style>
+</head>
+<body>
+<div id="shell">
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-left">
+    <div class="hud-box accent">
+      <div class="hud-label accent">Score</div>
+      <div class="hud-val" id="hScore">0</div>
+    </div>
+    <div class="hud-box gold" id="comboBox">
+      <div class="hud-label gold">Combo</div>
+      <div class="hud-val" id="hCombo">0×</div>
+    </div>
+    <div class="hud-box blue" id="powerBox" style="display:none">
+      <div class="hud-label blue">Power</div>
+      <div class="hud-small" id="hPower" style="color:var(--blue)">—</div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+    <div class="ctrl-hint">
+      <b>A/D</b> or <b>←→</b> Move<br>
+      <b>W/Space</b> Jump + double-jump<br>
+      <b>S/↓</b> Dash through enemies
+    </div>
+    <div class="hud-box" style="border-color:#2a2a3a;">
+      <div class="hud-label" style="color:#666;">Chess Gates</div>
+      <div id="gateHint" style="margin-top:4px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Boss bar -->
+<div id="bossBar">
+  <div class="boss-name" id="bossName">BOSS</div>
+  <div class="boss-hp-track"><div class="boss-hp-fill" id="bossHpFill" style="width:100%"></div></div>
+  <div class="boss-hp-lbl" id="bossHpLbl">3/3</div>
+</div>
+
+<!-- Fuel bar -->
+<div id="fuelWrap">
+  <div class="fuel-track"><div class="fuel-fill" id="fuelFill" style="width:100%"></div></div>
+  <div class="fuel-label-row">
+    <div class="fuel-txt">⚡ FUEL — solve chess checkpoints to refill</div>
+    <div class="fuel-icons">
+      <span class="fuel-icon lit" id="fi0">♟</span>
+      <span class="fuel-icon" id="fi1">♟</span>
+      <span class="fuel-icon" id="fi2">♟</span>
+      <span class="fuel-icon" id="fi3">♟</span>
+      <span class="fuel-icon" id="fi4">♟</span>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Puzzle Panel -->
+<div id="puzzlePanel">
+  <div class="puzzle-card">
+    <div class="puzzle-left">
+      <div class="puzzle-header">
+        <div class="puzzle-title" id="pTitle">CHESS CHECKPOINT</div>
+        <div class="puzzle-timer ok" id="pTimer">30</div>
+      </div>
+      <div class="puzzle-progress"><div class="puzzle-progress-fill" id="pProg" style="width:100%"></div></div>
+      <div class="cboard" id="cboard"></div>
+    </div>
+    <div class="puzzle-right">
+      <div class="fuel-reward" id="fuelReward">
+        <div class="fuel-reward-icon">⚡</div>
+        <div class="fuel-reward-txt"><strong>+FUEL REWARD</strong>Solve to refill your tank!</div>
+      </div>
+      <div class="puzzle-hint-txt" id="pHintTxt"><strong>Task:</strong> —</div>
+      <div class="attempts-row" id="attRow"></div>
+      <div class="puzzle-status neu" id="pStatus">Select a piece to move</div>
+      <div class="moves-log" id="movesLog"></div>
+      <div class="puzzle-btns">
+        <button class="pbtn hint-btn" id="pHintBtn">💡 Hint (−30pts)</button>
+        <button class="pbtn skip" id="pSkipBtn">⏭ Skip (costs fuel)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREENS -->
+<div class="screen on" id="startScreen">
+  <div class="big-title">NEON RUNNER</div>
+  <div class="big-sub">× CHESS FUEL</div>
+  <div class="info-row">
+    <div class="info-card"><div class="info-card-icon">⚡</div><div class="info-card-text"><span>Chess = Fuel</span>Hit chess gates to refill and keep running</div></div>
+    <div class="info-card"><div class="info-card-icon">♟</div><div class="info-card-text"><span>30 Seconds</span>Quick tactics — fork, pin, checkmate</div></div>
+    <div class="info-card"><div class="info-card-icon">👾</div><div class="info-card-text"><span>Boss Fights</span>Dash the boss → solve chess → deal damage</div></div>
+    <div class="info-card"><div class="info-card-icon">⚖</div><div class="info-card-text"><span>70 / 30 Split</span>Mostly running, chess when it matters</div></div>
+  </div>
+  <button class="btn" id="startBtn">▶ Start Running</button>
+</div>
+
+<div class="screen" id="lvlScreen">
+  <div class="big-title" style="font-size:40px;color:var(--gold)">LEVEL CLEAR!</div>
+  <div class="tactic-badge" id="tacticBadge">♟ TACTIC MASTERED</div>
+  <div class="hud-val" id="lvlScore" style="margin:10px 0">Score: 0</div>
+  <div style="font-size:12px;color:#666;margin-bottom:22px" id="lvlMsg">Boss defeated!</div>
+  <button class="btn gold" id="nextBtn">Next Level →</button>
+</div>
+
+<div class="screen" id="overScreen">
+  <div class="big-title" style="font-size:40px;color:var(--red)">GAME OVER</div>
+  <div style="font-size:13px;color:#888;margin:8px 0 18px" id="overReason">Your fuel ran out.</div>
+  <div class="info-row" style="margin-bottom:18px;">
+    <div class="info-card"><div class="info-card-icon">🏃</div><div class="info-card-text"><span id="oScore">0</span>Score</div></div>
+    <div class="info-card"><div class="info-card-icon">♟</div><div class="info-card-text"><span id="oPuzzles">0</span>Puzzles Solved</div></div>
+    <div class="info-card"><div class="info-card-icon">🎯</div><div class="info-card-text"><span id="oCombo">0×</span>Max Combo</div></div>
+  </div>
+  <div style="font-family:'Orbitron',sans-serif;font-size:12px;color:var(--gold);margin-bottom:18px" id="oHigh"></div>
+  <button class="btn red" id="restartBtn">↩ Try Again</button>
+</div>
+
+<div class="screen" id="winScreen">
+  <div class="big-title" style="font-size:36px;color:var(--gold)">CHESS MASTER!</div>
+  <div style="font-size:50px;margin:14px">♛</div>
+  <div style="font-size:13px;color:#aaa;max-width:360px;text-align:center;line-height:1.9;margin-bottom:22px">
+    You conquered all 3 levels and mastered<br>Back-rank mates, Knight forks &amp; Queen tactics.<br>
+    <span style="color:var(--accent)">You're a true Chess Runner!</span>
+  </div>
+  <div style="font-family:'Orbitron',sans-serif;font-size:20px;color:var(--fg);margin-bottom:18px" id="winScore"></div>
+  <button class="btn" id="winRestartBtn">Play Again</button>
+</div>
+
+<div id="lvlBanner">
+  <div class="lb-num" id="lbNum">2</div>
+  <div class="lb-name" id="lbName">CYBER DEPTHS</div>
+  <div class="lb-desc" id="lbDesc">Harder foes. Master the Knight Fork.</div>
+  <button class="btn" id="lbStartBtn">Let's Run!</button>
+</div>
+
+</div>
+
+<script>
+// ── SETUP ──
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const GW=Math.min(900,window.innerWidth),GH=Math.min(555,window.innerHeight-20);
+canvas.width=GW; canvas.height=GH;
+document.getElementById('shell').style.cssText=`width:${GW}px;height:${GH}px;`;
+
+// ── AUDIO ──
+const AC=new(window.AudioContext||window.webkitAudioContext)();
+function beep(f,d,t='sine',v=0.07){
+  try{const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=f;o.type=t;g.gain.setValueAtTime(v,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.start();o.stop(AC.currentTime+d);}catch(e){}
+}
+const SFX={
+  jump:()=>beep(380,.1,'square',.04),
+  collect:()=>{beep(760,.1,'sine',.06);setTimeout(()=>beep(960,.08,'sine',.05),45);},
+  hit:()=>beep(90,.25,'sawtooth',.09),
+  powerup:()=>[520,700,920].forEach((f,i)=>setTimeout(()=>beep(f,.12,'sine',.06),i*70)),
+  correct:()=>[440,550,660,880].forEach((f,i)=>setTimeout(()=>beep(f,.12,'sine',.07),i*70)),
+  wrong:()=>{beep(260,.15,'sawtooth',.08);setTimeout(()=>beep(180,.2,'sawtooth',.07),150);},
+  fuelUp:()=>[523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,.18,'sine',.07),i*90)),
+  gate:()=>[300,400,500].forEach((f,i)=>setTimeout(()=>beep(f,.15,'square',.06),i*110)),
+  boss:()=>[200,150,100,150,200].forEach((f,i)=>setTimeout(()=>beep(f,.22,'sawtooth',.08),i*170)),
+  clear:()=>[523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>beep(f,.2,'sine',.07),i*100)),
+};
+
+// ── LEVEL DATA ──
+const LEVELS=[
+{
+  id:1,name:"NEON GRID",
+  th:{bg:'#08080f',grid:'rgba(0,255,170,0.03)',pC:'#141428',pG:'#00ffaa',oC:'#ffcc00',eC:'#ff3355'},
+  bossName:"ROOK GOLEM",bossEmoji:"♜",bossColor:"#ff5500",bossMaxHP:3,
+  nGates:4,gSpacing:580,
+  puzzles:[
+    {type:'G',label:'GATE 1',tactic:'PAWN ADVANCE',
+     task:'White to move. Push the pawn to promote it to a queen!',
+     fuelGain:0.28,
+     board:[[null,null,null,'bk',null,null,null,null],[null,null,null,null,null,null,'wp',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'wk',null,null,null,null]],
+     sol:{fr:[1,6],to:[0,6]},hint:[1,6],explain:"Pawn promotes to queen! Now it's unstoppable."},
+    {type:'G',label:'GATE 2',tactic:'FREE CAPTURE',
+     task:'White queen: take the undefended rook for free!',
+     fuelGain:0.28,
+     board:[[null,null,null,'bk',null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,'br',null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wq',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'wk',null,null,null,null]],
+     sol:{fr:[4,4],to:[2,5]},hint:[4,4],explain:"Queen takes rook — free material win!"},
+    {type:'G',label:'GATE 3',tactic:'KNIGHT FORK',
+     task:'White knight forks the king and queen at the same time!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,'bq',null,null,null,null,null,null],[null,null,null,'wn',null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'wk',null,null,null,null]],
+     sol:{fr:[4,3],to:[2,4]},hint:[4,3],explain:"Knight to e6 — simultaneously attacks king AND queen!"},
+    {type:'G',label:'GATE 4',tactic:'BACK RANK MATE',
+     task:'White rook delivers checkmate on the back rank. King is trapped!',
+     fuelGain:0.28,
+     board:[['bk',null,null,null,null,null,null,null],['bp','bp',null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],['wr',null,null,null,'wk',null,null,null]],
+     sol:{fr:[7,0],to:[0,0]},hint:[7,0],explain:"Rook to a8 — checkmate! Own pawns trap the king."},
+    {type:'B',label:'⚔ BOSS HIT',tactic:'MATE IN ONE',
+     task:'Deliver checkmate in one move to DAMAGE THE BOSS!',
+     fuelGain:0,
+     board:[['br',null,'bb','bq','bk','bb',null,'br'],['bp','bp','bp','bp',null,'bp',null,'bp'],[null,null,null,null,null,null,null,null],[null,null,null,null,'bp',null,'bp',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,'wn',null,null],['wp','wp','wp','wp','wp','wp',null,'wp'],['wr','wn','wb','wq','wk','wb',null,'wr']],
+     sol:{fr:[7,3],to:[3,7]},hint:[7,3],explain:"Queen to h5 — checkmate! King has no escape."}
+  ]
+},
+{
+  id:2,name:"CYBER DEPTHS",
+  th:{bg:'#04080f',grid:'rgba(0,100,255,0.03)',pC:'#091020',pG:'#0088ff',oC:'#00ffcc',eC:'#aa00ff'},
+  bossName:"SHADOW KNIGHT",bossEmoji:"♞",bossColor:"#aa00ff",bossMaxHP:3,
+  nGates:4,gSpacing:580,
+  puzzles:[
+    {type:'G',label:'GATE 1',tactic:'DISCOVERED CHECK',
+     task:'Move the bishop to reveal a check from your rook!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'wb',null,null,null,null],['wr',null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[3,3],to:[1,5]},hint:[3,3],explain:"Bishop moves, rook fires check — discovered attack!"},
+    {type:'G',label:'GATE 2',tactic:'ABSOLUTE PIN',
+     task:'Pin the bishop to the king — it cannot legally move!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'bb',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],['wr',null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[6,0],to:[0,0]},hint:[6,0],explain:"Rook to a8 — pins the bishop absolutely to the king!"},
+    {type:'G',label:'GATE 3',tactic:'SKEWER',
+     task:'Skewer the king — force it to move, then take the queen!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,null,null,null,'bk'],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,'bq',null],[null,null,null,null,null,null,null,null],['wr',null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[4,0],to:[0,0]},hint:[4,0],explain:"Rook to a8 — skewers king! King moves, you win the queen."},
+    {type:'G',label:'GATE 4',tactic:'KNIGHT FORK',
+     task:'White knight forks king and rook simultaneously!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,null,null,null,'bk'],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,'br',null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,'wn',null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[6,1],to:[4,0]},hint:[6,1],explain:"Knight to a5 — forks king and rook! Win the rook!"},
+    {type:'B',label:'⚔ BOSS HIT',tactic:'KNIGHT FORK ATTACK',
+     task:'Knight fork wins the queen — BOSS DAMAGE!',
+     fuelGain:0,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,'bp',null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'bq',null,null,null,null],[null,null,null,null,null,null,null,null],[null,'wn',null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[5,1],to:[3,2]},hint:[5,1],explain:"Knight to c5 — forks king and queen! Win the queen!"}
+  ]
+},
+{
+  id:3,name:"VOID CORE",
+  th:{bg:'#070008',grid:'rgba(204,0,255,0.03)',pC:'#110018',pG:'#cc00ff',oC:'#ffee00',eC:'#00ffff'},
+  bossName:"QUANTUM QUEEN",bossEmoji:"♛",bossColor:"#ff00cc",bossMaxHP:4,
+  nGates:4,gSpacing:580,
+  puzzles:[
+    {type:'G',label:'GATE 1',tactic:'DOUBLE CHECK',
+     task:'Move the knight to give DOUBLE CHECK — two pieces check at once!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,'bp','bp','bp',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,'wb',null,null,null,null],[null,null,'wn',null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[5,2],to:[3,4]},hint:[5,2],explain:"Knight to e5 — double check from knight AND bishop!"},
+    {type:'G',label:'GATE 2',tactic:'ZUGZWANG',
+     task:'Move your king to put opponent in zugzwang — any move loses!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,'wk',null,null],[null,null,null,null,null,null,null,null],[null,null,null,'bk',null,'wp',null,null]],
+     sol:{fr:[5,5],to:[6,5]},hint:[5,5],explain:"King to f3 — zugzwang! Black must step aside for the pawn to promote."},
+    {type:'G',label:'GATE 3',tactic:'PROMOTION MATE',
+     task:'Promote the pawn — and deliver checkmate with the new queen!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,null,null,'wp',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null],[null,null,null,null,'wk',null,null,null]],
+     sol:{fr:[1,6],to:[0,6]},hint:[1,6],explain:"Promote to queen on g8 — checkmate! King is trapped."},
+    {type:'G',label:'GATE 4',tactic:'QUEEN SACRIFICE',
+     task:'Sacrifice your queen for a forced checkmate sequence!',
+     fuelGain:0.28,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,'bp','bp',null,'bp'],[null,null,null,null,null,null,'bp',null],[null,null,null,null,null,null,'wq',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,'wk'],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null]],
+     sol:{fr:[3,6],to:[1,6]},hint:[3,6],explain:"Queen to g7 — checkmate! King is trapped by its own pawns."},
+    {type:'B',label:'⚔ FINAL HIT',tactic:'MATING NET',
+     task:'Deliver the final blow to the Quantum Queen — checkmate her!',
+     fuelGain:0,
+     board:[[null,null,null,null,'bk',null,null,null],[null,null,null,null,'bp','bp',null,'bp'],[null,null,null,null,null,null,'bp',null],[null,null,null,null,null,null,'wq',null],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,'wk'],[null,null,null,null,null,null,null,null],[null,null,null,null,null,null,null,null]],
+     sol:{fr:[3,6],to:[1,6]},hint:[3,6],explain:"Queen to g7 — checkmate! The Quantum Queen falls!"}
+  ]
+}
+];
+
+// ── GAME STATE ──
+let lvlIdx=0,score=0,highScore=+localStorage.getItem('neonChessHS2')||0;
+let started=false,over=false,animId=null;
+let shake=0,camX=0,combo=0,comboT=0,maxCombo=0;
+let orbsDone=0,puzzlesSolved=0;
+let fuel=1.0,fuelDrain=0.000115,overReason='';
+
+let gatesCleared=0,nextGateX=0,inPuzzle=false;
+let puzzleData=null,puzzleSec=0,puzzleIv=null;
+let puzzleAttempts=3,puzzleHintUsed=false;
+let bossSpawned=false,bossHP=0,bossMaxHP=0,bossObj=null,inBossFight=false;
+
+let platforms=[],orbs=[],enemies=[],powerups=[],particles=[],bgP=[],trails=[],floats=[];
+const keys={L:false,R:false,J:false,D:false};
+const P={x:120,y:300,w:28,h:38,vx:0,vy:0,spd:5.8,jF:-15,grav:.58,grounded:false,jHeld:false,dj:true,hp:100,inv:false,invT:0,dCD:0,dSpd:14,dash:false,dashT:0,pwr:null,pwrT:0};
+
+// ── WORLD ──
+function genWorld(){
+  platforms=[];orbs=[];enemies=[];powerups=[];
+  const t=LEVELS[lvlIdx].th;
+  platforms.push({x:0,y:GH-48,w:340,h:26,mv:false,c:t.pC,g:t.pG});
+  let lx=240,ly=GH-130;
+  for(let i=0;i<62;i++){
+    const gap=88+Math.random()*120,pw=65+Math.random()*105,dy=(Math.random()-.5)*98;
+    lx+=gap+pw; ly=Math.max(80,Math.min(GH-95,ly+dy));
+    const mv=Math.random()>.76;
+    platforms.push({x:lx,y:ly,w:pw,h:15,mv,mR:62,mS:Math.random()*1.7+.8,mO:Math.random()*Math.PI*2,oY:ly,c:t.pC,g:mv?LEVELS[lvlIdx].bossColor:t.pG});
+    if(Math.random()>.3) orbs.push({x:lx+pw/2,y:ly-46,r:9,col:false,pulse:Math.random()*Math.PI*2,v:50});
+    if(Math.random()>.63&&i>5) enemies.push({x:lx+pw/2,y:ly-25,w:22,h:22,vx:(Math.random()-.5)*2.2,pL:lx,pR:lx+pw,alive:true,c:t.eC});
+    if(Math.random()>.88&&i>4){const tp=['speed','shield','magnet','double'];powerups.push({x:lx+pw/2,y:ly-56,r:11,type:tp[Math.floor(Math.random()*4)],col:false,pulse:Math.random()*Math.PI*2});}
+  }
+  const bx=lx+360;
+  platforms.push({x:bx,y:GH-54,w:260,h:28,mv:false,c:LEVELS[lvlIdx].bossColor+'22',g:LEVELS[lvlIdx].bossColor,boss:true});
+  const lv=LEVELS[lvlIdx];
+  bossMaxHP=lv.bossMaxHP; bossHP=bossMaxHP; bossSpawned=false; inBossFight=false;
+  bossObj={x:bx+130,y:GH-114,w:54,h:62,vx:1.4,pL:bx+25,pR:bx+235,alive:true,emoji:lv.bossEmoji,name:lv.bossName,color:lv.bossColor,gt:0};
+  document.getElementById('bossName').textContent=lv.bossName;
+  document.getElementById('bossHpFill').style.width='100%';
+  document.getElementById('bossHpLbl').textContent=`${bossHP}/${bossMaxHP}`;
+  gatesCleared=0; nextGateX=LEVELS[lvlIdx].gSpacing;
+  buildDots();
+}
+
+function buildDots(){
+  const c=document.getElementById('gateHint'); c.innerHTML='';
+  const tot=LEVELS[lvlIdx].nGates+1;
+  for(let i=0;i<tot;i++){const d=document.createElement('div');d.className='gate-dot'+(i===0?' next':'');d.id=`gd${i}`;c.appendChild(d);}
+}
+function refreshDots(){
+  const tot=LEVELS[lvlIdx].nGates+1;
+  for(let i=0;i<tot;i++){
+    const d=document.getElementById(`gd${i}`); if(!d) continue;
+    d.className='gate-dot';
+    if(i<gatesCleared) d.classList.add('passed');
+    else if(i===gatesCleared) d.classList.add('next');
+  }
+}
+
+function burst(x,y,col,n,sp){for(let i=0;i<n;i++){const a=(Math.PI*2/n)*i+Math.random()*.5;particles.push({x,y,vx:Math.cos(a)*sp*(.5+Math.random()),vy:Math.sin(a)*sp*(.5+Math.random()),sz:Math.random()*3.5+1.5,col,life:1,dec:Math.random()*.03+.02});}}
+function trail(){trails.push({x:P.x+P.w/2,y:P.y+P.h/2,sz:P.w*.55,alpha:P.dash?.62:.28,dec:P.dash?.04:.06,col:P.dash?'#00aaff':'#00ffaa'});}
+function flt(x,y,t,c){floats.push({x,y,t,c,vy:-1.8,alpha:1,dec:.022});}
+function toast(txt,col,dur=1300){const el=document.getElementById('toast');el.textContent=txt;el.style.color=col;el.classList.add('on');setTimeout(()=>el.classList.remove('on'),dur);}
+function setFuel(v){
+  fuel=Math.max(0,Math.min(1,v));
+  document.getElementById('fuelFill').style.width=`${fuel*100}%`;
+  for(let i=0;i<5;i++) document.getElementById(`fi${i}`).classList.toggle('lit',i<Math.round(fuel*5));
+}
+
+function upPlayer(){
+  if(inPuzzle){P.vx=0; P.vy=0; return;}
+  setFuel(fuel-fuelDrain);
+  if(fuel<=0){endGame('Your fuel ran out! Solve chess checkpoints faster.');return;}
+  if(P.dCD>0) P.dCD--;
+  if(keys.D&&P.dCD===0&&!P.dash){P.dash=true;P.dashT=10;P.dCD=58;P.inv=true;P.invT=10;burst(P.x+P.w/2,P.y+P.h/2,'#00aaff',16,5);beep(320,.09,'square',.04);}
+  if(P.dash){P.dashT--;if(P.dashT<=0)P.dash=false;}
+  if(P.invT>0){P.invT--;if(P.invT===0)P.inv=false;}
+  if(P.pwrT>0){P.pwrT--;if(P.pwrT===0){P.pwr=null;document.getElementById('powerBox').style.display='none';}}
+
+  let ms=P.spd*(P.pwr==='speed'?1.5:1); if(P.dash) ms=P.dSpd;
+  if(keys.L) P.vx=-ms; else if(keys.R) P.vx=ms; else P.vx*=.8;
+
+  if(keys.J){
+    if(P.grounded){P.vy=P.jF;P.grounded=false;P.jHeld=true;burst(P.x+P.w/2,P.y+P.h,'#00ffaa',7,3);SFX.jump();}
+    else if(P.dj&&!P.jHeld){P.vy=P.jF*.82;P.dj=false;burst(P.x+P.w/2,P.y+P.h/2,'#ff3355',10,4);SFX.jump();}
+  } else {P.jHeld=false;}
+
+  P.vy=Math.min(P.vy+P.grav,18); P.x+=P.vx; P.y+=P.vy;
+  if(Math.abs(P.vx)>2||Math.abs(P.vy)>5) trail();
+
+  P.grounded=false;
+  for(const p of platforms){
+    if(p.mv) p.y=p.oY+Math.sin(Date.now()*.003*p.mS+p.mO)*p.mR;
+    if(P.x+P.w>p.x&&P.x<p.x+p.w&&P.y+P.h>p.y&&P.y+P.h<p.y+p.h+P.vy+5&&P.vy>=0){P.y=p.y-P.h;P.vy=0;P.grounded=true;P.dj=true;}
+  }
+  if(P.y>GH+120){endGame('You fell into the void!');return;}
+  P.x=Math.max(0,P.x);
+
+  const tCam=P.x-GW/3; camX+=(tCam-camX)*.08; camX=Math.max(0,camX);
+  score=Math.max(score,Math.floor(P.x/10));
+  if(comboT>0){comboT--;if(comboT===0){combo=0;document.getElementById('comboBox').classList.remove('accent');document.getElementById('hCombo').textContent='0×';}}
+  if(gatesCleared<LEVELS[lvlIdx].nGates&&P.x>=nextGateX&&!inPuzzle) triggerGate();
+
+  if(bossObj&&bossObj.alive&&!bossSpawned&&P.x>bossObj.x-GW){
+    bossSpawned=true; SFX.boss();
+    toast('⚠ BOSS INCOMING ⚠','#ff5500',2000);
+    document.getElementById('bossBar').classList.add('on');
+  }
+}
+
+function upOrbs(){
+  const t=LEVELS[lvlIdx].th;
+  for(const o of orbs){
+    if(o.col) continue;
+    const dx=(P.x+P.w/2)-o.x,dy=(P.y+P.h/2)-o.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(P.pwr==='magnet'&&d<160){const a=Math.atan2(dy,dx);o.x-=Math.cos(a)*5;o.y+=Math.sin(a)*5;}
+    if(d<o.r+P.w/2){
+      o.col=true; combo++; comboT=110; maxCombo=Math.max(maxCombo,combo);
+      const bonus=combo>1?combo*8:0,pts=(o.v+bonus)*(P.pwr==='double'?2:1);
+      score+=pts; orbsDone++;
+      burst(o.x-camX,o.y,t.oC,12,4); SFX.collect(); shake=2;
+      flt(o.x-camX,o.y-18,`+${pts}`,combo>1?'#ffcc00':t.oC);
+      if(combo>1) document.getElementById('comboBox').classList.add('accent');
+      document.getElementById('hCombo').textContent=`${combo}×`;
+    }
+  }
+}
+
+function upEnemies(){
+  for(const e of enemies){
+    if(!e.alive) continue;
+    e.x+=e.vx; if(e.x<e.pL||e.x>e.pR) e.vx*=-1;
+    const dx=(P.x+P.w/2)-e.x,dy=(P.y+P.h/2)-e.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<e.w+P.w/2){
+      if(P.dash||P.inv){e.alive=false;score+=100;burst(e.x-camX,e.y,e.c,15,5);flt(e.x-camX,e.y-18,'+100','#00ffaa');beep(220,.12,'square',.06);}
+      else if(P.pwr==='shield'){e.alive=false;P.pwr=null;P.pwrT=0;document.getElementById('powerBox').style.display='none';burst(e.x-camX,e.y,'#00aaff',12,4);}
+      else{P.hp-=22;P.inv=true;P.invT=65;shake=9;SFX.hit();if(P.hp<=0){endGame('You were overwhelmed!');return;}}
+    }
+  }
+  if(bossObj&&bossObj.alive){
+    bossObj.gt+=.05; bossObj.x+=bossObj.vx;
+    if(bossObj.x<bossObj.pL||bossObj.x>bossObj.pR) bossObj.vx*=-1;
+    const dx=(P.x+P.w/2)-bossObj.x,dy=(P.y+P.h/2)-bossObj.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<bossObj.w/2+P.w/2){
+      if(P.dash&&!inBossFight) triggerBoss();
+      else if(!P.inv){P.hp-=12;P.inv=true;P.invT=80;shake=10;SFX.hit();if(P.hp<=0){endGame('The boss crushed you!');return;}}
+    }
+  }
+}
+
+function upPowerups(){
+  const names={speed:'SPEED',shield:'SHIELD',magnet:'MAGNET',double:'2× POINTS'};
+  for(const p of powerups){
+    if(p.col) continue;
+    const dx=(P.x+P.w/2)-p.x,dy=(P.y+P.h/2)-p.y;
+    if(Math.sqrt(dx*dx+dy*dy)<p.r+P.w/2){
+      p.col=true;P.pwr=p.type;P.pwrT=550;
+      burst(p.x-camX,p.y,'#00aaff',16,5);SFX.powerup();
+      document.getElementById('hPower').textContent=names[p.type];
+      document.getElementById('powerBox').style.display='block';
+      flt(p.x-camX,p.y-18,names[p.type],'#00aaff');
+    }
+  }
+}
+
+function upParticles(){
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=p.dec;if(p.life<=0)particles.splice(i,1);}
+  for(let i=trails.length-1;i>=0;i--){trails[i].alpha-=trails[i].dec;if(trails[i].alpha<=0)trails.splice(i,1);}
+  for(const p of bgP){p.x-=p.sp;if(p.x<camX-60){p.x=camX+GW+60;p.y=Math.random()*GH;}}
+  for(let i=floats.length-1;i>=0;i--){const f=floats[i];f.y+=f.vy;f.alpha-=f.dec;if(f.alpha<=0)floats.splice(i,1);}
+}
+
+const GL={wk:'♔',wq:'♕',wr:'♖',wb:'♗',wn:'♘',wp:'♙',bk:'♚',bq:'♛',br:'♜',bb:'♝',bn:'♞',bp:'♟'};
+
+function drawAll(){
+  const t=LEVELS[lvlIdx].th;
+  ctx.fillStyle=t.bg; ctx.fillRect(0,0,GW,GH);
+  ctx.strokeStyle=t.grid; ctx.lineWidth=1;
+  const gs=58,ox=(camX*.3)%gs;
+  for(let x=-ox;x<GW;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,GH);ctx.stroke();}
+  for(let y=0;y<GH;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(GW,y);ctx.stroke();}
+  for(const p of bgP){const sx=p.x-camX*.5;if(sx>-10&&sx<GW+10){ctx.fillStyle=`rgba(0,255,170,${p.alpha*.5})`;ctx.beginPath();ctx.arc(sx,p.y,p.sz,0,Math.PI*2);ctx.fill();}}
+
+  if(gatesCleared<LEVELS[lvlIdx].nGates){
+    const gx=nextGateX-camX;
+    if(gx>0&&gx<GW){
+      const a=.38+Math.sin(Date.now()*.004)*.2;
+      ctx.fillStyle=`rgba(255,204,0,${a*.12})`;ctx.fillRect(gx-3,0,6,GH);
+      ctx.fillStyle=`rgba(255,204,0,${a})`;
+      ctx.font='16px serif';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText('♟',gx,12);
+      ctx.font='7px Orbitron,sans-serif';ctx.fillStyle=`rgba(255,204,0,${a})`;ctx.fillText('CHECKPOINT',gx,32);
+    }
+  }
+
+  for(const p of platforms){
+    const sx=p.x-camX; if(sx>GW+60||sx+p.w<-60) continue;
+    ctx.shadowColor=p.g;ctx.shadowBlur=p.boss?22:7;
+    ctx.fillStyle=p.c;ctx.fillRect(sx,p.y,p.w,p.h);
+    ctx.fillStyle=p.g;ctx.fillRect(sx,p.y,p.w,3);
+    ctx.shadowBlur=0;
+  }
+
+  for(const tr of trails){ctx.fillStyle=tr.col;ctx.globalAlpha=tr.alpha;ctx.beginPath();ctx.arc(tr.x-camX,tr.y,tr.sz,0,Math.PI*2);ctx.fill();}
+  ctx.globalAlpha=1;
+
+  for(const o of orbs){
+    if(o.col) continue;
+    const sx=o.x-camX; if(sx>GW+20||sx<-20) continue;
+    o.pulse+=.08; const ps=Math.sin(o.pulse)*2.5;
+    ctx.shadowColor=t.oC;ctx.shadowBlur=15;
+    ctx.fillStyle=t.oC;ctx.beginPath();ctx.arc(sx,o.y,o.r+ps,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.65)';ctx.beginPath();ctx.arc(sx-2.5,o.y-2.5,3.2,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+  }
+
+  for(const p of powerups){
+    if(p.col) continue;
+    const sx=p.x-camX; if(sx>GW+30||sx<-30) continue;
+    p.pulse+=.06; const ps=Math.sin(p.pulse)*1.8;
+    ctx.save();ctx.translate(sx,p.y);ctx.rotate(Date.now()*.002);
+    ctx.shadowColor='#00aaff';ctx.shadowBlur=18;
+    ctx.fillStyle='#00aaff';ctx.fillRect(-p.r-ps,-p.r-ps,(p.r+ps)*2,(p.r+ps)*2);
+    ctx.fillStyle='#fff';ctx.font='11px Orbitron,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText({speed:'▶',shield:'⬡',magnet:'⊕',double:'2×'}[p.type]||'?',0,1);
+    ctx.restore();ctx.shadowBlur=0;
+  }
+
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const sx=e.x-camX; if(sx>GW+50||sx<-50) continue;
+    ctx.shadowColor=e.c;ctx.shadowBlur=9;
+    ctx.fillStyle=e.c;ctx.fillRect(sx-e.w/2,e.y-e.h,e.w,e.h);
+    ctx.fillStyle='#fff';const eo=e.vx>0?3:-3;
+    ctx.fillRect(sx-e.w/2+4+eo,e.y-e.h+5,4,4);ctx.fillRect(sx-e.w/2+11+eo,e.y-e.h+5,4,4);
+    ctx.shadowBlur=0;
+  }
+
+  if(bossObj&&bossObj.alive){
+    const sx=bossObj.x-camX;
+    if(sx>-100&&sx<GW+100){
+      const pulse=Math.sin(bossObj.gt)*.35+.65;
+      ctx.shadowColor=bossObj.color;ctx.shadowBlur=32*pulse;
+      ctx.fillStyle=bossObj.color+'bb';ctx.fillRect(sx-bossObj.w/2,bossObj.y-bossObj.h,bossObj.w,bossObj.h);
+      ctx.fillStyle=bossObj.color;
+      for(let s=0;s<3;s++) ctx.fillRect(sx-bossObj.w/2+4,bossObj.y-bossObj.h+8+s*17,bossObj.w-8,5);
+      ctx.font='28px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(bossObj.emoji,sx,bossObj.y-bossObj.h/2);
+      ctx.fillStyle='#fff';const eo=bossObj.vx>0?5:-5;
+      ctx.fillRect(sx-10+eo,bossObj.y-bossObj.h+12,7,7);ctx.fillRect(sx+4+eo,bossObj.y-bossObj.h+12,7,7);
+      ctx.fillStyle='#000';ctx.fillRect(sx-8+eo,bossObj.y-bossObj.h+14,3,3);ctx.fillRect(sx+6+eo,bossObj.y-bossObj.h+14,3,3);
+      ctx.fillStyle=bossObj.color;ctx.font='bold 10px Orbitron,sans-serif';ctx.textAlign='center';
+      ctx.fillText(bossObj.name,sx,bossObj.y-bossObj.h-14);
+      if(Math.abs(P.x-bossObj.x)<320){ctx.fillStyle='rgba(255,255,255,.45)';ctx.font='9px Space Mono,monospace';ctx.fillText('[ DASH to attack ]',sx,bossObj.y-bossObj.h-28);}
+      ctx.shadowBlur=0;
+    }
+  }
+
+  const px=P.x-camX;
+  if(P.inv&&Math.floor(Date.now()/90)%2===0) ctx.globalAlpha=.45;
+  const gc=P.dash?'#00aaff':P.pwr==='shield'?'#00aaff':'#00ffaa';
+  ctx.shadowColor=gc;ctx.shadowBlur=P.dash?24:15;
+  ctx.fillStyle=gc;ctx.fillRect(px,P.y,P.w,P.h);
+  ctx.fillStyle='#08080f';ctx.fillRect(px+5,P.y+8,P.w-10,7);
+  ctx.fillStyle='#fff';ctx.fillRect(px+7,P.y+10,4,4);ctx.fillRect(px+17,P.y+10,4,4);
+  ctx.shadowBlur=0;ctx.globalAlpha=1;
+
+  for(const p of particles){ctx.fillStyle=p.col;ctx.globalAlpha=p.life;ctx.beginPath();ctx.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);ctx.fill();}
+  ctx.globalAlpha=1;
+  ctx.font='12px Orbitron,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  for(const f of floats){ctx.fillStyle=f.c;ctx.globalAlpha=f.alpha;ctx.fillText(f.t,f.x,f.y);}
+  ctx.globalAlpha=1;
+}
+
+function loop(){
+  if(over||!started) return;
+  let sx=0,sy=0;
+  if(shake>0){sx=(Math.random()-.5)*shake*2;sy=(Math.random()-.5)*shake*2;shake*=.87;if(shake<.1)shake=0;}
+  ctx.save();ctx.translate(sx,sy);
+  if(!inPuzzle){upPlayer();upOrbs();upEnemies();upPowerups();}
+  upParticles();
+  drawAll();
+  ctx.restore();
+  document.getElementById('hScore').textContent=score;
+  refreshDots();
+  animId=requestAnimationFrame(loop);
+}
+
+function triggerGate(){if(inPuzzle) return;inPuzzle=true; SFX.gate();puzzleData=LEVELS[lvlIdx].puzzles[gatesCleared];openPuzzle(false);}
+function triggerBoss(){if(inPuzzle||inBossFight) return;inBossFight=true; inPuzzle=true;puzzleData=LEVELS[lvlIdx].puzzles[LEVELS[lvlIdx].nGates];openPuzzle(true);}
+
+let grid=[],sel=null,vms=[],lastF=null,lastT=null,pSolved=false,pFailed=false,pMoves=[];
+
+function openPuzzle(isBoss){
+  pSolved=false;pFailed=false;pMoves=[];sel=null;vms=[];lastF=null;lastT=null;
+  puzzleAttempts=3;puzzleHintUsed=false;
+  const tl=isBoss?45:30;
+  puzzleSec=tl;
+  const pTimer=document.getElementById('pTimer');
+  pTimer.textContent=puzzleSec; pTimer.className='puzzle-timer ok';
+  const prog=document.getElementById('pProg');
+  prog.style.transition='none';prog.style.width='100%';
+  setTimeout(()=>{prog.style.transition=`width ${tl}s linear`;prog.style.width='0%';},50);
+
+  document.getElementById('pTitle').textContent=`${puzzleData.label} — ${puzzleData.tactic}`;
+  document.getElementById('pHintTxt').innerHTML=`<strong>Task:</strong> ${puzzleData.task}`;
+
+  if(isBoss){
+    document.getElementById('fuelReward').style.cssText='display:flex;align-items:center;gap:8px;background:rgba(255,51,85,.08);border:1px solid rgba(255,51,85,.4);border-radius:5px;padding:8px 10px;margin-bottom:9px;font-size:11px;';
+    document.getElementById('fuelReward').innerHTML='<div class="fuel-reward-icon">⚔</div><div class="fuel-reward-txt"><strong>BOSS HIT</strong>Correct = −1 Boss HP!</div>';
+  } else {
+    document.getElementById('fuelReward').style.cssText='display:flex;align-items:center;gap:8px;background:rgba(0,255,170,.08);border:1px solid rgba(0,255,170,.3);border-radius:5px;padding:8px 10px;margin-bottom:9px;font-size:11px;';
+    document.getElementById('fuelReward').innerHTML='<div class="fuel-reward-icon">⚡</div><div class="fuel-reward-txt"><strong>+FUEL REWARD</strong>Solve to keep running!</div>';
+  }
+
+  buildAtt();
+  document.getElementById('movesLog').innerHTML='';
+  document.getElementById('pStatus').textContent='Select a piece to move';
+  document.getElementById('pStatus').className='puzzle-status neu';
+  document.getElementById('pHintBtn').style.cssText='';
+  document.getElementById('pSkipBtn').style.cssText='';
+  grid=puzzleData.board.map(r=>r.map(c=>c));
+  renderBoard();
+  document.getElementById('puzzlePanel').classList.add('on');
+
+  clearInterval(puzzleIv);
+  puzzleIv=setInterval(()=>{
+    puzzleSec--;
+    pTimer.textContent=puzzleSec;
+    pTimer.className=puzzleSec<=8?'puzzle-timer':'puzzle-timer ok';
+    if(puzzleSec<=0){clearInterval(puzzleIv);onTimeout();}
+  },1000);
+}
+
+function buildAtt(){
+  const r=document.getElementById('attRow');r.innerHTML='<span style="font-size:10px;color:#555;margin-right:4px;">TRIES</span>';
+  for(let i=0;i<3;i++){const d=document.createElement('div');d.className='att-dot';d.id=`att${i}`;r.appendChild(d);}
+}
+
+function renderBoard(){
+  const el=document.getElementById('cboard');el.innerHTML='';
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const cell=document.createElement('div');
+      cell.className='cc '+((r+c)%2===0?'lt':'dk');
+      if(sel&&sel[0]===r&&sel[1]===c) cell.classList.add('sel');
+      if(lastF&&lastF[0]===r&&lastF[1]===c) cell.classList.add('lf');
+      if(lastT&&lastT[0]===r&&lastT[1]===c) cell.classList.add('lt2');
+      if(vms.some(m=>m[0]===r&&m[1]===c)) cell.classList.add(grid[r][c]?'vc':'vm');
+      const pc=grid[r][c]; if(pc) cell.textContent=GL[pc]||'?';
+      if(c===0){const s=document.createElement('div');s.className='cc-rank';s.textContent=8-r;cell.appendChild(s);}
+      if(r===7){const s=document.createElement('div');s.className='cc-file';s.textContent='abcdefgh'[c];cell.appendChild(s);}
+      cell.addEventListener('click',()=>clickCell(r,c));
+      el.appendChild(cell);
+    }
+  }
+}
+
+function clickCell(r,c){
+  if(pSolved||pFailed) return;
+  const pc=grid[r][c],side=puzzleData.taskSide||'white';
+  if(sel){
+    const [sr,sc]=sel;
+    if(vms.some(m=>m[0]===r&&m[1]===c)) doMove(sr,sc,r,c);
+    else if(pc&&isOwn(pc,side)){sel=[r,c];vms=movesFor(r,c);renderBoard();}
+    else{sel=null;vms=[];renderBoard();}
+  } else {
+    if(pc&&isOwn(pc,side)){sel=[r,c];vms=movesFor(r,c);renderBoard();}
+  }
+}
+
+function isOwn(pc,side){return side==='white'?pc[0]==='w':pc[0]==='b';}
+
+function movesFor(r,c){
+  const sol=puzzleData.sol;
+  if(sol.fr[0]===r&&sol.fr[1]===c) return [sol.to];
+  const pc=grid[r][c];if(!pc)return[];
+  const tp=pc[1],s=pc[0],op=s==='w'?'b':'w',mv=[];
+  if(tp==='p'){const d=s==='w'?-1:1;if(r+d>=0&&r+d<8&&!grid[r+d][c])mv.push([r+d,c]);[[r+d,c-1],[r+d,c+1]].forEach(([nr,nc])=>{if(nr>=0&&nr<8&&nc>=0&&nc<8&&grid[nr]&&grid[nr][nc]&&grid[nr][nc][0]===op)mv.push([nr,nc]);});}
+  if(tp==='n')[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([dr,dc])=>{const nr=r+dr,nc=c+dc;if(nr>=0&&nr<8&&nc>=0&&nc<8&&(!grid[nr][nc]||grid[nr][nc][0]===op))mv.push([nr,nc]);});
+  if(tp==='r'||tp==='q')[[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc])=>{for(let s2=1;s2<8;s2++){const nr=r+dr*s2,nc=c+dc*s2;if(nr<0||nr>=8||nc<0||nc>=8)break;if(grid[nr][nc]){if(grid[nr][nc][0]===op)mv.push([nr,nc]);break;}mv.push([nr,nc]);}});
+  if(tp==='b'||tp==='q')[[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([dr,dc])=>{for(let s2=1;s2<8;s2++){const nr=r+dr*s2,nc=c+dc*s2;if(nr<0||nr>=8||nc<0||nc>=8)break;if(grid[nr][nc]){if(grid[nr][nc][0]===op)mv.push([nr,nc]);break;}mv.push([nr,nc]);}});
+  if(tp==='k')[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(([dr,dc])=>{const nr=r+dr,nc=c+dc;if(nr>=0&&nr<8&&nc>=0&&nc<8&&(!grid[nr][nc]||grid[nr][nc][0]===op))mv.push([nr,nc]);});
+  return mv;
+}
+
+function doMove(fr,fc,tr,tc){
+  const sol=puzzleData.sol;
+  const correct=sol.fr[0]===fr&&sol.fr[1]===fc&&sol.to[0]===tr&&sol.to[1]===tc;
+  const moving=grid[fr][fc],captured=grid[tr][tc];
+  lastF=[fr,fc];lastT=[tr,tc];
+  grid[tr][tc]=moving; grid[fr][fc]=null;
+  if(moving==='wp'&&tr===0) grid[tr][tc]='wq';
+  if(moving==='bp'&&tr===7) grid[tr][tc]='bq';
+  sel=null;vms=[];renderBoard();
+
+  const ms=`${GL[moving]||'?'} ${'abcdefgh'[fc]}${8-fr}→${'abcdefgh'[tc]}${8-tr}${captured?'✕':''}`;
+  if(correct){
+    pMoves.push(`<div class="ok">✓ ${ms}</div>`);
+    document.getElementById('movesLog').innerHTML=pMoves.join('');
+    SFX.correct();pSolved=true;
+    clearInterval(puzzleIv);
+    document.getElementById('pStatus').textContent=`✓ ${puzzleData.explain}`;
+    document.getElementById('pStatus').className='puzzle-status win';
+    setTimeout(()=>onSolved(),1400);
+  } else {
+    puzzleAttempts--;
+    const used=document.getElementById(`att${3-puzzleAttempts-1}`);
+    if(used) used.classList.add('used');
+    pMoves.push(`<div class="bad">✗ ${ms}</div>`);
+    document.getElementById('movesLog').innerHTML=pMoves.join('');
+    SFX.wrong();
+    if(puzzleAttempts<=0){
+      pFailed=true;clearInterval(puzzleIv);
+      document.getElementById('pStatus').textContent=`✗ Out of tries! ${puzzleData.explain}`;
+      document.getElementById('pStatus').className='puzzle-status fail';
+      setTimeout(()=>onFailed(),2000);
+    } else {
+      document.getElementById('pStatus').textContent=`✗ Wrong! ${puzzleAttempts} tries left.`;
+      document.getElementById('pStatus').className='puzzle-status fail';
+      setTimeout(()=>{grid=puzzleData.board.map(r=>r.map(c=>c));lastF=null;lastT=null;sel=null;vms=[];renderBoard();if(!pFailed)document.getElementById('pStatus').className='puzzle-status neu';},900);
+    }
+  }
+}
+
+function onTimeout(){pFailed=true;document.getElementById('pStatus').textContent=`⏰ Time's up! ${puzzleData.explain}`;document.getElementById('pStatus').className='puzzle-status fail';setTimeout(()=>onFailed(),1800);}
+
+function onSolved(){
+  puzzlesSolved++;
+  clearInterval(puzzleIv);
+  document.getElementById('puzzlePanel').classList.remove('on');
+  inPuzzle=false;
+  safeRespawn();
+  if(puzzleData.type==='G'){
+    setFuel(Math.min(1,fuel+puzzleData.fuelGain));
+    SFX.fuelUp(); toast('⚡ FUELLED UP!','#00ffaa',1400);
+    burst(GW/2,GH*0.55,'#00ffaa',28,7);
+    gatesCleared++; nextGateX=(gatesCleared+1)*LEVELS[lvlIdx].gSpacing;
+    score+=200; flt(GW/2,GH*0.4,'+200 BONUS','#ffcc00');
+  } else {
+    bossHP--;
+    document.getElementById('bossHpFill').style.width=`${(bossHP/bossMaxHP)*100}%`;
+    document.getElementById('bossHpLbl').textContent=`${bossHP}/${bossMaxHP}`;
+    if(bossObj) burst(bossObj.x-camX,bossObj.y-40,bossObj.color,28,8);
+    shake=10; score+=300;
+    if(bossHP<=0){
+      if(bossObj) bossObj.alive=false;
+      document.getElementById('bossBar').classList.remove('on');
+      if(bossObj){burst(bossObj.x-camX,bossObj.y,bossObj.color,50,10);burst(bossObj.x-camX,bossObj.y,'#ffcc00',30,12);}
+      SFX.clear(); score+=500;
+      setTimeout(()=>showLvlClear(),1500);
+    } else {inBossFight=false;toast(`BOSS: ${bossHP} HP LEFT!`,bossObj?bossObj.color:'#ff5500',1400);}
+  }
+}
+
+function onFailed(){
+  clearInterval(puzzleIv);
+  document.getElementById('puzzlePanel').classList.remove('on');
+  inPuzzle=false;
+  safeRespawn();
+  if(puzzleData.type==='G'){setFuel(Math.max(0,fuel-.15));toast('⚡ FUEL LOST!','#ff3355',1200);flt(GW/2,GH*.4,'MISSED PUZZLE','#ff3355');gatesCleared++; nextGateX=(gatesCleared+1)*LEVELS[lvlIdx].gSpacing;}
+  else {bossHP=Math.min(bossMaxHP,bossHP+1);document.getElementById('bossHpFill').style.width=`${(bossHP/bossMaxHP)*100}%`;document.getElementById('bossHpLbl').textContent=`${bossHP}/${bossMaxHP}`;if(bossObj) flt(bossObj.x-camX,bossObj.y-50,'♥ BOSS HEALS',bossObj.color);toast('BOSS RECOVERED!','#ff5500',1200);inBossFight=false;}
+}
+
+function onHint(){
+  if(puzzleHintUsed) return;
+  puzzleHintUsed=true; score=Math.max(0,score-30);
+  flt(GW/2,80,'−30 (hint)','#ffcc00');
+  const h=puzzleData.hint; sel=[h[0],h[1]]; vms=[puzzleData.sol.to]; renderBoard();
+  const cells=document.querySelectorAll('.cc');
+  if(cells[h[0]*8+h[1]]) cells[h[0]*8+h[1]].classList.add('hint-glow');
+  document.getElementById('pStatus').textContent='💡 Hint active — move the highlighted piece!';
+  document.getElementById('pStatus').className='puzzle-status neu';
+  document.getElementById('pHintBtn').style.cssText='opacity:.4;pointer-events:none;';
+}
+
+function onSkip(){
+  clearInterval(puzzleIv);setFuel(Math.max(0,fuel-.18));
+  toast('SKIPPED (−FUEL)','#ff3355',1000);
+  if(puzzleData.type==='G'){gatesCleared++;nextGateX=(gatesCleared+1)*LEVELS[lvlIdx].gSpacing;}
+  else inBossFight=false;
+  document.getElementById('puzzlePanel').classList.remove('on');
+  inPuzzle=false;
+  safeRespawn();
+}
+
+function safeRespawn(){
+  P.vx=0; P.vy=0;
+  let best=null;
+  for(const p of platforms){if(P.x+P.w>p.x && P.x<p.x+p.w){if(!best || Math.abs(p.y - P.y) < Math.abs(best.y - P.y)){best=p;}}}
+  if(best){P.y=best.y-P.h;} else {P.y=GH-48-P.h;}
+  P.grounded=true; P.dj=true;
+}
+
+function showLvlClear(){
+  document.getElementById('tacticBadge').textContent=`♟ ALL GATE TACTICS MASTERED`;
+  document.getElementById('lvlScore').textContent=`Score: ${score}`;
+  document.getElementById('lvlMsg').textContent=`${LEVELS[lvlIdx].bossName} defeated! +500 bonus points`;
+  document.getElementById('lvlScreen').classList.add('on');
+}
+
+function nextLevel(){
+  document.getElementById('lvlScreen').classList.remove('on');
+  lvlIdx++;
+  if(lvlIdx>=LEVELS.length){document.getElementById('winScore').textContent=`Final Score: ${score}`;document.getElementById('winScreen').classList.add('on');return;}
+  const lv=LEVELS[lvlIdx];
+  document.getElementById('lbNum').textContent=`LEVEL ${lv.id}`;
+  document.getElementById('lbName').textContent=lv.name;
+  const descs=['Master the basics!','Harder puzzles — forks, pins, skewers.','The final challenge — zugzwang, promotions, queen sacrifices!'];
+  document.getElementById('lbDesc').textContent=`${descs[lvlIdx]} Boss: ${lv.bossName} (${lv.bossMaxHP} HP)`;
+  document.getElementById('lvlBanner').classList.add('on');
+}
+
+function startFromBanner(){document.getElementById('lvlBanner').classList.remove('on');resetLevel();}
+
+function resetLevel(){
+  cancelAnimationFrame(animId); clearInterval(puzzleIv);
+  particles=[];trails=[];floats=[];bgP=[];
+  P.x=120;P.y=300;P.vx=0;P.vy=0;P.hp=100;P.inv=false;P.invT=0;P.dCD=0;P.dash=false;P.pwr=null;P.pwrT=0;
+  combo=0;comboT=0;camX=0;shake=0;inPuzzle=false;inBossFight=false;
+  document.getElementById('hCombo').textContent='0×';
+  document.getElementById('comboBox').classList.remove('accent');
+  document.getElementById('powerBox').style.display='none';
+  document.getElementById('bossBar').classList.remove('on');
+  document.getElementById('puzzlePanel').classList.remove('on');
+  setFuel(1); initBgP(); genWorld(); started=true; over=false; loop();
+}
+
+function initBgP(){bgP=[];for(let i=0;i<55;i++)bgP.push({x:Math.random()*GW*3,y:Math.random()*GH,sz:Math.random()*2+.5,sp:Math.random()*.7+.2,alpha:Math.random()*.4+.1});}
+
+function endGame(reason){
+  over=true;cancelAnimationFrame(animId);clearInterval(puzzleIv);
+  document.getElementById('puzzlePanel').classList.remove('on');
+  if(score>highScore){highScore=score;localStorage.setItem('neonChessHS2',highScore);}
+  document.getElementById('overReason').textContent=reason||'Game over!';
+  document.getElementById('oScore').textContent=score;
+  document.getElementById('oPuzzles').textContent=puzzlesSolved;
+  document.getElementById('oCombo').textContent=`${maxCombo}×`;
+  document.getElementById('oHigh').textContent=`High Score: ${highScore}`;
+  document.getElementById('overScreen').classList.add('on');
+}
+
+function restartAll(){document.getElementById('overScreen').classList.remove('on');document.getElementById('winScreen').classList.remove('on');lvlIdx=0;score=0;combo=0;comboT=0;maxCombo=0;orbsDone=0;puzzlesSolved=0;resetLevel();}
+
+document.addEventListener('keydown',e=>{
+  if(e.code==='ArrowLeft'||e.code==='KeyA') keys.L=true;
+  if(e.code==='ArrowRight'||e.code==='KeyD') keys.R=true;
+  if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){e.preventDefault();keys.J=true;}
+  if(e.code==='ArrowDown'||e.code==='KeyS'){e.preventDefault();keys.D=true;}
+  if(e.code==='Escape'&&inPuzzle) onSkip();
+});
+document.addEventListener('keyup',e=>{
+  if(e.code==='ArrowLeft'||e.code==='KeyA') keys.L=false;
+  if(e.code==='ArrowRight'||e.code==='KeyD') keys.R=false;
+  if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW') keys.J=false;
+  if(e.code==='ArrowDown'||e.code==='KeyS') keys.D=false;
+});
+let tx=0;
+canvas.addEventListener('touchstart',e=>{e.preventDefault();tx=e.touches[0].clientX;keys.J=true;});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();const dx=e.touches[0].clientX-tx;keys.L=dx<-30;keys.R=dx>30;if(e.touches[0].clientY>200)keys.D=true;});
+canvas.addEventListener('touchend',e=>{e.preventDefault();keys.L=keys.R=keys.J=keys.D=false;});
+
+document.getElementById('startBtn').addEventListener('click',()=>{document.getElementById('startScreen').classList.remove('on');initBgP();genWorld();started=true;loop();});
+document.getElementById('nextBtn').addEventListener('click',nextLevel);
+document.getElementById('lbStartBtn').addEventListener('click',startFromBanner);
+document.getElementById('restartBtn').addEventListener('click',restartAll);
+document.getElementById('winRestartBtn').addEventListener('click',restartAll);
+document.getElementById('pHintBtn').addEventListener('click',onHint);
+document.getElementById('pSkipBtn').addEventListener('click',onSkip);
+</script>
+</body>
+</html>

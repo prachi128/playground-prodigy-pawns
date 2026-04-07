@@ -9,6 +9,8 @@ export type PieceTypeCode = 'b' | 'n' | 'k' | 'q' | 'r' | 'p'
 export interface PieceLessonStep {
   startSquare: string
   starSquares: string[]
+  /** Hot lava / rocks — cannot land here. More common in later lessons (higher difficulty). */
+  blocked?: BlockedSquare[]
 }
 
 export interface PieceLessonMeta {
@@ -16,7 +18,7 @@ export interface PieceLessonMeta {
   pieceName: string
   description: string
   goalText: string
-  /** Number of lessons (e.g. 8 or 5 for King) */
+  /** Number of lessons (8 per piece in Burger / Star collector piece mode) */
   lessonCount: number
   lessons: PieceLessonStep[]
 }
@@ -27,10 +29,39 @@ const BISHOP_LESSONS: PieceLessonStep[] = [
   { startSquare: 'd5', starSquares: ['a8', 'g8', 'a2', 'g2'] },
   { startSquare: 'c4', starSquares: ['a6', 'f1', 'b5', 'a2'] },
   { startSquare: 'f5', starSquares: ['b1', 'c2', 'd3', 'e4', 'e6', 'g6'] },
-  { startSquare: 'a3', starSquares: ['c1', 'b2', 'b4', 'c5', 'd6', 'e7', 'f8'] },
-  { startSquare: 'h4', starSquares: ['e7', 'g5', 'f6', 'd8', 'e1'] },
-  { startSquare: 'b2', starSquares: ['a1', 'a3', 'c1', 'c3'] },
-  { startSquare: 'e6', starSquares: ['c4', 'd5', 'f7', 'a2', 'g4', 'h3'] },
+  {
+    startSquare: 'a3',
+    starSquares: ['c1', 'b2', 'b4', 'c5', 'd6', 'e7', 'f8'],
+    blocked: [
+      { square: 'h2', type: 'rock' },
+      { square: 'h3', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'h4',
+    starSquares: ['e7', 'g5', 'f6', 'd8', 'e1'],
+    blocked: [
+      { square: 'a1', type: 'rock' },
+      { square: 'b1', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'b2',
+    starSquares: ['a1', 'a3', 'c1', 'c3'],
+    blocked: [
+      { square: 'g7', type: 'lava' },
+      { square: 'h8', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'e6',
+    starSquares: ['c4', 'd5', 'f7', 'a2', 'g4', 'h3'],
+    blocked: [
+      { square: 'a8', type: 'rock' },
+      { square: 'b8', type: 'lava' },
+      { square: 'h1', type: 'rock' },
+    ],
+  },
 ]
 
 /** Queen: 8 lessons */
@@ -39,10 +70,39 @@ const QUEEN_LESSONS: PieceLessonStep[] = [
   { startSquare: 'e5', starSquares: ['e8', 'a5', 'h5', 'b1'] },
   { startSquare: 'c3', starSquares: ['c8', 'a3', 'h3', 'e3', 'c1', 'f6'] },
   { startSquare: 'f4', starSquares: ['f8', 'a4', 'c1', 'h4', 'b8', 'd6'] },
-  { startSquare: 'a2', starSquares: ['a8', 'h2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2'] },
-  { startSquare: 'h6', starSquares: ['h1', 'a6', 'b6', 'c6', 'd6', 'e6', 'f6', 'g6'] },
-  { startSquare: 'e4', starSquares: ['a8', 'h1', 'e8', 'a4', 'b1', 'h5'] },
-  { startSquare: 'd5', starSquares: ['d1', 'd8', 'a5', 'h5', 'a2', 'g8', 'b2', 'e7'] },
+  {
+    startSquare: 'a2',
+    starSquares: ['a8', 'h2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2'],
+    blocked: [
+      { square: 'g7', type: 'lava' },
+      { square: 'h8', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'h6',
+    starSquares: ['h1', 'a6', 'b6', 'c6', 'd6', 'e6', 'f6', 'g6'],
+    blocked: [
+      { square: 'a1', type: 'rock' },
+      { square: 'b2', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'e4',
+    starSquares: ['a8', 'h1', 'e8', 'a4', 'b1', 'h5'],
+    blocked: [
+      { square: 'c7', type: 'lava' },
+      { square: 'f7', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'd5',
+    starSquares: ['d1', 'd8', 'a5', 'h5', 'a2', 'g8', 'b2', 'e7'],
+    blocked: [
+      { square: 'g2', type: 'rock' },
+      { square: 'h3', type: 'lava' },
+      { square: 'c8', type: 'rock' },
+    ],
+  },
 ]
 
 /** Knight: 8 lessons */
@@ -51,31 +111,115 @@ const KNIGHT_LESSONS: PieceLessonStep[] = [
   { startSquare: 'd4', starSquares: ['c6', 'e6', 'b5', 'f5', 'b3', 'f3', 'c2', 'e2'] },
   { startSquare: 'b1', starSquares: ['a3', 'c3', 'd2'] },
   { startSquare: 'g8', starSquares: ['e7', 'f6', 'h6'] },
-  { startSquare: 'e5', starSquares: ['d7', 'f7', 'c6', 'g6', 'c4', 'g4', 'd3', 'f3'] },
-  { startSquare: 'a4', starSquares: ['b6', 'c5', 'c3', 'b2'] },
-  { startSquare: 'f4', starSquares: ['d5', 'e6', 'g6', 'h5', 'd3', 'e2', 'g2', 'h3'] },
-  { startSquare: 'c4', starSquares: ['a5', 'b6', 'd6', 'e5', 'e3', 'd2', 'b2', 'a3'] },
+  {
+    startSquare: 'e5',
+    starSquares: ['d7', 'f7', 'c6', 'g6', 'c4', 'g4', 'd3', 'f3'],
+    blocked: [
+      { square: 'a1', type: 'lava' },
+      { square: 'h1', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'a4',
+    starSquares: ['b6', 'c5', 'c3', 'b2'],
+    blocked: [
+      { square: 'h7', type: 'rock' },
+      { square: 'g8', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'f4',
+    starSquares: ['d5', 'e6', 'g6', 'h5', 'd3', 'e2', 'g2', 'h3'],
+    blocked: [
+      { square: 'a8', type: 'lava' },
+      { square: 'b7', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'c4',
+    starSquares: ['a5', 'b6', 'd6', 'e5', 'e3', 'd2', 'b2', 'a3'],
+    blocked: [
+      { square: 'g1', type: 'rock' },
+      { square: 'h2', type: 'lava' },
+      { square: 'h8', type: 'rock' },
+    ],
+  },
 ]
 
-/** King: 5 lessons */
+/** King: 8 lessons (gentle start → ring patterns + obstacles on later levels) */
 const KING_LESSONS: PieceLessonStep[] = [
   { startSquare: 'e4', starSquares: ['e5', 'd5', 'd4', 'd3', 'e3', 'f3', 'f4', 'f5'] },
   { startSquare: 'd4', starSquares: ['c5', 'e5', 'e4', 'e3', 'd3', 'c3', 'c4'] },
   { startSquare: 'a1', starSquares: ['a2', 'b2', 'b1'] },
   { startSquare: 'e5', starSquares: ['d6', 'e6', 'f6', 'f5', 'f4', 'e4', 'd4', 'd5'] },
   { startSquare: 'h8', starSquares: ['h7', 'g7', 'g8'] },
+  {
+    startSquare: 'e4',
+    starSquares: ['d5', 'e5', 'f5', 'f4', 'f3', 'e3', 'd3', 'd4'],
+    blocked: [
+      { square: 'a1', type: 'rock' },
+      { square: 'h1', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'c5',
+    starSquares: ['b4', 'b5', 'b6', 'c6', 'd6', 'd5', 'd4', 'c4'],
+    blocked: [
+      { square: 'g2', type: 'lava' },
+      { square: 'h3', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'g3',
+    starSquares: ['f2', 'g2', 'h2', 'h3', 'h4', 'g4', 'f4', 'f3'],
+    blocked: [
+      { square: 'a7', type: 'rock' },
+      { square: 'b8', type: 'lava' },
+      { square: 'c1', type: 'rock' },
+    ],
+  },
 ]
 
-/** Pawn: 8 lessons (forward movement; promotion on 8th rank) */
+/** Pawn: 8 lessons (forward movement; promotion on 8th rank). Later lessons add side “splat” squares (decoys) — cannot land there. */
 const PAWN_LESSONS: PieceLessonStep[] = [
   { startSquare: 'e2', starSquares: ['e4', 'e5', 'e6'] },
   { startSquare: 'd2', starSquares: ['d4', 'd5', 'd6', 'd7', 'd8'] },
   { startSquare: 'a2', starSquares: ['a4', 'a5', 'a6', 'a7', 'a8'] },
   { startSquare: 'e3', starSquares: ['e4', 'e5', 'e6', 'e7', 'e8'] },
-  { startSquare: 'c2', starSquares: ['c3', 'c4', 'c5', 'c6', 'c7', 'c8'] },
-  { startSquare: 'f2', starSquares: ['f3', 'f4', 'f5', 'f6', 'f7', 'f8'] },
-  { startSquare: 'b2', starSquares: ['b4', 'b5', 'b6', 'b7', 'b8'] },
-  { startSquare: 'g2', starSquares: ['g3', 'g4', 'g5', 'g6', 'g7', 'g8'] },
+  {
+    startSquare: 'c2',
+    starSquares: ['c3', 'c4', 'c5', 'c6', 'c7', 'c8'],
+    blocked: [
+      { square: 'b3', type: 'lava' },
+      { square: 'd3', type: 'lava' },
+    ],
+  },
+  {
+    startSquare: 'f2',
+    starSquares: ['f3', 'f4', 'f5', 'f6', 'f7', 'f8'],
+    blocked: [
+      { square: 'e3', type: 'rock' },
+      { square: 'g3', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'b2',
+    starSquares: ['b4', 'b5', 'b6', 'b7', 'b8'],
+    blocked: [
+      { square: 'a3', type: 'lava' },
+      { square: 'c3', type: 'lava' },
+      { square: 'd4', type: 'rock' },
+    ],
+  },
+  {
+    startSquare: 'g2',
+    starSquares: ['g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+    blocked: [
+      { square: 'f3', type: 'lava' },
+      { square: 'h3', type: 'lava' },
+      { square: 'e4', type: 'rock' },
+    ],
+  },
 ]
 
 export const PIECE_LESSON_SETS: Record<PieceTypeCode, PieceLessonMeta> = {
@@ -108,7 +252,7 @@ export const PIECE_LESSON_SETS: Record<PieceTypeCode, PieceLessonMeta> = {
     pieceName: 'King',
     description: 'The King moves one square in any direction: horizontally, vertically, or diagonally.',
     goalText: 'Collect every star by moving one square at a time.',
-    lessonCount: 5,
+    lessonCount: 8,
     lessons: KING_LESSONS,
   },
   p: {
@@ -130,10 +274,39 @@ export const PIECE_LESSON_SETS: Record<PieceTypeCode, PieceLessonMeta> = {
       { startSquare: 'd5', starSquares: ['d8', 'h5', 'd1', 'a5'] },
       { startSquare: 'a1', starSquares: ['a8', 'h1'] },
       { startSquare: 'b4', starSquares: ['b8', 'b1', 'h4', 'a4'] },
-      { startSquare: 'f2', starSquares: ['f8', 'f1', 'a2', 'h2'] },
-      { startSquare: 'c6', starSquares: ['c8', 'c1', 'a6', 'h6'] },
-      { startSquare: 'g3', starSquares: ['g8', 'g1', 'a3', 'h3'] },
-      { startSquare: 'e5', starSquares: ['e8', 'e1', 'a5', 'b5', 'c5', 'd5', 'f5', 'g5', 'h5'] },
+      {
+        startSquare: 'f2',
+        starSquares: ['f8', 'f1', 'a2', 'h2'],
+        blocked: [
+          { square: 'd7', type: 'lava' },
+          { square: 'h7', type: 'rock' },
+        ],
+      },
+      {
+        startSquare: 'c6',
+        starSquares: ['c8', 'c1', 'a6', 'h6'],
+        blocked: [
+          { square: 'f3', type: 'rock' },
+          { square: 'g2', type: 'lava' },
+        ],
+      },
+      {
+        startSquare: 'g3',
+        starSquares: ['g8', 'g1', 'a3', 'h3'],
+        blocked: [
+          { square: 'd4', type: 'lava' },
+          { square: 'e5', type: 'rock' },
+        ],
+      },
+      {
+        startSquare: 'e5',
+        starSquares: ['e8', 'e1', 'a5', 'b5', 'c5', 'd5', 'f5', 'g5', 'h5'],
+        blocked: [
+          { square: 'a8', type: 'rock' },
+          { square: 'h8', type: 'lava' },
+          { square: 'b2', type: 'rock' },
+        ],
+      },
     ],
   },
 }
