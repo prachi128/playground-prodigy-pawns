@@ -128,6 +128,20 @@ export interface UserStats {
   star_balance: number;
   level: number;
   rating: number;
+  puzzle_rating: number;
+  puzzle_rating_rd: number;
+  puzzle_rating_volatility: number;
+}
+
+export interface PuzzleThemeTile {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface PuzzleThemeGroup {
+  group: string;
+  items: PuzzleThemeTile[];
 }
 
 export interface RewardsWallet {
@@ -281,11 +295,15 @@ export const puzzleAPI = {
     difficulty?: string,
     theme?: string,
     skip: number = 0,
-    limit: number = PUZZLES_PAGE_SIZE
+    limit: number = PUZZLES_PAGE_SIZE,
+    options?: { excludeAttempted?: boolean }
   ): Promise<Puzzle[]> => {
     const params = new URLSearchParams();
     if (difficulty) params.append('difficulty', difficulty);
     if (theme) params.append('theme', theme);
+    if (options?.excludeAttempted != null) {
+      params.append('exclude_attempted', String(options.excludeAttempted));
+    }
     params.append('skip', String(skip));
     params.append('limit', String(limit));
     const response = await api.get(`/api/puzzles?${params.toString()}`);
@@ -298,6 +316,29 @@ export const puzzleAPI = {
 
   getById: async (id: number): Promise<Puzzle> => {
     const response = await api.get(`/api/puzzles/${id}`);
+    return response.data;
+  },
+
+  getThemes: async (difficulty?: string): Promise<PuzzleThemeGroup[]> => {
+    const params = new URLSearchParams();
+    if (difficulty) params.append('difficulty', difficulty);
+    const query = params.toString();
+    const response = await api.get(`/api/puzzle-themes${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  getNext: async (options: {
+    difficulty: string;
+    theme: string;
+    currentPuzzleId?: number;
+    excludeAttempted?: boolean;
+  }): Promise<Puzzle> => {
+    const params = new URLSearchParams();
+    params.append('difficulty', options.difficulty);
+    params.append('theme', options.theme);
+    if (options.currentPuzzleId != null) params.append('current_puzzle_id', String(options.currentPuzzleId));
+    if (options.excludeAttempted != null) params.append('exclude_attempted', String(options.excludeAttempted));
+    const response = await api.get(`/api/puzzles/next?${params.toString()}`);
     return response.data;
   },
 

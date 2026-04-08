@@ -28,6 +28,7 @@ class UserResponse(UserBase):
     star_balance: int
     level: int
     rating: int
+    puzzle_rating: int
     level_category: Optional[str] = None  # Pawn, Knight, Bishop, Rook, Queen, King (from rating)
     created_at: datetime
     is_active: bool

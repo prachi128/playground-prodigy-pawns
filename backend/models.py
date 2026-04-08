@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, TypeDecorator, Numeric
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Enum, TypeDecorator, Numeric, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -80,6 +80,10 @@ class User(Base):
     star_balance = Column(Integer, default=0)
     level = Column(Integer, default=1)
     rating = Column(Integer, default=100)
+    puzzle_rating = Column(Integer, default=800)
+    puzzle_rating_rd = Column(Float, default=350.0)
+    puzzle_rating_volatility = Column(Float, default=0.06)
+    puzzle_rating_updated_at = Column(DateTime, default=datetime.utcnow)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -172,6 +176,18 @@ class Puzzle(Base):
     
     # Relationships
     attempts = relationship("PuzzleAttempt", back_populates="puzzle")
+    themes = relationship("PuzzleTheme", back_populates="puzzle", cascade="all, delete-orphan")
+
+
+class PuzzleTheme(Base):
+    __tablename__ = "puzzle_themes"
+    __table_args__ = (UniqueConstraint("puzzle_id", "theme_key", name="uq_puzzle_themes_puzzle_theme"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    puzzle_id = Column(Integer, ForeignKey("puzzles.id"), nullable=False, index=True)
+    theme_key = Column(String, nullable=False, index=True)
+
+    puzzle = relationship("Puzzle", back_populates="themes")
 
 # Puzzle Attempt Model
 class PuzzleAttempt(Base):

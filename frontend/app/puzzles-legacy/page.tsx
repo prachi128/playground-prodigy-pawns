@@ -36,7 +36,13 @@ export default function PuzzlesLegacyPage() {
   const loadPuzzles = async () => {
     setIsLoading(true);
     try {
-      const data = await puzzleAPI.getAll(selectedDifficulty || undefined);
+      const data = await puzzleAPI.getAll(
+        selectedDifficulty || undefined,
+        undefined,
+        0,
+        puzzleAPI.pageSize,
+        { excludeAttempted: true }
+      );
       setPuzzles(data);
     } catch (error) {
       console.error('Failed to load puzzles:', error);

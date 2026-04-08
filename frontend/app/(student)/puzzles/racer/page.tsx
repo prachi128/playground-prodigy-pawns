@@ -412,7 +412,7 @@ export default function PuzzleRacerPage() {
     bootstrapLockRef.current = true;
     setLoadingPool(true);
     try {
-      const list = await puzzleAPI.getAll('beginner');
+      const list = await puzzleAPI.getAll('beginner', undefined, 0, puzzleAPI.pageSize, { excludeAttempted: true });
       const shuffled = shuffle(list);
       if (shuffled.length === 0) {
         toast.error('No puzzles available. Try again later!');

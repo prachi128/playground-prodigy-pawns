@@ -6,11 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Set
 import io
+import math
 import random
 import re
 import chess
@@ -22,6 +24,7 @@ from models import (
     User,
     Game,
     Puzzle,
+    PuzzleTheme,
     PuzzleAttempt,
     Achievement,
     DailyChallenge,
@@ -176,6 +179,128 @@ def update_ratings_after_game(game: Game, db: Session) -> None:
     white.level = level_from_rating(white.rating)
     black.rating = max(min_rating, round((black.rating or 100) - delta_white))
     black.level = level_from_rating(black.rating)
+
+
+GLICKO2_SCALE = 173.7178
+GLICKO2_TAU = 0.5
+GLICKO2_EPSILON = 0.000001
+GLICKO2_DEFAULT_RATING = 800.0
+GLICKO2_DEFAULT_RD = 350.0
+GLICKO2_DEFAULT_VOL = 0.06
+GLICKO2_MIN_RD = 60.0
+GLICKO2_MAX_RD = 350.0
+GLICKO2_MIN_VOL = 0.01
+GLICKO2_MAX_VOL = 0.2
+GLICKO2_PERIOD_SECONDS = 24 * 60 * 60  # 1 day
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _glicko2_f(x: float, delta: float, phi: float, v: float, a: float) -> float:
+    exp_x = math.exp(x)
+    num = exp_x * (delta * delta - phi * phi - v - exp_x)
+    den = 2.0 * (phi * phi + v + exp_x) ** 2
+    return (num / den) - ((x - a) / (GLICKO2_TAU * GLICKO2_TAU))
+
+
+def _estimate_puzzle_rd(puzzle: Puzzle) -> float:
+    """
+    Approximate puzzle RD from attempts:
+    fewer attempts => higher uncertainty; heavily-attempted puzzles stabilize.
+    """
+    attempts = max(0, int(puzzle.attempts_count or 0))
+    rd = GLICKO2_MAX_RD - (attempts * 0.5)
+    return _clamp(rd, GLICKO2_MIN_RD, 220.0)
+
+
+def _to_timestamp_seconds(dt: Optional[datetime]) -> Optional[float]:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.timestamp()
+
+
+def update_user_puzzle_rating(user: User, puzzle: Puzzle, solved: bool) -> None:
+    """Update puzzle rating via full Glicko-2 (rating + RD + volatility)."""
+    rating = float(user.puzzle_rating or GLICKO2_DEFAULT_RATING)
+    rd = float(user.puzzle_rating_rd or GLICKO2_DEFAULT_RD)
+    vol = float(user.puzzle_rating_volatility or GLICKO2_DEFAULT_VOL)
+
+    rd = _clamp(rd, GLICKO2_MIN_RD, GLICKO2_MAX_RD)
+    vol = _clamp(vol, GLICKO2_MIN_VOL, GLICKO2_MAX_VOL)
+
+    now = datetime.utcnow()
+    last_ts = _to_timestamp_seconds(getattr(user, "puzzle_rating_updated_at", None))
+    now_ts = _to_timestamp_seconds(now) or 0.0
+    periods = 1.0
+    if last_ts is not None and now_ts > last_ts:
+        periods = max(1.0, (now_ts - last_ts) / GLICKO2_PERIOD_SECONDS)
+
+    # Convert to Glicko-2 scale.
+    mu = (rating - 1500.0) / GLICKO2_SCALE
+    phi = rd / GLICKO2_SCALE
+    # Increase uncertainty between rating periods.
+    phi_star = math.sqrt(phi * phi + (vol * vol * periods))
+
+    opp_rating = float(puzzle.rating or GLICKO2_DEFAULT_RATING)
+    opp_rd = _estimate_puzzle_rd(puzzle)
+    mu_j = (opp_rating - 1500.0) / GLICKO2_SCALE
+    phi_j = opp_rd / GLICKO2_SCALE
+
+    g = 1.0 / math.sqrt(1.0 + (3.0 * phi_j * phi_j) / (math.pi * math.pi))
+    e = 1.0 / (1.0 + math.exp(-g * (mu - mu_j)))
+    s = 1.0 if solved else 0.0
+
+    v = 1.0 / (g * g * e * (1.0 - e))
+    delta = v * g * (s - e)
+
+    # Volatility update (Glicko-2 iterative system).
+    a = math.log(vol * vol)
+    A = a
+    if (delta * delta) > (phi_star * phi_star + v):
+        B = math.log(delta * delta - phi_star * phi_star - v)
+    else:
+        k = 1
+        B = a - (k * GLICKO2_TAU)
+        while _glicko2_f(B, delta, phi_star, v, a) < 0:
+            k += 1
+            B = a - (k * GLICKO2_TAU)
+
+    fA = _glicko2_f(A, delta, phi_star, v, a)
+    fB = _glicko2_f(B, delta, phi_star, v, a)
+
+    while abs(B - A) > GLICKO2_EPSILON:
+        denom = (fB - fA)
+        if abs(denom) < 1e-12:
+            break
+        C = A + ((A - B) * fA / denom)
+        fC = _glicko2_f(C, delta, phi_star, v, a)
+        if fC * fB < 0:
+            A = B
+            fA = fB
+        else:
+            fA = fA / 2.0
+        B = C
+        fB = fC
+
+    sigma_prime = math.exp(A / 2.0)
+    sigma_prime = _clamp(sigma_prime, GLICKO2_MIN_VOL, GLICKO2_MAX_VOL)
+
+    phi_prime = 1.0 / math.sqrt((1.0 / (phi_star * phi_star)) + (1.0 / v))
+    mu_prime = mu + (phi_prime * phi_prime * g * (s - e))
+
+    new_rating = (mu_prime * GLICKO2_SCALE) + 1500.0
+    new_rd = phi_prime * GLICKO2_SCALE
+
+    user.puzzle_rating = max(100, int(round(new_rating)))
+    user.puzzle_rating_rd = float(_clamp(new_rd, GLICKO2_MIN_RD, GLICKO2_MAX_RD))
+    user.puzzle_rating_volatility = float(sigma_prime)
+    user.puzzle_rating_updated_at = now
 
 
 # Inactivity auto-resign: if the player whose turn it is doesn't move within this many seconds, they lose.
@@ -1112,26 +1237,253 @@ async def upload_my_avatar(
 
 # ==================== PUZZLE ENDPOINTS ====================
 
+PUZZLE_DIFFICULTY_RANGES = {
+    "beginner": (400, 999),
+    "intermediate": (1000, 1400),
+    "advanced": (1401, 1800),
+    "expert": (1801, None),
+}
+
+PUZZLE_THEME_SECTIONS = [
+    ("Recommended", [("healthyMix", "Healthy mix")]),
+    ("Phases", [
+        ("opening", "Opening"),
+        ("middlegame", "Middlegame"),
+        ("endgame", "Endgame"),
+        ("rookEndgame", "Rook endgame"),
+        ("bishopEndgame", "Bishop endgame"),
+        ("pawnEndgame", "Pawn endgame"),
+        ("knightEndgame", "Knight endgame"),
+        ("queenEndgame", "Queen endgame"),
+        ("queenRookEndgame", "Queen and Rook"),
+    ]),
+    ("By openings", [
+        ("Sicilian_Defense", "Sicilian Defense"),
+        ("French_Defense", "French Defense"),
+        ("Queens_Pawn_Game", "Queen's Pawn Game"),
+        ("Italian_Game", "Italian Game"),
+        ("Caro-Kann_Defense", "Caro-Kann Defense"),
+        ("Scandinavian_Defense", "Scandinavian Defense"),
+        ("Queens_Gambit_Declined", "Queen's Gambit Declined"),
+        ("English_Opening", "English Opening"),
+        ("Ruy_Lopez", "Ruy Lopez"),
+        ("Scotch_Game", "Scotch Game"),
+        ("Indian_Defense", "Indian Defense"),
+        ("Philidor_Defense", "Philidor Defense"),
+    ]),
+    ("Motifs", [
+        ("advancedPawn", "Advanced pawn"),
+        ("attackingF2F7", "Attacking f2 or f7"),
+        ("capturingDefender", "Capture the defender"),
+        ("discoveredAttack", "Discovered attack"),
+        ("doubleCheck", "Double check"),
+        ("exposedKing", "Exposed king"),
+        ("fork", "Fork"),
+        ("hangingPiece", "Hanging piece"),
+        ("kingsideAttack", "Kingside attack"),
+        ("pin", "Pin"),
+        ("queensideAttack", "Queenside attack"),
+        ("sacrifice", "Sacrifice"),
+        ("skewer", "Skewer"),
+        ("trappedPiece", "Trapped piece"),
+    ]),
+    ("Advanced", [
+        ("attraction", "Attraction"),
+        ("clearance", "Clearance"),
+        ("collinearMove", "Collinear move"),
+        ("discoveredCheck", "Discovered check"),
+        ("defensiveMove", "Defensive move"),
+        ("deflection", "Deflection"),
+        ("interference", "Interference"),
+        ("intermezzo", "Intermezzo"),
+        ("quietMove", "Quiet move"),
+        ("xRayAttack", "X-Ray Attack"),
+        ("zugzwang", "Zugzwang"),
+    ]),
+    ("Mates", [
+        ("mate", "Checkmate"),
+        ("mateIn1", "Mate in 1"),
+        ("mateIn2", "Mate in 2"),
+        ("mateIn3plus", "Mate in 3+"),
+    ]),
+    ("Mate themes", [
+        ("backRankMate", "Back rank mate"),
+        ("smotheredMate", "Smothered mate"),
+    ]),
+    ("Special moves", [
+        ("castling", "Castling"),
+        ("enPassant", "En passant rights"),
+        ("promotion", "Promotion"),
+        ("underPromotion", "Underpromotion"),
+    ]),
+    ("Goals", [
+        ("equality", "Equality"),
+        ("advantage", "Advantage"),
+        ("crushing", "Crushing"),
+    ]),
+    ("Lengths", [
+        ("oneMove", "One-move puzzle"),
+        ("short", "Short puzzle"),
+        ("long", "Long puzzle"),
+        ("veryLong", "Very long puzzle"),
+    ]),
+    ("Origin", [
+        ("master", "Master games"),
+        ("masterVsMaster", "Master vs Master games"),
+        ("superGM", "Super GM games"),
+    ]),
+]
+
+PUZZLE_THEME_GROUPS = {
+    # Healthy Mix behaves like Lichess mixed feed.
+    "healthyMix": set(),
+    "mateIn3plus": {"mateIn3", "mateIn4", "mateIn5", "mate"},
+    "endgame": {"endgame", "pawnEndgame", "rookEndgame", "queenEndgame", "bishopEndgame", "knightEndgame", "queenRookEndgame"},
+}
+
+
+class PuzzleThemeTileResponse(BaseModel):
+    key: str
+    label: str
+    count: int
+
+
+class PuzzleThemeGroupResponse(BaseModel):
+    group: str
+    items: List[PuzzleThemeTileResponse]
+
+
+def _apply_puzzle_difficulty_range(query, difficulty: Optional[str]):
+    if not difficulty:
+        return query
+    diff = difficulty.lower()
+    bounds = PUZZLE_DIFFICULTY_RANGES.get(diff)
+    if not bounds:
+        return query
+    low, high = bounds
+    query = query.filter(Puzzle.rating >= low)
+    if high is not None:
+        query = query.filter(Puzzle.rating <= high)
+    return query
+
+
+def _theme_token_filter(theme_token: str):
+    # Match whole tokens in the legacy space-separated Puzzle.theme field.
+    return or_(
+        Puzzle.theme == theme_token,
+        Puzzle.theme.ilike(f"{theme_token} %"),
+        Puzzle.theme.ilike(f"% {theme_token}"),
+        Puzzle.theme.ilike(f"% {theme_token} %"),
+    )
+
+
+def _apply_theme_filter(query, theme: Optional[str]):
+    if not theme:
+        return query
+    if theme == "healthyMix":
+        return query
+    tokens = PUZZLE_THEME_GROUPS.get(theme, {theme})
+    relation_match = Puzzle.themes.any(PuzzleTheme.theme_key.in_(list(tokens)))
+    token_conditions = [_theme_token_filter(token) for token in tokens]
+    return query.filter(or_(relation_match, *token_conditions))
+
 @app.get("/api/puzzles", response_model=list[PuzzleResponse])
 def get_puzzles(
     difficulty: str = None,
     theme: str = None,
+    exclude_attempted: bool = False,
     skip: int = 0,
     limit: int = 20,
+    user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get list of puzzles with optional filters"""
     query = db.query(Puzzle).filter(Puzzle.is_active == True)
-    
-    if difficulty:
-        # Convert to uppercase to match enum values
-        query = query.filter(Puzzle.difficulty == difficulty.upper())
-    if theme:
-        query = query.filter(Puzzle.theme == theme)
-    
+
+    query = _apply_puzzle_difficulty_range(query, difficulty)
+    query = _apply_theme_filter(query, theme)
+    if exclude_attempted:
+        attempted_subquery = (
+            db.query(PuzzleAttempt.puzzle_id)
+            .filter(PuzzleAttempt.user_id == user_id)
+            .subquery()
+        )
+        query = query.filter(Puzzle.id.notin_(attempted_subquery))
+
     # Order by id for fast indexed query (ORDER BY random() is slow on large sets)
     puzzles = query.order_by(Puzzle.id).offset(skip).limit(limit).all()
     return puzzles
+
+
+@app.get("/api/puzzle-themes", response_model=list[PuzzleThemeGroupResponse])
+def get_puzzle_themes(
+    difficulty: str = None,
+    db: Session = Depends(get_db)
+):
+    """Return grouped Lichess-style puzzle themes with non-zero counts only."""
+    eligible_query = db.query(Puzzle.id).filter(Puzzle.is_active == True)
+    eligible_query = _apply_puzzle_difficulty_range(eligible_query, difficulty)
+    eligible_subquery = eligible_query.subquery()
+
+    total_eligible = db.query(func.count()).select_from(eligible_subquery).scalar() or 0
+
+    # Aggregate all theme counts in one grouped query for performance.
+    rows = (
+        db.query(
+            PuzzleTheme.theme_key,
+            func.count(func.distinct(PuzzleTheme.puzzle_id)),
+        )
+        .join(eligible_subquery, PuzzleTheme.puzzle_id == eligible_subquery.c.id)
+        .group_by(PuzzleTheme.theme_key)
+        .all()
+    )
+    theme_counts: Dict[str, int] = {key: int(count) for key, count in rows}
+
+    grouped_items: List[PuzzleThemeGroupResponse] = []
+    for group_name, group_tiles in PUZZLE_THEME_SECTIONS:
+        items: List[PuzzleThemeTileResponse] = []
+        for key, label in group_tiles:
+            if key == "healthyMix":
+                count = total_eligible
+            else:
+                tokens = PUZZLE_THEME_GROUPS.get(key, {key})
+                count = sum(theme_counts.get(token, 0) for token in tokens)
+            if count > 0:
+                items.append(PuzzleThemeTileResponse(key=key, label=label, count=count))
+        if items:
+            grouped_items.append(PuzzleThemeGroupResponse(group=group_name, items=items))
+    return grouped_items
+
+
+@app.get("/api/puzzles/next", response_model=PuzzleResponse)
+def get_next_puzzle(
+    difficulty: str = Query(""),
+    theme: str = Query(...),
+    current_puzzle_id: Optional[int] = Query(None),
+    exclude_attempted: bool = Query(True),
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get next puzzle in same difficulty+theme, optionally excluding attempted ones."""
+    query = db.query(Puzzle).filter(Puzzle.is_active == True)
+    query = _apply_puzzle_difficulty_range(query, difficulty)
+    query = _apply_theme_filter(query, theme)
+
+    if current_puzzle_id is not None:
+        query = query.filter(Puzzle.id != current_puzzle_id)
+
+    if exclude_attempted:
+        attempted_subquery = (
+            db.query(PuzzleAttempt.puzzle_id)
+            .filter(PuzzleAttempt.user_id == user_id)
+            .subquery()
+        )
+        query = query.filter(Puzzle.id.notin_(attempted_subquery))
+
+    puzzle = query.order_by(Puzzle.id.asc()).first()
+    if not puzzle:
+        raise HTTPException(status_code=404, detail="No puzzle found for this theme and difficulty")
+    return puzzle
 
 @app.get("/api/puzzles/{puzzle_id}", response_model=PuzzleResponse)
 def get_puzzle(puzzle_id: int, db: Session = Depends(get_db)):
@@ -1279,6 +1631,7 @@ def submit_puzzle_attempt(
         puzzle.success_count += 1
     
     puzzle.attempts_count += 1
+    update_user_puzzle_rating(current_user, puzzle, authoritative_solved)
     
     # Create attempt record
     puzzle_attempt = PuzzleAttempt(
@@ -2815,7 +3168,10 @@ def get_user_stats(
         "total_xp": current_user.total_xp,
         "star_balance": current_user.star_balance,
         "level": current_user.level,
-        "rating": current_user.rating
+        "rating": current_user.rating,
+        "puzzle_rating": current_user.puzzle_rating,
+        "puzzle_rating_rd": current_user.puzzle_rating_rd,
+        "puzzle_rating_volatility": current_user.puzzle_rating_volatility,
     }
 
 if __name__ == "__main__":

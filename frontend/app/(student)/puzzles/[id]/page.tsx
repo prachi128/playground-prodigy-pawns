@@ -20,6 +20,9 @@ function PuzzleSolvePageContent() {
   const searchParams = useSearchParams();
   const puzzleId = parseInt(params.id as string);
   const assignmentIdRaw = searchParams.get('assignment_id');
+  const selectedDifficulty = searchParams.get('difficulty') ?? '';
+  const selectedTheme = searchParams.get('theme') ?? '';
+  const mode = searchParams.get('mode') ?? '';
   const assignmentIdForApi = (() => {
     if (assignmentIdRaw == null || assignmentIdRaw === '') return null;
     const n = parseInt(assignmentIdRaw, 10);
@@ -177,35 +180,47 @@ function PuzzleSolvePageContent() {
     }
   };
 
-  const goToNextPuzzleInSameDifficulty = async () => {
+  const goToNextPuzzleInSameDifficultyAndTheme = async () => {
     if (!puzzle) return;
 
     try {
-      const referenceRating = user?.rating ?? puzzle.rating ?? 400;
-      // Fetch a pool of puzzles in the same difficulty band
-      const list = await puzzleAPI.getAll(puzzle.difficulty, undefined, 0, 50);
-      const candidates = list.filter((p) => p.id !== puzzle.id);
-
-      if (candidates.length === 0) {
-        // Fallback: go back to the solve list
-        router.push('/puzzles/solve');
+      if (mode === 'random') {
+        const list = await puzzleAPI.getAll(
+          selectedDifficulty || undefined,
+          'healthyMix',
+          0,
+          200,
+          { excludeAttempted: true }
+        );
+        if (list.length === 0) {
+          toast.error('No more unseen random puzzles found right now.');
+          router.push('/puzzles/solve');
+          return;
+        }
+        const nextPuzzle = list[Math.floor(Math.random() * list.length)];
+        const params = new URLSearchParams();
+        if (assignmentIdForApi != null) params.set('assignment_id', String(assignmentIdForApi));
+        if (selectedDifficulty) params.set('difficulty', selectedDifficulty);
+        params.set('mode', 'random');
+        router.push(`/puzzles/${nextPuzzle.id}?${params.toString()}`);
         return;
       }
 
-      // Pick the puzzle whose rating is closest to the player's rating
-      const sortedByCloseness = [...candidates].sort((a, b) => {
-        const da = Math.abs((a.rating ?? referenceRating) - referenceRating);
-        const db = Math.abs((b.rating ?? referenceRating) - referenceRating);
-        return da - db;
+      const effectiveTheme = selectedTheme || parseThemeList(puzzle.theme)[0] || 'fork';
+      const nextPuzzle = await puzzleAPI.getNext({
+        difficulty: selectedDifficulty,
+        theme: effectiveTheme,
+        currentPuzzleId: puzzle.id,
+        excludeAttempted: true,
       });
-
-      const nextPuzzle = sortedByCloseness[0];
-      const q =
-        assignmentIdForApi != null ? `?assignment_id=${assignmentIdForApi}` : '';
-      router.push(`/puzzles/${nextPuzzle.id}${q}`);
+      const params = new URLSearchParams();
+      if (assignmentIdForApi != null) params.set('assignment_id', String(assignmentIdForApi));
+      if (selectedDifficulty) params.set('difficulty', selectedDifficulty);
+      params.set('theme', effectiveTheme);
+      router.push(`/puzzles/${nextPuzzle.id}?${params.toString()}`);
     } catch (error) {
       console.error('Failed to load next puzzle:', error);
-      router.push('/puzzles/solve');
+      router.push(mode === 'random' ? '/puzzles/solve' : '/puzzles/themes');
     }
   };
 
@@ -352,7 +367,7 @@ function PuzzleSolvePageContent() {
                   </Link>
                   <button
                     type="button"
-                    onClick={goToNextPuzzleInSameDifficulty}
+                    onClick={goToNextPuzzleInSameDifficultyAndTheme}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
                   >
                     <Trophy className="w-3 h-3" />

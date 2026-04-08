@@ -3,18 +3,28 @@
 'use client';
 
 import Link from 'next/link';
-import { Puzzle, Zap, ArrowLeft } from 'lucide-react';
+import { Puzzle, Shapes, Zap, ArrowLeft } from 'lucide-react';
 
 const puzzleOptions = [
   {
     title: 'Solve Puzzles',
-    description: 'Pick a puzzle, take your time, and find the best move. Earn XP and sharpen your tactics.',
+    description: 'Jump straight into a random puzzle at your level, then continue with random next puzzles.',
     href: '/puzzles/solve',
     image: '/images/tile-solve-puzzles.jpg',
     gradient: 'from-cyan-400 to-blue-500',
     borderColor: 'border-cyan-300',
     emoji: '🧩',
     icon: Puzzle,
+  },
+  {
+    title: 'Puzzle Themes',
+    description: 'Choose a theme like Endgame, Fork, or Pin and practice focused tactical patterns.',
+    href: '/puzzles/themes',
+    image: null,
+    gradient: 'from-violet-400 to-purple-500',
+    borderColor: 'border-violet-300',
+    emoji: '🎯',
+    icon: Shapes,
   },
   {
     title: 'Puzzle Racer',
@@ -49,9 +59,9 @@ export default function PuzzlesLandingPage() {
         </div>
       </section>
 
-      {/* Two options */}
+      {/* Puzzle options */}
       <section className="mb-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {puzzleOptions.map((card, idx) => {
             const Icon = card.icon;
             return (
@@ -62,11 +72,15 @@ export default function PuzzlesLandingPage() {
                 style={{ animationDelay: `${idx * 120}ms` }}
               >
                 <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 transition-transform duration-300 group-hover:scale-105`}>
-                  <img
-                    src={card.image}
-                    alt={card.title}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  />
+                  {card.image ? (
+                    <img
+                      src={card.image}
+                      alt={card.title}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(45deg,white_12.5%,transparent_12.5%,transparent_50%,white_50%,white_62.5%,transparent_62.5%,transparent_100%)] [background-size:14px_14px]" />
+                  )}
                   <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-45`} />
                   <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-6xl sm:text-7xl drop-shadow-lg">{card.emoji}</span>
