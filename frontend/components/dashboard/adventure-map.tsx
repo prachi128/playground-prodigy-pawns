@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { puzzleAPI, Puzzle } from "@/lib/api"
 import toast from "react-hot-toast"
 
@@ -134,6 +134,10 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
     setGameOver(false)
     setHudData({ lives: 3, coins: 0, world: "1-1", score: 0 })
   }, [initGame])
+
+  useLayoutEffect(() => {
+    if (autoStart) startGame()
+  }, [autoStart, startGame])
 
   // Trigger puzzle
   const triggerPuzzle = useCallback(() => {
@@ -474,6 +478,7 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
   /* ================================================================ */
 
   if (!started) {
+    if (autoStart) return null
     return <StartScreen onStart={startGame} />
   }
 

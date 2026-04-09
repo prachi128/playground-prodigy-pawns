@@ -2,8 +2,8 @@
 
 'use client';
 
-import { AdventureGamesHub } from '@/components/dashboard/adventure/AdventureGamesHub';
+import { AdventureMap } from '@/components/dashboard/adventure-map';
 
 export default function AdventurePage() {
-  return <AdventureGamesHub />;
+  return <AdventureMap />;
 }

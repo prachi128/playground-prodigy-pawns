@@ -1,6 +1,8 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { AdventureMap } from '@/components/dashboard/adventure-map';
 
 export default function AdventurePlayPage() {
-  redirect('/adventure/games/neon-runner');
+  return <AdventureMap autoStart />;
 }
 
