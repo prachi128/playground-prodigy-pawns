@@ -9,11 +9,13 @@ from models import (
     User, UserRole, ParentStudent, Batch, StudentBatch,
     ClassSession, Announcement, Payment, PuzzleAttempt, Game,
 )
-from auth import get_current_user
+from auth import get_current_user, get_password_hash
 from database import get_db
+from account_utils import create_student_user, ensure_parent_student_link
 from schemas import (
     ClassSessionResponse, AnnouncementResponse,
     PaymentCheckoutCreate, PaymentResponse, ChildResponse, ParentChildAssignmentResponse,
+    ParentChildCreate, UserResponse,
 )
 from stripe_service import create_checkout_session, verify_webhook
 
@@ -169,6 +171,32 @@ def get_children(parent: User = Depends(require_parent), db: Session = Depends(g
             payment_status=p_status,
         ))
     return result
+
+
+@router.post("/children", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def create_child(
+    data: ParentChildCreate,
+    parent: User = Depends(require_parent),
+    db: Session = Depends(get_db),
+):
+    """Create a student account linked to the logged-in parent."""
+    try:
+        child = create_student_user(
+            db,
+            username=data.username,
+            full_name=data.full_name,
+            password_hash=get_password_hash(data.password),
+            guardian_email=parent.email,
+            age=data.age,
+            gender=data.gender,
+            avatar_url=data.avatar_url or "/avatars/default.png",
+        )
+        ensure_parent_student_link(parent.id, child.id, db)
+        db.commit()
+        db.refresh(child)
+        return child
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ==================== CLASSES ====================

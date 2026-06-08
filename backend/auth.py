@@ -10,6 +10,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from models import User
 from database import get_db
@@ -165,9 +166,21 @@ def get_current_user(
     except ValueError:
         raise credentials_exception
 
-def authenticate_user(db: Session, email: str, password: str):
-    """Authenticate a user by email and password"""
-    user = db.query(User).filter(User.email == email).first()
+def authenticate_user(db: Session, identifier: str, password: str):
+    """Authenticate by email (parents/coaches) or username/email (students)."""
+    identifier = identifier.strip()
+    if not identifier:
+        return False
+    user = (
+        db.query(User)
+        .filter(
+            or_(
+                User.email == identifier,
+                func.lower(User.username) == identifier.lower(),
+            )
+        )
+        .first()
+    )
     if not user:
         return False
     if user.is_active is False:

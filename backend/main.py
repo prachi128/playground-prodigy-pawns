@@ -58,6 +58,7 @@ from auth import (
     COOKIE_REFRESH_TOKEN,
 )
 from email_service import assert_email_configured, send_password_reset_email
+from account_utils import create_student_user, link_parent_to_guardian_students, password_reset_recipient
 from schemas import (
     UserCreate,
     UserResponse,
@@ -859,32 +860,21 @@ def get_levels_info():
 
 @app.post("/api/auth/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user. Sets HttpOnly access + refresh cookies and returns user."""
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+    """Register a new student. Email optional; guardian_email links to parent when they sign up."""
+    try:
+        new_user = create_student_user(
+            db,
+            username=user.username,
+            full_name=user.full_name,
+            password_hash=get_password_hash(user.password),
+            email=str(user.email) if user.email else None,
+            guardian_email=str(user.guardian_email) if user.guardian_email else None,
+            age=user.age,
+            gender=user.gender,
+            avatar_url=user.avatar_url or "/avatars/default.png",
         )
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
-        )
-    hashed_password = get_password_hash(user.password)
-    new_user = User(
-        email=user.email,
-        username=user.username,
-        full_name=user.full_name,
-        hashed_password=hashed_password,
-        age=user.age,
-        gender=user.gender,
-        avatar_url=user.avatar_url or "/avatars/default.png",
-        role=UserRole.student
-    )
-    new_user.level = level_from_rating(new_user.rating or 100)
-    db.add(new_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     db.commit()
     db.refresh(new_user)
     access_token = create_access_token(data={"sub": new_user.id})
@@ -915,9 +905,12 @@ def signup_parent(data: ParentSignup, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=400, detail="Username already taken")
 
-    # Verify child emails exist as students
+    # Legacy: link by student account email if provided
     children = []
     for child_email in data.child_emails:
+        child_email = child_email.strip()
+        if not child_email:
+            continue
         student = db.query(User).filter(User.email == child_email).first()
         if not student:
             raise HTTPException(
@@ -939,10 +932,11 @@ def signup_parent(data: ParentSignup, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(parent)
 
-    # Link to children
+    # Link to children by explicit email and by matching guardian_email
     for child in children:
         link = ParentStudent(parent_id=parent.id, student_id=child.id)
         db.add(link)
+    link_parent_to_guardian_students(parent, db)
     db.commit()
 
     access_token = create_access_token(data={"sub": parent.id})
@@ -1054,7 +1048,7 @@ def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     user.last_login = datetime.utcnow()
@@ -1134,7 +1128,7 @@ def logout():
 
 
 FORGOT_PASSWORD_MESSAGE = (
-    "If an account exists with that email, we've sent password reset instructions."
+    "If an account exists, we've sent password reset instructions to the contact email on file."
 )
 
 
@@ -1152,17 +1146,31 @@ def _mask_email(email: str) -> str:
 @app.post("/api/auth/forgot-password")
 def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request a password reset email. Always returns the same message (no email enumeration)."""
-    user = db.query(User).filter(User.email == data.email).first()
+    identifier = data.identifier.strip()
+    user = None
+    if data.account_type == "student":
+        user = (
+            db.query(User)
+            .filter(func.lower(User.username) == identifier.lower())
+            .first()
+        )
+        if user and user.role not in (UserRole.student, "student"):
+            user = None
+    else:
+        user = db.query(User).filter(func.lower(User.email) == identifier.lower()).first()
+
     if user and user.is_active is not False:
-        token = create_password_reset_token(user.id)
-        frontend_url = os.environ["FRONTEND_URL"].rstrip("/")
-        reset_url = f"{frontend_url}/reset-password/{token}"
-        try:
-            send_password_reset_email(user.email, reset_url)
-        except Exception:
-            logging.getLogger(__name__).exception(
-                "Failed to send password reset email to %s", user.email
-            )
+        to_email = password_reset_recipient(user)
+        if to_email:
+            token = create_password_reset_token(user.id)
+            frontend_url = os.environ["FRONTEND_URL"].rstrip("/")
+            reset_url = f"{frontend_url}/reset-password/{token}"
+            try:
+                send_password_reset_email(to_email, reset_url)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Failed to send password reset email to %s", to_email
+                )
     return {"message": FORGOT_PASSWORD_MESSAGE}
 
 

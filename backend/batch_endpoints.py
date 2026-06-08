@@ -10,8 +10,9 @@ import secrets
 import json
 
 from models import Batch, StudentBatch, ClassSession, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
-from auth import get_current_user
+from auth import get_current_user, get_password_hash
 from database import get_db
+from account_utils import create_student_user
 from audit_service import log_admin_action
 from schemas import (
     BatchCreate, BatchUpdate, BatchResponse,
@@ -19,6 +20,7 @@ from schemas import (
     AnnouncementCreate, AnnouncementResponse,
     StudentBatchAdd, StudentBatchResponse,
     PaymentResponse,
+    BulkStudentCreateRequest, BulkStudentCreateResponse, BulkStudentCreatedRow,
 )
 
 router = APIRouter(prefix="/api/batches", tags=["batches"])
@@ -209,6 +211,73 @@ def add_student_to_batch(batch_id: int, data: StudentBatchAdd, coach: User = Dep
         payment_status=sb.payment_status, joined_at=sb.joined_at,
         is_active=sb.is_active,
     )
+
+
+@router.post("/{batch_id}/students/bulk-create", response_model=BulkStudentCreateResponse)
+def bulk_create_batch_students(
+    batch_id: int,
+    data: BulkStudentCreateRequest,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Create multiple student accounts and enroll them in a batch."""
+    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    created_rows: List[BulkStudentCreatedRow] = []
+    warnings: List[str] = []
+
+    for row in data.students:
+        password = row.password or data.default_password
+        if not password:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Password required for student '{row.username}' (set per-row or default_password)",
+            )
+        full_name = f"{row.first_name.strip()} {row.last_name.strip()}".strip()
+        try:
+            student = create_student_user(
+                db,
+                username=row.username,
+                full_name=full_name,
+                password_hash=get_password_hash(password),
+                guardian_email=str(row.guardian_email) if row.guardian_email else None,
+                age=row.age,
+                gender=row.gender,
+                primary_coach_id=coach.id,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not create '{row.username}': {exc}",
+            )
+
+        existing_sb = db.query(StudentBatch).filter(
+            StudentBatch.student_id == student.id,
+            StudentBatch.batch_id == batch_id,
+            StudentBatch.is_active == True,
+        ).first()
+        if not existing_sb:
+            db.add(StudentBatch(student_id=student.id, batch_id=batch_id))
+
+        if not row.guardian_email:
+            warnings.append(
+                f"{row.username}: no guardian email — parent account won't auto-link"
+            )
+
+        created_rows.append(
+            BulkStudentCreatedRow(
+                student_id=student.id,
+                full_name=student.full_name,
+                username=student.username,
+                guardian_email=student.guardian_email,
+                password=password,
+            )
+        )
+
+    db.commit()
+    return BulkStudentCreateResponse(created=created_rows, warnings=warnings)
 
 
 @router.get("/{batch_id}/students", response_model=List[StudentBatchResponse])

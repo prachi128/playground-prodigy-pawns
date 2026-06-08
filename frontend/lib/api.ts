@@ -101,6 +101,7 @@ export interface User {
   equipped_board_theme_item_key?: string | null;
   equipped_trail_item_key?: string | null;
   equipped_companion_item_key?: string | null;
+  guardian_email?: string | null;
 }
 
 export interface LoginResponse {
@@ -245,10 +246,10 @@ export const usersAPI = {
 
 // Auth API
 export const authAPI = {
-  login: async (email: string, password: string): Promise<LoginResponse> => {
-    // OAuth2PasswordRequestForm expects form data, not JSON
+  login: async (identifier: string, password: string): Promise<LoginResponse> => {
+    // OAuth2PasswordRequestForm expects form data, not JSON (identifier = email or username)
     const formData = new URLSearchParams();
-    formData.append('username', email); // OAuth2 uses 'username' field
+    formData.append('username', identifier);
     formData.append('password', password);
     
     const response = await api.post('/api/auth/login', formData, {
@@ -260,13 +261,14 @@ export const authAPI = {
   },
 
   signup: async (data: {
-    email: string;
+    email?: string;
     username: string;
     full_name: string;
     password: string;
     age?: number;
     gender?: string;
     avatar_url?: string;
+    guardian_email?: string;
   }): Promise<LoginResponse> => {
     const response = await api.post('/api/auth/signup', data);
     return response.data;
@@ -277,7 +279,7 @@ export const authAPI = {
     username: string;
     full_name: string;
     password: string;
-    child_emails: string[];
+    child_emails?: string[];
   }): Promise<LoginResponse> => {
     const response = await api.post('/api/auth/signup/parent', data);
     return response.data;
@@ -313,8 +315,14 @@ export const authAPI = {
     await api.post('/api/auth/logout');
   },
 
-  forgotPassword: async (email: string): Promise<{ message: string }> => {
-    const response = await api.post('/api/auth/forgot-password', { email });
+  forgotPassword: async (
+    identifier: string,
+    accountType: 'student' | 'parent_coach' = 'parent_coach'
+  ): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/forgot-password', {
+      identifier,
+      account_type: accountType,
+    });
     return response.data;
   },
 
@@ -902,7 +910,31 @@ export const parentAPI = {
     const response = await api.get('/api/parent/payments/history');
     return response.data;
   },
+  createChild: async (data: {
+    full_name: string;
+    username: string;
+    password: string;
+    age?: number;
+    gender?: string;
+    avatar_url?: string;
+  }): Promise<User> => {
+    const response = await api.post('/api/parent/children', data);
+    return response.data;
+  },
 };
+
+export interface BulkStudentCreatedRow {
+  student_id: number;
+  full_name: string;
+  username: string;
+  guardian_email?: string | null;
+  password: string;
+}
+
+export interface BulkStudentCreateResponse {
+  created: BulkStudentCreatedRow[];
+  warnings: string[];
+}
 
 // Batch Management API (Coach)
 export interface StudentBatchInfo {
@@ -1030,6 +1062,24 @@ export const batchAPI = {
   },
   addStudent: async (batchId: number, studentId: number): Promise<StudentBatchInfo> => {
     const response = await api.post(`/api/batches/${batchId}/students`, { student_id: studentId });
+    return response.data;
+  },
+  bulkCreateStudents: async (
+    batchId: number,
+    data: {
+      students: Array<{
+        first_name: string;
+        last_name: string;
+        username: string;
+        password?: string;
+        guardian_email?: string;
+        age?: number;
+        gender?: string;
+      }>;
+      default_password?: string;
+    }
+  ): Promise<BulkStudentCreateResponse> => {
+    const response = await api.post(`/api/batches/${batchId}/students/bulk-create`, data);
     return response.data;
   },
   listStudents: async (batchId: number): Promise<StudentBatchInfo[]> => {

@@ -77,6 +77,7 @@ class User(Base):
     full_name = Column(String, nullable=False)
     role = Column(CaseInsensitiveEnum(UserRole), default=UserRole.student)
     primary_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    guardian_email = Column(String, nullable=True, index=True)
     
     # Student specific fields
     age = Column(Integer)
