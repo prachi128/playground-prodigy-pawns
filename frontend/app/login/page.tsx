@@ -231,23 +231,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {mode === 'student' && (
-            <div className="mt-6 p-4 bg-emerald-50 rounded-xl border-2 border-border">
-              <p className="text-xs font-heading font-semibold text-muted-foreground mb-2">Quick test login:</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('alice_chess');
-                  setPassword('password123');
-                }}
-                disabled={isLoading}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-medium disabled:opacity-50"
-              >
-                Use Alice&apos;s account (username) →
-              </button>
-            </div>
-          )}
-
           <p className="text-center text-muted-foreground mt-6">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="font-heading font-semibold text-emerald-600 hover:text-emerald-700">
