@@ -1,14 +1,15 @@
-// app/login/page.tsx - Login Page (Student username vs Parent/Coach email)
+// app/login/page.tsx - Split layout, single viewport (no scroll)
 
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles, Loader2, Zap, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Fredoka, Nunito } from 'next/font/google';
 
 type LoginMode = 'student' | 'parent_coach';
@@ -69,64 +70,86 @@ export default function LoginPage() {
 
   return (
     <div
-      className={`${fredoka.variable} ${nunito.variable} dashboard-fonts min-h-screen flex items-center justify-center p-4 relative`}
-      style={{
-        backgroundColor: '#9dc4b8',
-        backgroundImage: `
-          radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.2) 1.5px, transparent 0),
-          radial-gradient(circle at 1px 1px, rgba(30, 64, 175, 0.08) 1px, transparent 0),
-          linear-gradient(to bottom right, rgba(167, 243, 208, 0.85), rgba(196, 181, 253, 0.75), rgba(191, 219, 254, 0.85))
-        `,
-        backgroundSize: '32px 32px, 24px 24px, 100% 100%',
-        backgroundPosition: '0 0, 12px 12px, 0 0',
-      }}
+      className={`${fredoka.variable} ${nunito.variable} dashboard-fonts h-dvh overflow-hidden flex relative`}
     >
       {isLoading && (
-        <div
-          className="absolute inset-0 backdrop-blur-sm z-50 flex items-center justify-center"
-          style={{
-            backgroundColor: '#9dc4b8',
-            backgroundImage:
-              'linear-gradient(to bottom right, rgba(167, 243, 208, 0.9), rgba(196, 181, 253, 0.8), rgba(191, 219, 254, 0.9))',
-          }}
-        >
-          <div className="text-center space-y-6">
-            <div className="relative">
-              <div className="text-8xl animate-bounce" style={{ animationDuration: '1s' }}>
-                ♟️
-              </div>
-              <Sparkles className="absolute -top-4 -left-4 w-8 h-8 text-amber-400 animate-pulse" />
-            </div>
-            <div className="flex items-center justify-center gap-3">
-              <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
-              <Zap className="w-6 h-6 text-amber-500 animate-pulse" />
-            </div>
-            <p className="font-heading text-2xl font-bold text-foreground">Logging you in...</p>
+        <div className="absolute inset-0 backdrop-blur-sm z-50 flex items-center justify-center bg-background/60">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-9 h-9 text-emerald-600 animate-spin mx-auto" />
+            <p className="font-heading text-lg font-bold text-foreground">Logging you in...</p>
           </div>
         </div>
       )}
 
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Sparkles className="w-10 h-10 text-amber-400" />
-            <h1 className="font-heading text-4xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 bg-clip-text text-transparent">
-              Prodigy Pawns
-            </h1>
-            <Sparkles className="w-10 h-10 text-amber-400" />
+      {/* Left — chess graphic */}
+      <div className="hidden md:flex md:w-[42%] lg:w-1/2 h-full min-h-0 relative overflow-hidden bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-700 shrink-0">
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage: `
+              linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%),
+              linear-gradient(-45deg, rgba(255,255,255,0.15) 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.15) 75%),
+              linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.15) 75%)
+            `,
+            backgroundSize: '40px 40px',
+            backgroundPosition: '0 0, 0 20px, 20px -20px, -20px 0px',
+          }}
+        />
+        <div className="relative z-10 flex flex-col h-full min-h-0 p-6 lg:p-8">
+          <div className="flex gap-2 text-2xl lg:text-3xl opacity-90 shrink-0">
+            <span>♜</span>
+            <span>♞</span>
+            <span>♝</span>
+            <span>♛</span>
           </div>
-          <p className="text-muted-foreground text-lg">Welcome back! ♟️</p>
-        </div>
 
-        <div className="bg-card rounded-2xl shadow-xl p-8 border-2 border-border">
-          <div className="flex rounded-xl bg-white/20 p-1 mb-6 border-2 border-border">
+          <div className="flex-1 min-h-0 flex items-center justify-center py-4">
+            <div className="relative w-full max-w-[280px] lg:max-w-xs aspect-square max-h-[min(42vh,320px)]">
+              <Image
+                src="/images/play-chess.jpg"
+                alt="Kids playing chess"
+                fill
+                className="object-cover rounded-2xl shadow-2xl"
+                priority
+                sizes="(max-width: 1024px) 42vw, 50vw"
+              />
+              <div className="absolute -bottom-2 -right-2 text-5xl lg:text-6xl drop-shadow-lg">♟️</div>
+              <div className="absolute -top-1 -left-1 text-4xl lg:text-5xl drop-shadow-lg">♚</div>
+            </div>
+          </div>
+
+          <div className="text-white shrink-0">
+            <p className="font-heading text-xl lg:text-2xl font-bold leading-snug">
+              Every move is a new adventure.
+            </p>
+            <p className="mt-1.5 text-emerald-100 text-sm lg:text-base">
+              Puzzles, bots, and real games — all in one place.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Right — login form */}
+      <div className="flex-1 h-full min-h-0 min-w-0 flex items-center justify-center px-5 py-4 sm:px-8 bg-background overflow-hidden">
+        <div className="w-full max-w-sm">
+          <div className="mb-4 sm:mb-5">
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-foreground">Log in</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {mode === 'student'
+                ? 'Use your username and password.'
+                : 'Use your email and password.'}
+            </p>
+          </div>
+
+          <div className="flex rounded-lg bg-muted/50 p-1 mb-4 border border-border">
             <button
               type="button"
               onClick={() => {
                 setMode('student');
                 setInlineError('');
               }}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-heading font-bold transition ${
+              className={`flex-1 py-2 px-3 rounded-md text-xs sm:text-sm font-heading font-bold transition ${
                 mode === 'student'
                   ? 'bg-card text-emerald-700 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
@@ -140,7 +163,7 @@ export default function LoginPage() {
                 setMode('parent_coach');
                 setInlineError('');
               }}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-heading font-bold transition ${
+              className={`flex-1 py-2 px-3 rounded-md text-xs sm:text-sm font-heading font-bold transition ${
                 mode === 'parent_coach'
                   ? 'bg-card text-emerald-700 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
@@ -150,22 +173,18 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <h2 className="font-heading text-2xl font-bold text-card-foreground mb-6 text-center">
-            Log In
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {inlineError && (
               <div
                 role="alert"
-                className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+                className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
               >
                 {inlineError}
               </div>
             )}
 
             <div>
-              <label htmlFor="identifier" className="block text-sm font-heading font-semibold text-foreground mb-2">
+              <label htmlFor="identifier" className="block text-sm font-heading font-semibold text-foreground mb-1">
                 {mode === 'student' ? 'Username' : 'Email'}
               </label>
               <input
@@ -177,7 +196,7 @@ export default function LoginPage() {
                   if (inlineError) setInlineError('');
                 }}
                 disabled={isLoading}
-                className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50"
+                className="w-full px-3 py-2.5 border-2 border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 text-sm"
                 placeholder={mode === 'student' ? 'your_username' : 'your@email.com'}
                 autoComplete={mode === 'student' ? 'username' : 'email'}
                 required
@@ -185,13 +204,13 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1">
                 <label htmlFor="password" className="block text-sm font-heading font-semibold text-foreground">
                   Password
                 </label>
                 <Link
                   href={`/forgot-password?type=${mode === 'student' ? 'student' : 'parent_coach'}`}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition"
+                  className="text-xs sm:text-sm font-medium text-emerald-600 hover:text-emerald-700 transition"
                 >
                   Forgot password?
                 </Link>
@@ -206,7 +225,7 @@ export default function LoginPage() {
                     if (inlineError) setInlineError('');
                   }}
                   disabled={isLoading}
-                  className="w-full px-4 py-3 pr-12 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50"
+                  className="w-full px-3 py-2.5 pr-10 border-2 border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 text-sm"
                   placeholder="••••••••"
                   required
                 />
@@ -215,9 +234,9 @@ export default function LoginPage() {
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword((prev) => !prev)}
                   disabled={isLoading}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition disabled:opacity-50"
+                  className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground transition disabled:opacity-50"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -225,30 +244,13 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-emerald-600 to-green-500 text-white font-heading font-bold py-3 px-6 rounded-xl hover:from-emerald-700 hover:to-green-600 shadow-md transition disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-emerald-600 to-green-500 text-white font-heading font-bold py-2.5 px-5 rounded-lg hover:from-emerald-700 hover:to-green-600 shadow-md transition disabled:opacity-50 text-sm"
             >
-              {isLoading ? 'Logging in...' : 'Log In 🚀'}
+              {isLoading ? 'Logging in...' : 'Log In'}
             </button>
           </form>
 
-          {mode === 'student' && (
-            <div className="mt-6 p-4 bg-emerald-50 rounded-xl border-2 border-border">
-              <p className="text-xs font-heading font-semibold text-muted-foreground mb-2">Quick test login:</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier('alice_chess');
-                  setPassword('password123');
-                }}
-                disabled={isLoading}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-medium disabled:opacity-50"
-              >
-                Use Alice&apos;s account (username) →
-              </button>
-            </div>
-          )}
-
-          <p className="text-center text-muted-foreground mt-6">
+          <p className="text-center text-muted-foreground text-sm mt-4">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="font-heading font-semibold text-emerald-600 hover:text-emerald-700">
               Sign Up

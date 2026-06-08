@@ -32,7 +32,12 @@ export default function ConditionalNavbar() {
   const coachAppRoutes = ['/coach', '/admin'];
   // Hide main Navbar on all parent-group routes
   const parentAppRoutes = ['/parent'];
+  // Auth pages use full-viewport split layouts (no top nav)
+  const authRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/coach-signup'];
 
+  if (authRoutes.some(route => pathname?.startsWith(route))) {
+    return null;
+  }
   if (studentAppRoutes.some(route => pathname?.startsWith(route))) {
     return null;
   }
