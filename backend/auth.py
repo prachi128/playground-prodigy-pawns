@@ -20,6 +20,7 @@ ALGORITHM = "HS256"
 # Short-lived access token (Cookie-Based Session Auth)
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 COOKIE_ACCESS_TOKEN = "access_token"
 COOKIE_REFRESH_TOKEN = "refresh_token"
 
@@ -72,6 +73,28 @@ def decode_refresh_token(token: str) -> Optional[int]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "refresh":
+            return None
+        sub = payload.get("sub")
+        return int(sub) if sub is not None else None
+    except (JWTError, ValueError):
+        return None
+
+
+def create_password_reset_token(user_id: int) -> str:
+    """Create a short-lived JWT for password reset links."""
+    to_encode = {
+        "sub": str(user_id),
+        "type": "password_reset",
+        "exp": datetime.utcnow() + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_password_reset_token(token: str) -> Optional[int]:
+    """Decode password reset token and return user_id (sub). Returns None if invalid."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "password_reset":
             return None
         sub = payload.get("sub")
         return int(sub) if sub is not None else None

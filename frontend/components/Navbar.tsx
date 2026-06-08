@@ -17,8 +17,13 @@ export default function Navbar() {
     router.push('/login');
   };
 
-  // Don't show navbar on login/signup pages
-  if (pathname === '/login' || pathname === '/signup') {
+  // Don't show navbar on auth pages
+  if (
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname?.startsWith('/reset-password')
+  ) {
     return null;
   }
 

@@ -12,7 +12,9 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Set
 import io
+import logging
 import math
+import os
 import random
 import re
 import chess
@@ -48,11 +50,14 @@ from auth import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+    create_password_reset_token,
+    decode_password_reset_token,
     get_current_user,
     authenticate_user,
     COOKIE_ACCESS_TOKEN,
     COOKIE_REFRESH_TOKEN,
 )
+from email_service import assert_email_configured, send_password_reset_email
 from schemas import (
     UserCreate,
     UserResponse,
@@ -74,6 +79,8 @@ from schemas import (
     NotificationMarkRead,
     ParentSignup,
     CoachSignup,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     PuzzleRaceRoomState,
     PuzzleRaceRoomCreate,
     PuzzleRaceCarSelect,
@@ -557,6 +564,7 @@ def _serialize_puzzle_race_room(room: Dict) -> PuzzleRaceRoomState:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_required_schema()
+    assert_email_configured()
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_auto_resign_for_all_games, "interval", minutes=1)
     scheduler.start()
@@ -1123,6 +1131,65 @@ def logout():
     response.delete_cookie(key=COOKIE_ACCESS_TOKEN, path="/")
     response.delete_cookie(key=COOKIE_REFRESH_TOKEN, path="/")
     return response
+
+
+FORGOT_PASSWORD_MESSAGE = (
+    "If an account exists with that email, we've sent password reset instructions."
+)
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    if not domain:
+        return email
+    if len(local) <= 1:
+        masked_local = "*"
+    else:
+        masked_local = local[0] + "*" * (len(local) - 1)
+    return f"{masked_local}@{domain}"
+
+
+@app.post("/api/auth/forgot-password")
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Request a password reset email. Always returns the same message (no email enumeration)."""
+    user = db.query(User).filter(User.email == data.email).first()
+    if user and user.is_active is not False:
+        token = create_password_reset_token(user.id)
+        frontend_url = os.environ["FRONTEND_URL"].rstrip("/")
+        reset_url = f"{frontend_url}/reset-password/{token}"
+        try:
+            send_password_reset_email(user.email, reset_url)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to send password reset email to %s", user.email
+            )
+    return {"message": FORGOT_PASSWORD_MESSAGE}
+
+
+@app.get("/api/auth/reset-password/{token}")
+def validate_reset_password_token(token: str, db: Session = Depends(get_db)):
+    """Validate a password reset token before showing the reset form."""
+    user_id = decode_password_reset_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.is_active is False:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    return {"valid": True, "email": _mask_email(user.email)}
+
+
+@app.post("/api/auth/reset-password")
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Set a new password using a valid reset token."""
+    user_id = decode_password_reset_token(data.token)
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.is_active is False:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user.hashed_password = get_password_hash(data.password)
+    db.commit()
+    return {"message": "Password updated successfully. You can now log in."}
 
 
 @app.get("/api/auth/me", response_model=UserResponse)

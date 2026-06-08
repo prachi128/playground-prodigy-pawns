@@ -32,7 +32,9 @@ api.interceptors.response.use(
       reqUrl.includes('/api/auth/login') ||
       reqUrl.includes('/api/auth/signup') ||
       reqUrl.includes('/api/auth/signup/coach') ||
-      reqUrl.includes('/api/auth/signup/parent');
+      reqUrl.includes('/api/auth/signup/parent') ||
+      reqUrl.includes('/api/auth/forgot-password') ||
+      reqUrl.includes('/api/auth/reset-password');
     const isSessionCheck =
       originalRequest?.method === 'get' &&
       (reqUrl.includes('/api/auth/me') || reqUrl.includes('/api/coach/bootstrap'));
@@ -309,6 +311,23 @@ export const authAPI = {
 
   logout: async (): Promise<void> => {
     await api.post('/api/auth/logout');
+  },
+
+  forgotPassword: async (email: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  validateResetPasswordToken: async (
+    token: string
+  ): Promise<{ valid: boolean; email: string }> => {
+    const response = await api.get(`/api/auth/reset-password/${token}`);
+    return response.data;
+  },
+
+  resetPassword: async (token: string, password: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/reset-password', { token, password });
+    return response.data;
   },
 };
 
