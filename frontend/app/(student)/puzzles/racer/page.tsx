@@ -10,7 +10,12 @@ import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { puzzleAPI, Puzzle, puzzleRacerRoomsAPI, PuzzleRaceRoomState, usersAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
-import { normalizePuzzleMoves } from '@/lib/utils';
+import {
+  applyOpponentReplies,
+  formatPlayedUci,
+  initializePuzzlePlayState,
+  resolvePuzzleFormat,
+} from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 /** Fixed race duration: 2.5 minutes */
@@ -59,6 +64,8 @@ export default function PuzzleRacerPage() {
   const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(null);
   const [game, setGame] = useState<Chess | null>(null);
   const [movesMade, setMovesMade] = useState<string[]>([]);
+  const [solutionMoves, setSolutionMoves] = useState<string[]>([]);
+  const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
   const [showCorrect, setShowCorrect] = useState(false);
   const [showWrong, setShowWrong] = useState(false);
   const [loadingPuzzle, setLoadingPuzzle] = useState(false);
@@ -374,14 +381,21 @@ export default function PuzzleRacerPage() {
 
     setPoolIndex(nextIndex + 1);
     setCurrentPuzzle(next);
-    setGame(new Chess(next.fen));
-    setMovesMade([]);
+    const playState = initializePuzzlePlayState(
+      next.fen,
+      next.moves,
+      resolvePuzzleFormat(next),
+    );
+    setSolutionMoves(playState.solutionMoves);
+    setPlayerColor(playState.playerColor);
+    setGame(new Chess(playState.displayFen));
+    setMovesMade(playState.movesMade);
     setShowCorrect(false);
     setShowWrong(false);
     setSelectedSquare(null);
     setLegalTargets([]);
     setCaptureTargets([]);
-    setLastMove(null);
+    setLastMove(playState.lastMove);
     startTimeRef.current = Date.now();
   }, [puzzlePool, poolIndex]);
 
@@ -482,12 +496,19 @@ export default function PuzzleRacerPage() {
       setShowWrong(false);
       const first = shuffled[0];
       setCurrentPuzzle(first);
-      setGame(new Chess(first.fen));
-      setMovesMade([]);
+      const playState = initializePuzzlePlayState(
+        first.fen,
+        first.moves,
+        resolvePuzzleFormat(first),
+      );
+      setSolutionMoves(playState.solutionMoves);
+      setPlayerColor(playState.playerColor);
+      setGame(new Chess(playState.displayFen));
+      setMovesMade(playState.movesMade);
       setSelectedSquare(null);
       setLegalTargets([]);
       setCaptureTargets([]);
-      setLastMove(null);
+      setLastMove(playState.lastMove);
       startTimeRef.current = Date.now();
 
       // Sync timing with server
@@ -648,50 +669,54 @@ export default function PuzzleRacerPage() {
 
   const getLegalTargets = useCallback((square: string) => {
     if (!game || showCorrect || showWrong) return [];
+    if (game.turn() !== playerColor) return [];
     const piece = game.get(square);
-    if (!piece || piece.color !== game.turn()) return [];
+    if (!piece || piece.color !== playerColor) return [];
     const moves = game.moves({ square, verbose: true });
     return moves.map((move) => ({
       to: move.to,
       isCapture: Boolean(move.captured) || move.flags.includes('e'),
     }));
-  }, [game, showCorrect, showWrong]);
+  }, [game, showCorrect, showWrong, playerColor]);
 
   const onDrop = useCallback(
     (sourceSquare: string, targetSquare: string) => {
       if (!game || !currentPuzzle || showCorrect || showWrong) return false;
+      if (game.turn() !== playerColor) return false;
       try {
-        const move = game.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+        const workingGame = new Chess(game.fen());
+        const move = workingGame.move({ from: sourceSquare, to: targetSquare, promotion: 'q' });
         if (move === null) return false;
-        const newMoves = [...movesMade, `${sourceSquare}${targetSquare}`];
-        setMovesMade(newMoves);
-        setGame(new Chess(game.fen()));
-        setLastMove({ from: sourceSquare, to: targetSquare });
-        setSelectedSquare(null);
-        setLegalTargets([]);
-        setCaptureTargets([]);
-        const solutionMoves = normalizePuzzleMoves(currentPuzzle.fen, currentPuzzle.moves);
+
+        const played = formatPlayedUci(move);
+        const expectedMove = solutionMoves[movesMade.length];
         const timeTaken = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-        const lastMoveStr = `${sourceSquare}${targetSquare}`;
-        const moveIdx = newMoves.length - 1;
-        const expectedMove = solutionMoves[moveIdx];
-        const thisMoveCorrect = expectedMove && lastMoveStr === expectedMove;
-
-        if (!thisMoveCorrect) {
+        if (!expectedMove || played !== expectedMove) {
           puzzleAPI
             .submitAttempt(currentPuzzle.id, {
               is_solved: false,
-              moves_made: newMoves.join(' '),
+              moves_made: [...movesMade, played].join(' '),
               time_taken: timeTaken,
               hints_used: 0,
             })
             .catch(() => {});
           loadNextPuzzle();
-          return true;
+          return false;
         }
 
-        const isComplete = newMoves.length >= solutionMoves.length;
+        let updatedMoves = [...movesMade, played];
+        const replies = applyOpponentReplies(workingGame, solutionMoves, updatedMoves, playerColor);
+        updatedMoves = replies.movesMade;
+
+        setMovesMade(updatedMoves);
+        setGame(workingGame);
+        setLastMove(replies.lastMove ?? { from: sourceSquare, to: targetSquare });
+        setSelectedSquare(null);
+        setLegalTargets([]);
+        setCaptureTargets([]);
+
+        const isComplete = updatedMoves.length >= solutionMoves.length;
         if (isComplete) {
           setPuzzlesSolved((s) => s + 1);
           setParticipants((prev) =>
@@ -708,7 +733,7 @@ export default function PuzzleRacerPage() {
           puzzleAPI
             .submitAttempt(currentPuzzle.id, {
               is_solved: true,
-              moves_made: newMoves.join(' '),
+              moves_made: updatedMoves.join(' '),
               time_taken: timeTaken,
               hints_used: 0,
             })
@@ -726,7 +751,19 @@ export default function PuzzleRacerPage() {
         return false;
       }
     },
-    [game, currentPuzzle, movesMade, showCorrect, showWrong, user, updateUser, loadNextPuzzle]
+    [
+      game,
+      currentPuzzle,
+      movesMade,
+      solutionMoves,
+      playerColor,
+      showCorrect,
+      showWrong,
+      user,
+      updateUser,
+      loadNextPuzzle,
+      roomState?.id,
+    ]
   );
 
   const handleSquareClick = useCallback((square: string) => {

@@ -14,6 +14,7 @@ interface AuthState {
   login: (user: User) => void;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
+  refreshCurrentUser: () => Promise<void>;
   loadSession: () => Promise<void>;
 }
 
@@ -47,6 +48,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     set((state) => ({
       user: state.user ? { ...state.user, ...updates } : null,
     })),
+
+  refreshCurrentUser: async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const user = await authAPI.getCurrentUser();
+      set({ user, isAuthenticated: true });
+    } catch {
+      // Keep existing local state if refresh fails.
+    }
+  },
 
   loadSession: async () => {
     if (typeof window === 'undefined') {

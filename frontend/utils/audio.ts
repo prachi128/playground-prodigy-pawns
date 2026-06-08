@@ -3,7 +3,7 @@
  * Uses Web Audio API for lightweight sound generation
  */
 
-type SoundEffect = 'correct' | 'wrong' | 'boost' | 'win' | 'countdown' | 'go'
+type SoundEffect = 'correct' | 'wrong' | 'boost' | 'win' | 'countdown' | 'go' | 'eat'
 
 // Audio context (lazy initialization)
 let audioContext: AudioContext | null = null
@@ -125,6 +125,62 @@ function playGo(): void {
   }
 }
 
+// Generate a soft "chomp" / eating sound
+function playEat(): void {
+  try {
+    const ctx = getAudioContext()
+
+    const makeChewNoise = (startAt: number, duration: number, gainValue: number) => {
+      const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration))
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+      const output = noiseBuffer.getChannelData(0)
+      for (let i = 0; i < bufferSize; i += 1) {
+        // Shaped noise for soft crunch texture
+        const t = i / bufferSize
+        const env = Math.sin(Math.PI * t)
+        output[i] = (Math.random() * 2 - 1) * env * 0.7
+      }
+
+      const source = ctx.createBufferSource()
+      source.buffer = noiseBuffer
+
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(gainValue, startAt)
+      gain.gain.linearRampToValueAtTime(0.01, startAt + duration)
+
+      source.connect(gain)
+      gain.connect(ctx.destination)
+
+      source.start(startAt)
+      source.stop(startAt + duration)
+    }
+
+    // Reliable chew pattern: 3 soft crunch pulses
+    const t0 = ctx.currentTime
+    makeChewNoise(t0, 0.06, 0.26)
+    makeChewNoise(t0 + 0.07, 0.07, 0.22)
+    makeChewNoise(t0 + 0.145, 0.065, 0.19)
+
+    // Low mouth thump so it feels like chewing, not static hiss
+    const jaw = ctx.createOscillator()
+    const jawGain = ctx.createGain()
+    jaw.type = 'triangle'
+    jaw.frequency.setValueAtTime(170, t0)
+    jaw.frequency.exponentialRampToValueAtTime(115, t0 + 0.2)
+
+    jawGain.gain.setValueAtTime(0.14, t0)
+    jawGain.gain.linearRampToValueAtTime(0.01, t0 + 0.2)
+
+    jaw.connect(jawGain)
+    jawGain.connect(ctx.destination)
+
+    jaw.start(t0)
+    jaw.stop(t0 + 0.2)
+  } catch (error) {
+    console.warn('Eat sound failed:', error)
+  }
+}
+
 export function playSound(effectName: SoundEffect): void {
   // Resume audio context if suspended (browser autoplay policy)
   if (audioContext && audioContext.state === 'suspended') {
@@ -133,7 +189,7 @@ export function playSound(effectName: SoundEffect): void {
 
   switch (effectName) {
     case 'correct':
-      playTone(800, 0.15, 'sine', 0.3)
+      playTone(800, 0.15, 'sine', 0.5)
       break
     case 'wrong':
       playError()
@@ -149,6 +205,9 @@ export function playSound(effectName: SoundEffect): void {
       break
     case 'go':
       playGo()
+      break
+    case 'eat':
+      playEat()
       break
     default:
       console.warn(`Unknown sound effect: ${effectName}`)

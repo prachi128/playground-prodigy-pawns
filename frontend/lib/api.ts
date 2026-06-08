@@ -95,6 +95,10 @@ export interface User {
   coach_username?: string | null;
   coach_full_name?: string | null;
   is_unassigned?: boolean;
+  equipped_accessory_item_key?: string | null;
+  equipped_board_theme_item_key?: string | null;
+  equipped_trail_item_key?: string | null;
+  equipped_companion_item_key?: string | null;
 }
 
 export interface LoginResponse {
@@ -107,6 +111,9 @@ export interface Puzzle {
   description?: string;
   fen: string;
   moves: string;
+  /** 'lichess' = setup at moves[0]; 'direct' = solve from fen */
+  puzzle_format?: 'lichess' | 'direct' | null;
+  lichess_id?: string | null;
   difficulty: string;
   rating: number;
   theme?: string;
@@ -156,11 +163,20 @@ export interface ShopCatalogItem {
   name: string;
   stars_cost: number;
   rarity: string;
+  category: "accessory" | "board_theme" | "trail" | "companion";
+  owned: boolean;
+  equipped: boolean;
 }
 
 export interface ShopCatalogResponse {
   items: ShopCatalogItem[];
   star_balance: number;
+  equipped_items: {
+    accessory?: string | null;
+    board_theme?: string | null;
+    trail?: string | null;
+    companion?: string | null;
+  };
 }
 
 export interface ShopPurchaseResponse {
@@ -171,6 +187,40 @@ export interface ShopPurchaseResponse {
   star_balance: number;
   delivery_status: string;
   purchased_at: string;
+  owned: boolean;
+  equipped_items: {
+    accessory?: string | null;
+    board_theme?: string | null;
+    trail?: string | null;
+    companion?: string | null;
+  };
+}
+
+export interface ShopInventoryResponse {
+  owned_items: Array<{
+    item_key: string;
+    item_name: string;
+    category: "accessory" | "board_theme" | "trail" | "companion";
+    rarity: string;
+    purchased_at: string;
+  }>;
+  equipped_items: {
+    accessory?: string | null;
+    board_theme?: string | null;
+    trail?: string | null;
+    companion?: string | null;
+  };
+}
+
+export interface ShopEquipResponse {
+  equipped_item_key: string;
+  category: "accessory" | "board_theme" | "trail" | "companion";
+  equipped_items: {
+    accessory?: string | null;
+    board_theme?: string | null;
+    trail?: string | null;
+    companion?: string | null;
+  };
 }
 
 export interface LeaderboardEntry {
@@ -271,6 +321,7 @@ export const userAPI = {
 
   updateProfile: async (data: {
     full_name?: string;
+    username?: string;
     avatar_url?: string;
     age?: number;
   }): Promise<User> => {
@@ -282,7 +333,11 @@ export const userAPI = {
   uploadAvatar: async (file: File): Promise<User> => {
     const form = new FormData();
     form.append('file', file);
-    const response = await api.post('/api/users/me/avatar', form);
+    const response = await api.post('/api/users/me/avatar', form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   },
 };
@@ -512,8 +567,16 @@ export const shopAPI = {
     const response = await api.get('/api/shop/catalog');
     return response.data;
   },
+  getInventory: async (): Promise<ShopInventoryResponse> => {
+    const response = await api.get('/api/shop/inventory');
+    return response.data;
+  },
   purchase: async (item_key: string): Promise<ShopPurchaseResponse> => {
     const response = await api.post('/api/shop/purchase', { item_key });
+    return response.data;
+  },
+  equip: async (item_key: string): Promise<ShopEquipResponse> => {
+    const response = await api.post('/api/shop/equip', { item_key });
     return response.data;
   },
 };
@@ -1045,6 +1108,40 @@ export const adminBotsAPI = {
 let coachBootstrapInFlight: Promise<{ user: User; stats: Record<string, unknown> }> | null =
   null;
 
+export interface CoachPriorities {
+  inactive_students: Array<{ id: number; username: string; days_since_active: number }>;
+  low_accuracy_students: Array<{
+    id: number;
+    username: string;
+    success_rate: number;
+    attempts: number;
+  }>;
+  low_game_activity_students: Array<{
+    id: number;
+    username: string;
+    reason: string;
+  }>;
+  assignments_overdue: Array<{
+    id: number;
+    title: string;
+    due_date: string;
+    target_label: string;
+  }>;
+  assignments_due_soon: Array<{
+    id: number;
+    title: string;
+    due_date: string;
+    target_label: string;
+  }>;
+  counts: {
+    inactive_students: number;
+    low_accuracy_students: number;
+    low_game_activity_students: number;
+    assignments_overdue: number;
+    assignments_due_soon: number;
+  };
+}
+
 // Coach API
 export const coachAPI = {
   /**
@@ -1067,6 +1164,21 @@ export const coachAPI = {
   // Get coach statistics
   getStats: async () => {
     const response = await api.get('/api/coach/stats');
+    return response.data;
+  },
+
+  getPriorities: async (): Promise<CoachPriorities> => {
+    const response = await api.get('/api/coach/priorities');
+    return response.data;
+  },
+
+  nudgeStudent: async (
+    studentId: number,
+    message?: string | null,
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/api/coach/students/${studentId}/nudge`, {
+      message: message?.trim() ? message.trim() : null,
+    });
     return response.data;
   },
 

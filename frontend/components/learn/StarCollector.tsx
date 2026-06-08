@@ -443,7 +443,7 @@ function LegacyStarCollector({ level, onLevelComplete, onWrongMove }: StarCollec
         <span className="font-heading font-semibold text-card-foreground">{collectedStars.size} / {level.stars.length}</span>
       </div>
       <motion.div animate={shake ? { x: [0, -8, 8, -8, 8, 0] } : {}} transition={{ duration: 0.4 }}>
-        <div style={{ width: 500, height: 500 }}>
+        <div className="relative" style={{ width: 500, height: 500 }}>
           <Chessboard
             options={{
               id: 'legacy-star-collector',

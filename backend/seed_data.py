@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from models import User, Puzzle, Achievement, DailyChallenge, UserRole, DifficultyLevel
+from models import User, Puzzle, Achievement, DailyChallenge, UserRole, DifficultyLevel, PuzzleFormat
 from auth import get_password_hash
 from datetime import datetime, date
 import json
@@ -198,6 +198,7 @@ def seed_database(db: Session):
     
     created_puzzles = []
     for puzzle_data in puzzles_data:
+        puzzle_data.setdefault("puzzle_format", PuzzleFormat.DIRECT.value)
         puzzle = Puzzle(**puzzle_data)
         db.add(puzzle)
         created_puzzles.append(puzzle)

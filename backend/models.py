@@ -55,6 +55,12 @@ class DifficultyLevel(enum.Enum):
     ADVANCED = "advanced"
     EXPERT = "expert"
 
+
+class PuzzleFormat(enum.Enum):
+    """How fen + moves are interpreted for student play."""
+    LICHESS = "lichess"  # fen before opponent setup; moves[0] is setup
+    DIRECT = "direct"  # fen is the position to solve; moves[0] is the first solution move
+
 class GameResult(enum.Enum):
     WIN = "win"
     LOSS = "loss"
@@ -84,6 +90,10 @@ class User(Base):
     puzzle_rating_rd = Column(Float, default=350.0)
     puzzle_rating_volatility = Column(Float, default=0.06)
     puzzle_rating_updated_at = Column(DateTime, default=datetime.utcnow)
+    equipped_accessory_item_key = Column(String(64), nullable=True)
+    equipped_board_theme_item_key = Column(String(64), nullable=True)
+    equipped_trail_item_key = Column(String(64), nullable=True)
+    equipped_companion_item_key = Column(String(64), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -159,6 +169,8 @@ class Puzzle(Base):
     # Puzzle data
     fen = Column(String, nullable=False)
     moves = Column(Text, nullable=False)
+    # VARCHAR in DB ('lichess' | 'direct'); avoid native Enum mismatch on lowercase values.
+    puzzle_format = Column(String(16), default=PuzzleFormat.DIRECT.value, nullable=False)
     difficulty = Column(Enum(DifficultyLevel), default=DifficultyLevel.BEGINNER)
     rating = Column(Integer, default=400)
     
@@ -473,6 +485,21 @@ class ShopPurchase(Base):
     item_name = Column(String(128), nullable=False)
     stars_spent = Column(Integer, nullable=False)
     delivery_status = Column(String(32), default="pending", nullable=False)
+    purchased_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class UserShopItem(Base):
+    __tablename__ = "user_shop_items"
+    __table_args__ = (UniqueConstraint("user_id", "item_key", name="uq_user_shop_items_user_item"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    item_key = Column(String(64), nullable=False, index=True)
+    item_name = Column(String(128), nullable=False)
+    category = Column(String(32), nullable=False)
+    rarity = Column(String(32), nullable=False)
     purchased_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", foreign_keys=[user_id])

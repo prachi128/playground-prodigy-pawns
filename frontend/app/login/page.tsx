@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles, Loader2, Zap } from 'lucide-react';
+import { Sparkles, Loader2, Zap, Eye, EyeOff } from 'lucide-react';
 import { Fredoka, Nunito } from 'next/font/google';
 
 const fredoka = Fredoka({ subsets: ['latin'], variable: '--font-fredoka' });
@@ -20,6 +20,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [inlineError, setInlineError] = useState('');
 
@@ -43,7 +44,7 @@ export default function LoginPage() {
         toast.success(`Welcome back, ${response.user.full_name}! 🎉`);
       }, 100);
       const redirectPath = response.user.role === 'coach' || response.user.role === 'admin'
-        ? '/coach'
+        ? '/coach/play'
         : response.user.role === 'parent'
         ? '/parent'
         : '/dashboard';
@@ -164,19 +165,30 @@ export default function LoginPage() {
               <label htmlFor="password" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (inlineError) setInlineError('');
-                }}
-                disabled={isLoading}
-                className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (inlineError) setInlineError('');
+                  }}
+                  disabled={isLoading}
+                  className="w-full px-4 py-3 pr-12 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={isLoading}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             {/* Submit - same gradient as dashboard header */}

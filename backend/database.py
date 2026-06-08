@@ -41,6 +41,13 @@ REQUIRED_SCHEMA_COLUMNS = {
         "puzzle_rating_rd",
         "puzzle_rating_volatility",
         "puzzle_rating_updated_at",
+        "equipped_accessory_item_key",
+        "equipped_board_theme_item_key",
+        "equipped_trail_item_key",
+        "equipped_companion_item_key",
+    },
+    "puzzles": {
+        "puzzle_format",
     },
 }
 

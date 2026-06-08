@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   User,
   Bell,
@@ -19,9 +19,17 @@ import {
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { useRouter } from "next/navigation"
+import { userAPI } from "@/lib/api"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
+import toast from "react-hot-toast"
+
+const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => {
+  const n = i + 1
+  return `/avatars/kid-${n}.png`
+})
 
 export function SettingsContent() {
-  const { user, logout } = useAuthStore()
+  const { user, logout, updateUser, refreshCurrentUser } = useAuthStore()
   const router = useRouter()
 
   const [notifications, setNotifications] = useState({
@@ -47,23 +55,91 @@ export function SettingsContent() {
   })
 
   const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
   const [profileData, setProfileData] = useState({
     fullName: user?.full_name ?? "",
+    username: user?.username ?? "",
     email: user?.email ?? "",
+    avatarUrl: user?.avatar_url ?? "",
   })
+
+  useEffect(() => {
+    if (!user || isEditingProfile) return
+    setProfileData({
+      fullName: user.full_name ?? "",
+      username: user.username ?? "",
+      email: user.email ?? "",
+      avatarUrl: user.avatar_url ?? "",
+    })
+  }, [user, isEditingProfile])
 
   const handleLogout = async () => {
     await logout()
     router.push("/login")
   }
 
-  const handleSaveProfile = () => {
-    // TODO: Implement API call to update profile
-    setIsEditingProfile(false)
+  const getErrorMessage = (error: unknown): string => {
+    const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+    if (typeof detail === "string" && detail.trim()) return detail
+    if (Array.isArray(detail) && detail.length > 0) {
+      const first = detail[0] as { msg?: unknown }
+      if (typeof first?.msg === "string" && first.msg.trim()) return first.msg
+      return "Failed to update profile"
+    }
+    return "Failed to update profile"
+  }
+
+  const handleSaveProfile = async () => {
+    if (!user) return
+    const fullName = profileData.fullName.trim()
+    const username = profileData.username.trim()
+    if (!fullName) {
+      toast.error("Full name cannot be empty")
+      return
+    }
+    if (username.length < 3) {
+      toast.error("Username must be at least 3 characters")
+      return
+    }
+    if (!/^[A-Za-z0-9_]+$/.test(username)) {
+      toast.error("Username can contain only letters, numbers, and underscores")
+      return
+    }
+
+    setIsSavingProfile(true)
+    try {
+      let updatedUser = await userAPI.updateProfile({
+        full_name: fullName,
+        username,
+        avatar_url: avatarFile ? undefined : profileData.avatarUrl,
+      })
+
+      if (avatarFile) {
+        updatedUser = await userAPI.uploadAvatar(avatarFile)
+      }
+
+      updateUser(updatedUser)
+      await refreshCurrentUser()
+      setProfileData({
+        fullName: updatedUser.full_name ?? "",
+        username: updatedUser.username ?? "",
+        email: updatedUser.email ?? "",
+        avatarUrl: updatedUser.avatar_url ?? "",
+      })
+      setAvatarFile(null)
+      setIsEditingProfile(false)
+      toast.success("Profile updated")
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setIsSavingProfile(false)
+    }
   }
 
   return (
-    <div className="mx-auto max-w-4xl pt-6">
+    <div className="mx-auto max-w-4xl pt-3">
       {/* Mascot Speech Bubble */}
       <section className="mb-5">
         <div className="flex items-start gap-3">
@@ -106,6 +182,91 @@ export function SettingsContent() {
           </div>
           <div className="p-5">
             <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  {isEditingProfile ? (
+                    <div className="rounded-xl border-2 border-border bg-white px-4 py-3">
+                      <div className="flex items-center gap-4">
+                        <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-xl font-bold text-white ring-2 ring-border">
+                          {avatarFile ? (
+                            <img
+                              src={URL.createObjectURL(avatarFile)}
+                              alt="Avatar preview"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : getAvatarDisplayUrl(profileData.avatarUrl) && !isDefaultOrEmptyAvatar(profileData.avatarUrl) ? (
+                            <img
+                              src={getAvatarDisplayUrl(profileData.avatarUrl)}
+                              alt="Avatar preview"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span>{personInitial(profileData.fullName, profileData.username)}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
+                            className="block w-full text-sm text-card-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:font-heading file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-200"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsAvatarModalOpen(true)}
+                              className="rounded-lg border-2 border-border bg-white px-3 py-1.5 font-heading text-xs font-bold text-card-foreground transition-all hover:bg-muted"
+                            >
+                              Choose from avatars
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvatarFile(null)
+                                setProfileData({ ...profileData, avatarUrl: "" })
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border-2 border-red-200 bg-red-50 px-3 py-1.5 font-heading text-xs font-bold text-red-700 transition-all hover:bg-red-100"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove profile photo
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border-2 border-border bg-muted/50 px-4 py-3">
+                      <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-xl font-bold text-white ring-2 ring-border">
+                        {getAvatarDisplayUrl(user?.avatar_url) && !isDefaultOrEmptyAvatar(user?.avatar_url) ? (
+                          <img
+                            src={getAvatarDisplayUrl(user?.avatar_url)}
+                            alt={user?.full_name || "Avatar"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span>{personInitial(user?.full_name, user?.username)}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  {isEditingProfile ? (
+                    <input
+                      type="text"
+                      value={profileData.username}
+                      onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
+                      className="w-full rounded-xl border-2 border-border bg-white px-4 py-2.5 font-heading text-base font-semibold text-card-foreground focus:border-blue-400 focus:outline-none"
+                    />
+                  ) : (
+                    <div className="rounded-xl border-2 border-border bg-muted/50 px-4 py-2.5 font-heading text-base font-semibold text-card-foreground">
+                      @{user?.username ?? "Not set"}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="mb-2 block font-heading text-sm font-bold text-card-foreground">
                   Full Name
@@ -146,17 +307,21 @@ export function SettingsContent() {
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
                     className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-400 to-cyan-500 px-4 py-2 font-heading text-sm font-bold text-white transition-all hover:shadow-md"
                   >
                     <Save className="h-4 w-4" />
-                    Save Changes
+                    {isSavingProfile ? "Saving..." : "Save Changes"}
                   </button>
                   <button
                     onClick={() => {
                       setIsEditingProfile(false)
+                      setAvatarFile(null)
                       setProfileData({
                         fullName: user?.full_name ?? "",
+                        username: user?.username ?? "",
                         email: user?.email ?? "",
+                        avatarUrl: user?.avatar_url ?? "",
                       })
                     }}
                     className="flex items-center gap-2 rounded-xl border-2 border-border bg-white px-4 py-2 font-heading text-sm font-bold text-card-foreground transition-all hover:bg-muted"
@@ -170,6 +335,65 @@ export function SettingsContent() {
           </div>
         </div>
       </section>
+
+      {isEditingProfile && isAvatarModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-2xl border-2 border-border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="font-heading text-xl font-bold text-card-foreground">Choose an Avatar</h4>
+              <button
+                type="button"
+                onClick={() => setIsAvatarModalOpen(false)}
+                className="rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              {PRESET_AVATARS.map((avatarPath) => {
+                const selected = profileData.avatarUrl === avatarPath && !avatarFile
+                return (
+                  <button
+                    key={avatarPath}
+                    type="button"
+                    onClick={() => {
+                      setAvatarFile(null)
+                      setProfileData({ ...profileData, avatarUrl: avatarPath })
+                      setIsAvatarModalOpen(false)
+                    }}
+                    className={`relative mx-auto h-20 w-20 overflow-hidden rounded-full border-2 transition ${
+                      selected ? "border-blue-500" : "border-border hover:border-blue-300"
+                    }`}
+                  >
+                    <img
+                      src={avatarPath}
+                      alt="Preset avatar"
+                      className="h-full w-full rounded-full object-cover object-center"
+                    />
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-4 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setAvatarFile(null)
+                  setProfileData({ ...profileData, avatarUrl: "" })
+                  setIsAvatarModalOpen(false)
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border-2 border-red-200 bg-red-50 px-3 py-2 font-heading text-sm font-bold text-red-700 transition-all hover:bg-red-100"
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove profile photo
+              </button>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Save changes to apply this across the app.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notifications */}
       <section className="mb-6">

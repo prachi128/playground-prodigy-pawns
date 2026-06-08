@@ -32,6 +32,10 @@ class UserResponse(UserBase):
     level_category: Optional[str] = None  # Pawn, Knight, Bishop, Rook, Queen, King (from rating)
     created_at: datetime
     is_active: bool
+    equipped_accessory_item_key: Optional[str] = None
+    equipped_board_theme_item_key: Optional[str] = None
+    equipped_trail_item_key: Optional[str] = None
+    equipped_companion_item_key: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -61,6 +65,8 @@ class PuzzleResponse(PuzzleBase):
     id: int
     rating: int
     xp_reward: int
+    lichess_id: Optional[str] = None
+    puzzle_format: Optional[str] = None  # 'lichess' | 'direct'; resolved on read if unset
     attempts_count: Optional[int] = 0  # DB may have NULL for older/imported rows
     success_count: Optional[int] = 0
     created_at: Optional[datetime] = None
@@ -72,6 +78,18 @@ class PuzzleResponse(PuzzleBase):
     @field_serializer("created_at")
     def serialize_created_at(self, v):
         return v if v is not None else datetime.min
+
+    @field_serializer("puzzle_format")
+    def serialize_puzzle_format(self, v, info):
+        if v is not None:
+            if hasattr(v, "value"):
+                return v.value
+            normalized = str(v).strip().lower()
+            if normalized in ("lichess", "direct"):
+                return normalized
+        if info.data.get("lichess_id"):
+            return "lichess"
+        return "direct"
 
     class Config:
         from_attributes = True
@@ -181,6 +199,7 @@ class LeaderboardEntry(BaseModel):
 # Update Profile Schema
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
+    username: Optional[str] = None
     avatar_url: Optional[str] = None
     age: Optional[int] = None
 

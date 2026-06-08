@@ -309,7 +309,7 @@ export default function CreatePuzzlePage() {
             <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Board preview</h2>
 
             {game ? (
-              <div className="mx-auto w-full max-w-[400px]">
+              <div className="relative mx-auto w-full max-w-[400px]">
                 <Chessboard
                   key={game.fen()}
                   options={{

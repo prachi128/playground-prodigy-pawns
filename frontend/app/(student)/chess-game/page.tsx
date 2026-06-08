@@ -11,6 +11,7 @@ import { Search, UserPlus, Loader2, CheckCircle, XCircle, Clock, Flag, ChevronLe
 import toast from 'react-hot-toast';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
+import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
 
 const PREVIEW_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -81,6 +82,11 @@ export default function ChessGamePage() {
   const previousResultRef = useRef<string | null>(null);
   const previousDrawOfferedByRef = useRef<number | null>(null);
   const inGame = !!activeGameId && !!activeGame;
+
+  const lobbyBoardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  );
 
   const hydrateFromGame = useCallback((g: Game) => {
     const startingFen = g.starting_fen || PREVIEW_START_FEN;
@@ -824,7 +830,7 @@ export default function ChessGamePage() {
       <section className="mb-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="rounded-3xl border-2 border-border bg-card px-3 pb-3 pt-0.5 shadow-xl sm:px-4 sm:pb-4 sm:pt-1">
-            <div className="mx-auto w-full max-w-[min(100%,410px)] sm:max-w-[480px]">
+            <div className="relative mx-auto w-full max-w-[min(100%,410px)] sm:max-w-[480px]">
               {inGame && (
                 <div className="mb-2 flex items-center justify-between rounded-md border border-border bg-background/80 px-2 py-1 text-xs">
                   <span className="font-semibold text-card-foreground">
@@ -867,6 +873,8 @@ export default function ChessGamePage() {
                     boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)',
                     opacity: isMakingMove ? 0.75 : 1,
                   },
+                  darkSquareStyle: lobbyBoardSquareStyles.darkSquareStyle,
+                  lightSquareStyle: lobbyBoardSquareStyles.lightSquareStyle,
                   squareStyles,
                 }}
               />

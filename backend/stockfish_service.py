@@ -230,26 +230,55 @@ class StockfishService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def validate_puzzle(self, fen: str, solution_moves: List[str]) -> Dict:
+    def validate_puzzle(
+        self,
+        fen: str,
+        solution_moves: List[str],
+        puzzle_format: str = "direct",
+    ) -> Dict:
         """
         Validate if a puzzle position has the correct solution
         
         Args:
             fen: Starting position FEN
             solution_moves: List of moves in UCI format (e.g., ['e2e4', 'e7e5'])
+            puzzle_format: 'lichess' (setup at index 0) or 'direct' (solve from fen)
             
         Returns:
             Dict with validation result and analysis
         """
         try:
-            self.stockfish.set_fen_position(fen)
-            
-            # Get best move from starting position
+            import chess
+
+            board = chess.Board(fen)
+            for uci in solution_moves:
+                move = chess.Move.from_uci(uci)
+                if move not in board.legal_moves:
+                    return {
+                        "success": True,
+                        "is_valid": False,
+                        "best_move": None,
+                        "solution_first_move": solution_moves[0] if solution_moves else None,
+                        "matches": False,
+                        "final_evaluation": None,
+                        "message": f"Illegal move in solution line: {uci}",
+                    }
+                board.push(move)
+
+            fmt = (puzzle_format or "direct").strip().lower()
+            if fmt == "lichess" and len(solution_moves) >= 2:
+                compare_fen = chess.Board(fen)
+                compare_fen.push(chess.Move.from_uci(solution_moves[0]))
+                compare_fen_str = compare_fen.fen()
+                solver_move = solution_moves[1]
+            else:
+                compare_fen_str = fen
+                solver_move = solution_moves[0] if solution_moves else None
+
+            self.stockfish.set_fen_position(compare_fen_str)
             best_move = self.stockfish.get_best_move()
-            first_solution_move = solution_moves[0] if solution_moves else None
-            
-            # Check if solution's first move matches best move
-            is_correct = best_move == first_solution_move
+            first_solution_move = solver_move
+            is_correct = bool(solver_move and best_move == solver_move)
             
             # Try to analyze the position after solution
             final_evaluation = None

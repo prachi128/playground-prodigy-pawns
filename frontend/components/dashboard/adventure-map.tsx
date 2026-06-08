@@ -54,6 +54,7 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
   const [currentPuzzle, setCurrentPuzzle] = useState<Puzzle | null>(null)
   const [hudData, setHudData] = useState<HudData>({ lives: 3, coins: 0, world: "1-1", score: 0 })
   const [gameOver, setGameOver] = useState(false)
+  const [gameOverPuzzlesSolved, setGameOverPuzzlesSolved] = useState(0)
   const [started, setStarted] = useState(false)
   const [canvasWidth, setCanvasWidth] = useState(800)
 
@@ -132,6 +133,7 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
     gameRef.current = initGame()
     setStarted(true)
     setGameOver(false)
+    setGameOverPuzzlesSolved(0)
     setHudData({ lives: 3, coins: 0, world: "1-1", score: 0 })
   }, [initGame])
 
@@ -209,6 +211,7 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
 
       const gs = gameRef.current
       if (!gs || gs.gameOver) {
+        setGameOverPuzzlesSolved(gs?.puzzlesSolved ?? 0)
         setGameOver(true)
         return
       }
@@ -486,7 +489,7 @@ export function AdventureMap({ autoStart }: { autoStart?: boolean } = {}) {
     return (
       <GameOverScreen
         hudData={hudData}
-        puzzlesSolved={gameRef.current?.puzzlesSolved ?? 0}
+        puzzlesSolved={gameOverPuzzlesSolved}
         onRestart={startGame}
       />
     )

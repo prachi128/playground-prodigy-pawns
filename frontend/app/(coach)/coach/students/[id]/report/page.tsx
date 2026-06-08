@@ -10,6 +10,21 @@ import { ArrowLeft, Loader2, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { batchAPI, type Batch } from '@/lib/api';
 
+interface ThemePerformanceRow {
+  theme_key: string;
+  attempts: number;
+  solved: number;
+  accuracy_pct: number;
+}
+
+interface WeeklyBucket {
+  period_label: string;
+  start_date: string;
+  attempts: number;
+  solved: number;
+  accuracy_pct: number;
+}
+
 interface StudentDetails {
   id: number;
   username: string;
@@ -26,8 +41,26 @@ interface StudentDetails {
   expert_solved: number;
   puzzles_this_week: number;
   xp_this_week: number;
+  games_played: number;
+  games_won: number;
+  game_win_rate: number;
+  games_this_week: number;
   days_since_active: number;
   is_active?: boolean;
+  theme_performance?: ThemePerformanceRow[];
+  weekly_buckets?: WeeklyBucket[];
+  weekly_trend?: string;
+}
+
+const WEEKLY_TREND_LABELS: Record<string, string> = {
+  improving: 'Improving vs prior week',
+  stable: 'Roughly stable',
+  declining: 'Needs extra support',
+  insufficient_data: 'Not enough data yet',
+};
+
+function formatThemeLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 const row = 'flex justify-between gap-4 border-b border-border py-2 text-sm last:border-0';
@@ -236,6 +269,87 @@ export default function StudentReportPage() {
               <dd className={value}>{student.puzzles_this_week.toLocaleString()}</dd>
             </div>
           </dl>
+        </section>
+
+        <section className="mb-8 rounded-xl border border-border bg-card p-6 shadow-sm print:break-inside-avoid">
+          <h2 className="font-heading text-lg font-bold text-foreground">Game performance</h2>
+          <dl className="mt-4 space-y-0">
+            <div className={row}>
+              <dt className={label}>Games played</dt>
+              <dd className={value}>{student.games_played.toLocaleString()}</dd>
+            </div>
+            <div className={row}>
+              <dt className={label}>Games won</dt>
+              <dd className={value}>{student.games_won.toLocaleString()}</dd>
+            </div>
+            <div className={row}>
+              <dt className={label}>Game win rate</dt>
+              <dd className={value}>{student.game_win_rate}%</dd>
+            </div>
+            <div className={row}>
+              <dt className={label}>Games this week</dt>
+              <dd className={value}>{student.games_this_week.toLocaleString()}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="mb-8 rounded-xl border border-border bg-card p-6 shadow-sm print:break-inside-avoid">
+          <h2 className="font-heading text-lg font-bold text-foreground">Recent weeks (puzzles)</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Trend:{' '}
+            <span className="font-semibold text-foreground">
+              {student.weekly_trend
+                ? WEEKLY_TREND_LABELS[student.weekly_trend] ?? student.weekly_trend
+                : '—'}
+            </span>
+          </p>
+          {(student.weekly_buckets?.length ?? 0) === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">No weekly breakdown.</p>
+          ) : (
+            <dl className="mt-4 space-y-0">
+              {(student.weekly_buckets ?? []).map((w) => (
+                <div key={w.start_date} className={row}>
+                  <dt className={label}>{w.period_label}</dt>
+                  <dd className={value}>
+                    {w.attempts} attempts, {w.solved} solved ({w.accuracy_pct}%)
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
+
+        <section className="mb-8 rounded-xl border border-border bg-card p-6 shadow-sm print:break-inside-avoid">
+          <h2 className="font-heading text-lg font-bold text-foreground">Top puzzle topics</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            By number of attempts (shows where practice time went).
+          </p>
+          {(student.theme_performance?.length ?? 0) === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">No themed data yet.</p>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left">
+                    <th className="py-2 pr-4 font-semibold">Topic</th>
+                    <th className="py-2 pr-4 font-semibold">Attempts</th>
+                    <th className="py-2 pr-4 font-semibold">Solved</th>
+                    <th className="py-2 font-semibold">Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(student.theme_performance ?? []).slice(0, 12).map((t) => (
+                    <tr key={t.theme_key} className="border-b border-border/60">
+                      <td className="py-2 pr-4 capitalize">{formatThemeLabel(t.theme_key)}</td>
+                      <td className="py-2 pr-4 tabular-nums">{t.attempts}</td>
+                      <td className="py-2 pr-4 tabular-nums">{t.solved}</td>
+                      <td className="py-2 tabular-nums">{t.accuracy_pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-border bg-card p-6 shadow-sm">

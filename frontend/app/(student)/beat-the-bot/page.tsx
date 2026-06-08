@@ -15,6 +15,7 @@ import {
   BotTier,
   getBotById,
 } from '@/lib/bot-opponents';
+import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
 
 const BOT_TIERS: BotTier[] = ['beginner', 'intermediate', 'advanced', 'expert'];
 
@@ -58,6 +59,16 @@ export default function BeatTheBotPage() {
   const [analysisPly, setAnalysisPly] = useState<number | null>(null);
   const selectedBot = getBotById(selectedBotId);
   const activeBot = getBotById(game?.bot_difficulty || selectedBotId);
+
+  const botBoardSquareStyles = useMemo(() => {
+    if (user?.equipped_board_theme_item_key) {
+      return getShopBoardSquareStyles(user.equipped_board_theme_item_key);
+    }
+    return {
+      lightSquareStyle: { backgroundColor: activeBot.boardLight },
+      darkSquareStyle: { backgroundColor: activeBot.boardDark },
+    };
+  }, [user?.equipped_board_theme_item_key, activeBot.boardLight, activeBot.boardDark]);
 
   const boardOrientation: 'white' | 'black' = useMemo(() => {
     if (activeGameId && game && user) {
@@ -242,7 +253,7 @@ export default function BeatTheBotPage() {
       if (sourceSquare === targetSquare) return false;
 
       try {
-        let moveOptions: any = { from: sourceSquare, to: targetSquare };
+        const moveOptions: any = { from: sourceSquare, to: targetSquare };
         if (promotion) moveOptions.promotion = promotion;
 
         let move = null;
@@ -546,7 +557,7 @@ export default function BeatTheBotPage() {
       <section className="mb-6">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-3xl border-2 border-border bg-card px-3 pb-3 pt-1 shadow-xl sm:px-4 sm:pb-4 sm:pt-1.5">
-            <div className="mx-auto w-full max-w-[min(100%,430px)] sm:max-w-[500px]">
+            <div className="relative mx-auto w-full max-w-[min(100%,430px)] sm:max-w-[500px]">
               <Chessboard
                 options={{
                   position: inGame ? displayFen : PREVIEW_START_FEN,
@@ -567,8 +578,8 @@ export default function BeatTheBotPage() {
                     boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)',
                     opacity: isMakingMove ? 0.75 : 1,
                   },
-                  darkSquareStyle: { backgroundColor: activeBot.boardDark },
-                  lightSquareStyle: { backgroundColor: activeBot.boardLight },
+                  darkSquareStyle: botBoardSquareStyles.darkSquareStyle,
+                  lightSquareStyle: botBoardSquareStyles.lightSquareStyle,
                   squareStyles,
                 }}
               />

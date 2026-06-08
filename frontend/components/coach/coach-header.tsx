@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
-import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from "@/lib/avatar";
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar";
 import { ChevronDown, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
 
 interface CoachHeaderProps {
@@ -27,10 +27,6 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
     !avatarLoadFailed;
 
   useEffect(() => {
-    setAvatarLoadFailed(false);
-  }, [user?.avatar_url]);
-
-  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
@@ -39,6 +35,10 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [avatarSrc]);
 
   const handleLogout = async () => {
     setUserMenuOpen(false);
@@ -84,6 +84,7 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
           <div className="sidebar-avatar relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-[#FCD34D] bg-white/10 text-sm font-bold text-sidebar-foreground">
             {showAvatarImage && avatarSrc.startsWith("/") ? (
               <Image
+                key={avatarSrc}
                 src={avatarSrc}
                 alt=""
                 width={36}
@@ -94,13 +95,14 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
             ) : showAvatarImage ? (
               // eslint-disable-next-line @next/next/no-img-element -- uploaded avatar on API host
               <img
+                key={avatarSrc}
                 src={avatarSrc}
                 alt=""
                 className="h-full w-full object-cover"
                 onError={() => setAvatarLoadFailed(true)}
               />
             ) : (
-              usernameInitial(user?.username)
+              personInitial(user?.full_name, user?.username)
             )}
           </div>
           <span className="hidden max-w-[140px] truncate text-sm font-semibold text-sidebar-foreground lg:block">

@@ -18,19 +18,25 @@ import {
   LogOut,
   Settings,
   User,
+  Store,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
+import { AvatarShopCosmetics } from "@/components/dashboard/avatar-shop-cosmetics"
+import { resolveShopCosmeticsForPlayer } from "@/lib/shop-cosmetics"
+import { assignmentAPI } from "@/lib/api"
 
 const navItems = [
-  { label: "Home", icon: Gamepad2, href: "/dashboard", color: "text-yellow-400", badge: null, progress: null },
-  { label: "Adventure", icon: Map, href: "/adventure", color: "text-amber-400", badge: null, progress: null },
-  { label: "Play", icon: Swords, href: "/play", color: "text-orange-400", badge: null, progress: null },
-  { label: "Puzzles", icon: Puzzle, href: "/puzzles", color: "text-cyan-400", badge: "3 new", progress: 64 },
-  { label: "Assignments", icon: BookOpen, href: "/assignments", color: "text-indigo-400", badge: null, progress: null },
-  { label: "Learn", icon: GraduationCap, href: "/learn", color: "text-pink-400", badge: "1 new", progress: 45 },
-  { label: "Progress", icon: TrendingUp, href: "/progress", color: "text-emerald-300", badge: null, progress: 87 },
-  { label: "Settings", icon: Settings, href: "/settings", color: "text-blue-300", badge: null, progress: null },
-  { label: "Profile", icon: User, href: "/profile", color: "text-purple-300", badge: null, progress: null },
+  { label: "Home", icon: Gamepad2, href: "/dashboard", color: "text-yellow-400", progress: null },
+  { label: "Adventure", icon: Map, href: "/adventure", color: "text-amber-400", progress: null },
+  { label: "Play", icon: Swords, href: "/play", color: "text-orange-400", progress: null },
+  { label: "Puzzles", icon: Puzzle, href: "/puzzles", color: "text-cyan-400", progress: null },
+  { label: "Assignments", icon: BookOpen, href: "/assignments", color: "text-indigo-400", progress: null },
+  { label: "Learn", icon: GraduationCap, href: "/learn", color: "text-pink-400", progress: null },
+  { label: "Progress", icon: TrendingUp, href: "/progress", color: "text-emerald-300", progress: null },
+  { label: "Star Shop", icon: Store, href: "/star-shop", color: "text-yellow-300", progress: null },
+  { label: "Settings", icon: Settings, href: "/settings", color: "text-blue-300", progress: null },
+  { label: "Profile", icon: User, href: "/profile", color: "text-purple-300", progress: null },
 ]
 
 interface SidebarProps {
@@ -62,6 +68,9 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
 
   // When sidebar is open as overlay (mobile/tablet), always show expanded content; collapse toggle is hidden there.
   const [isLg, setIsLg] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches)
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
+  const [newAssignmentsCount, setNewAssignmentsCount] = useState(0)
+  const [pendingAssignmentIds, setPendingAssignmentIds] = useState<number[]>([])
   useEffect(() => {
     const m = window.matchMedia("(min-width: 1024px)")
     const fn = () => setIsLg(m.matches)
@@ -100,9 +109,60 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
     }
   }, [onClose])
 
+  useEffect(() => {
+    let isMounted = true
+    const loadNewAssignments = async () => {
+      if (user?.role !== "student") {
+        if (isMounted) setNewAssignmentsCount(0)
+        if (isMounted) setPendingAssignmentIds([])
+        return
+      }
+      try {
+        const assignments = await assignmentAPI.getMyAssignments()
+        const pendingIds = assignments.filter((assignment) => !assignment.is_complete).map((assignment) => assignment.id)
+        const seenKey = `student-seen-assignments-${user.id}`
+        const seenRaw = typeof window !== "undefined" ? localStorage.getItem(seenKey) : null
+        const seenIds = new Set<number>(seenRaw ? (JSON.parse(seenRaw) as number[]) : [])
+        const unseenCount = pendingIds.filter((id) => !seenIds.has(id)).length
+        if (isMounted) {
+          setPendingAssignmentIds(pendingIds)
+          setNewAssignmentsCount(unseenCount)
+        }
+      } catch {
+        if (isMounted) {
+          setPendingAssignmentIds([])
+          setNewAssignmentsCount(0)
+        }
+      }
+    }
+    void loadNewAssignments()
+    return () => {
+      isMounted = false
+    }
+  }, [user?.id, user?.role])
+
+  useEffect(() => {
+    if (user?.role !== "student" || !user?.id) return
+    if (!pathname?.startsWith("/assignments")) return
+    const seenKey = `student-seen-assignments-${user.id}`
+    try {
+      localStorage.setItem(seenKey, JSON.stringify(pendingAssignmentIds))
+    } catch {
+      // Ignore localStorage failures.
+    }
+    setNewAssignmentsCount(0)
+  }, [pathname, pendingAssignmentIds, user?.id, user?.role])
+
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
+  const profileInitial = personInitial(user?.full_name, user?.username)
+  const avatarSrc = getAvatarDisplayUrl(user?.avatar_url)
+  const showAvatarImage = Boolean(avatarSrc) && !isDefaultOrEmptyAvatar(user?.avatar_url) && !avatarLoadFailed
   const rating = user?.rating ?? 0
   const stars = user?.star_balance ?? 0
+
+  useEffect(() => {
+    setAvatarLoadFailed(false)
+  }, [avatarSrc])
 
   // Level is from rating; XP is for hints/rewards only
   const level = user?.level ?? 4
@@ -191,13 +251,24 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
             >
               <div className="flex items-center gap-3">
                 {/* Avatar (use v1 image-based layout) */}
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-accent">
-                  <img
-                    src="/images/kid-avatar.jpg"
-                    alt={displayName}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+                <AvatarShopCosmetics
+                  size="md"
+                  className="h-14 w-14 shrink-0"
+                  {...resolveShopCosmeticsForPlayer(user ?? null, user ?? null)}
+                >
+                  <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full ring-2 ring-accent bg-gradient-to-br from-amber-400 to-orange-500 font-bold text-white">
+                    {showAvatarImage ? (
+                      <img
+                        src={avatarSrc}
+                        alt={displayName}
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarLoadFailed(true)}
+                      />
+                    ) : (
+                      <span className="text-xl">{profileInitial}</span>
+                    )}
+                  </div>
+                </AvatarShopCosmetics>
 
                 {/* Name + Rating stacked */}
                 <div className="min-w-0 flex-1">
@@ -239,13 +310,24 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
         {/* Collapsed avatar only */}
         {effectiveCollapsed && (
           <div className="flex justify-center px-2 py-2">
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full ring-2 ring-accent">
-              <img
-                src="/images/kid-avatar.jpg"
-                alt={displayName}
-                className="h-full w-full object-cover"
-              />
-            </div>
+            <AvatarShopCosmetics
+              size="md"
+              className="h-14 w-14 shrink-0"
+              {...resolveShopCosmeticsForPlayer(user ?? null, user ?? null)}
+            >
+              <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full ring-2 ring-accent bg-gradient-to-br from-amber-400 to-orange-500 font-bold text-white">
+                {showAvatarImage ? (
+                  <img
+                    src={avatarSrc}
+                    alt={displayName}
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarLoadFailed(true)}
+                  />
+                ) : (
+                  <span className="text-xl">{profileInitial}</span>
+                )}
+              </div>
+            </AvatarShopCosmetics>
           </div>
         )}
 
@@ -254,6 +336,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
           <ul className="flex flex-col gap-2" role="list">
             {navItems.map((item) => {
               const Icon = item.icon
+              const badge = item.href === "/assignments" && newAssignmentsCount > 0 ? `${newAssignmentsCount} new` : null
               // Special case: chess-game and beat-the-bot routes should highlight Play button
               const isChessGame = pathname?.startsWith('/chess-game')
               const isBeatTheBot = pathname?.startsWith('/beat-the-bot')
@@ -291,10 +374,10 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
                   {!effectiveCollapsed && (
                     <div className="min-w-0 flex-1 text-left">
                       <div className="truncate leading-tight">{item.label}</div>
-                      {item.badge && (
+                      {badge && (
                         <div className="mt-0.5">
                           <span className="inline-flex items-center rounded-full bg-orange-500 px-2 py-0.5 text-xs font-bold text-white">
-                            {item.badge}
+                            {badge}
                           </span>
                         </div>
                       )}

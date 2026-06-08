@@ -8,18 +8,29 @@ import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles, X, Plus, User } from 'lucide-react';
+import { Sparkles, X, Plus, User, Eye, EyeOff } from 'lucide-react';
+import { Fredoka, Nunito } from 'next/font/google';
 
 type SignupMode = 'student' | 'parent';
 
 // Avatar options for signup (paths under public/ - add images to public/avatars/)
 const AVATAR_OPTIONS = [
-  { value: '/avatars/default.png', label: 'Default' },
-  { value: '/avatars/girl1.png', label: 'Avatar 1' },
-  { value: '/avatars/girl2.png', label: 'Avatar 2' },
-  { value: '/avatars/boy1.png', label: 'Avatar 3' },
-  { value: '/avatars/boy2.png', label: 'Avatar 4' },
+  { value: '/avatars/kid-1.png', label: 'Avatar 1' },
+  { value: '/avatars/kid-2.png', label: 'Avatar 2' },
+  { value: '/avatars/kid-3.png', label: 'Avatar 3' },
+  { value: '/avatars/kid-4.png', label: 'Avatar 4' },
+  { value: '/avatars/kid-5.png', label: 'Avatar 5' },
+  { value: '/avatars/kid-6.png', label: 'Avatar 6' },
+  { value: '/avatars/kid-7.png', label: 'Avatar 7' },
+  { value: '/avatars/kid-8.png', label: 'Avatar 8' },
+  { value: '/avatars/kid-9.png', label: 'Avatar 9' },
+  { value: '/avatars/kid-10.png', label: 'Avatar 10' },
+  { value: '/avatars/kid-11.png', label: 'Avatar 11' },
+  { value: '/avatars/kid-12.png', label: 'Avatar 12' },
 ] as const;
+
+const fredoka = Fredoka({ subsets: ['latin'], variable: '--font-fredoka' });
+const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito' });
 
 export default function SignupPage() {
   const router = useRouter();
@@ -33,9 +44,10 @@ export default function SignupPage() {
     password: '',
     age: '',
     gender: '' as '' | 'girl' | 'boy',
-    avatar_url: '/avatars/default.png',
+    avatar_url: '/avatars/kid-1.png',
   });
   const [childEmails, setChildEmails] = useState(['']);
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [inlineError, setInlineError] = useState('');
 
@@ -121,33 +133,45 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-100 via-purple-50 to-blue-100 flex items-center justify-center p-4">
+    <div
+      className={`${fredoka.variable} ${nunito.variable} dashboard-fonts min-h-screen flex items-center justify-center p-4 relative`}
+      style={{
+        backgroundColor: '#9dc4b8',
+        backgroundImage: `
+          radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.2) 1.5px, transparent 0),
+          radial-gradient(circle at 1px 1px, rgba(30, 64, 175, 0.08) 1px, transparent 0),
+          linear-gradient(to bottom right, rgba(167, 243, 208, 0.85), rgba(196, 181, 253, 0.75), rgba(191, 219, 254, 0.85))
+        `,
+        backgroundSize: '32px 32px, 24px 24px, 100% 100%',
+        backgroundPosition: '0 0, 12px 12px, 0 0',
+      }}
+    >
       <div className="w-full max-w-md">
         {/* Logo/Title */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Sparkles className="w-10 h-10 text-primary-600" />
-            <h1 className="text-4xl font-bold text-primary-800">
+            <Sparkles className="w-10 h-10 text-amber-400" />
+            <h1 className="font-heading text-4xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 bg-clip-text text-transparent">
               Prodigy Pawns
             </h1>
-            <Sparkles className="w-10 h-10 text-primary-600" />
+            <Sparkles className="w-10 h-10 text-amber-400" />
           </div>
-          <p className="text-gray-600 text-lg">
+          <p className="text-muted-foreground text-lg">
             {mode === 'student' ? 'Start your chess journey today!' : 'Track your child\'s chess progress!'} ♟️
           </p>
         </div>
 
         {/* Signup Card */}
-        <div className="bg-white rounded-3xl shadow-2xl p-8 border-4 border-primary-200">
+        <div className="bg-card rounded-2xl shadow-xl p-8 border-2 border-border">
           {/* Mode Toggle */}
-          <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
+          <div className="flex rounded-xl bg-white/20 p-1 mb-6 border-2 border-border">
             <button
               type="button"
               onClick={() => setMode('student')}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition ${
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-heading font-bold transition ${
                 mode === 'student'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-card text-emerald-700 shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               I&apos;m a Student
@@ -155,17 +179,17 @@ export default function SignupPage() {
             <button
               type="button"
               onClick={() => setMode('parent')}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition ${
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-heading font-bold transition ${
                 mode === 'parent'
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-card text-emerald-700 shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               I&apos;m a Parent
             </button>
           </div>
 
-          <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+          <h2 className="font-heading text-2xl font-bold text-card-foreground mb-6 text-center">
             {mode === 'student' ? 'Create Student Account' : 'Create Parent Account'}
           </h2>
 
@@ -173,14 +197,14 @@ export default function SignupPage() {
             {inlineError && (
               <div
                 role="alert"
-                className="rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
               >
                 {inlineError}
               </div>
             )}
             {/* Full Name */}
             <div>
-              <label htmlFor="full_name" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="full_name" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Full Name *
               </label>
               <input
@@ -191,7 +215,7 @@ export default function SignupPage() {
                   setFormData({ ...formData, full_name: e.target.value });
                   if (inlineError) setInlineError('');
                 }}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="Your Name"
                 required
               />
@@ -199,7 +223,7 @@ export default function SignupPage() {
 
             {/* Username */}
             <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="username" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Username *
               </label>
               <input
@@ -210,7 +234,7 @@ export default function SignupPage() {
                   setFormData({ ...formData, username: e.target.value });
                   if (inlineError) setInlineError('');
                 }}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder={mode === 'parent' ? 'parent_jane' : 'chess_master'}
                 required
               />
@@ -218,7 +242,7 @@ export default function SignupPage() {
 
             {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Email *
               </label>
               <input
@@ -229,7 +253,7 @@ export default function SignupPage() {
                   setFormData({ ...formData, email: e.target.value });
                   if (inlineError) setInlineError('');
                 }}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="your@email.com"
                 required
               />
@@ -238,7 +262,7 @@ export default function SignupPage() {
             {/* Age (Student only) */}
             {mode === 'student' && (
               <div>
-                <label htmlFor="age" className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor="age" className="block text-sm font-heading font-semibold text-foreground mb-2">
                   Age (Optional)
                 </label>
                 <input
@@ -251,7 +275,7 @@ export default function SignupPage() {
                     setFormData({ ...formData, age: e.target.value });
                     if (inlineError) setInlineError('');
                   }}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="10"
                 />
               </div>
@@ -260,7 +284,7 @@ export default function SignupPage() {
             {/* Gender (Student only) - I am a girl / boy */}
             {mode === 'student' && (
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-heading font-semibold text-foreground mb-2">
                   I am a
                 </label>
                 <div className="flex gap-3">
@@ -269,8 +293,8 @@ export default function SignupPage() {
                     onClick={() => setFormData({ ...formData, gender: 'girl' })}
                     className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 transition ${
                       formData.gender === 'girl'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 text-gray-600 hover:border-primary-300 hover:bg-primary-50/50'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-border text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50/50'
                     }`}
                   >
                     Girl
@@ -280,8 +304,8 @@ export default function SignupPage() {
                     onClick={() => setFormData({ ...formData, gender: 'boy' })}
                     className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 transition ${
                       formData.gender === 'boy'
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-300 text-gray-600 hover:border-primary-300 hover:bg-primary-50/50'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-border text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50/50'
                     }`}
                   >
                     Boy
@@ -293,7 +317,7 @@ export default function SignupPage() {
             {/* Choose Avatar (Student only) */}
             {mode === 'student' && (
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-heading font-semibold text-foreground mb-2">
                   Choose your avatar
                 </label>
                 <div className="flex flex-wrap gap-3">
@@ -304,8 +328,8 @@ export default function SignupPage() {
                       onClick={() => setFormData({ ...formData, avatar_url: opt.value })}
                       className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden transition shrink-0 ${
                         formData.avatar_url === opt.value
-                          ? 'border-primary-500 ring-2 ring-primary-200'
-                          : 'border-gray-300 hover:border-primary-300'
+                          ? 'border-emerald-500 ring-2 ring-emerald-200'
+                          : 'border-border hover:border-emerald-300'
                       }`}
                       title={opt.label}
                     >
@@ -321,7 +345,7 @@ export default function SignupPage() {
                         }}
                       />
                       <span
-                        className="absolute inset-0 hidden items-center justify-center bg-gray-100 text-gray-400"
+                        className="absolute inset-0 hidden items-center justify-center bg-muted text-muted-foreground/40"
                         style={{ display: 'none' }}
                         aria-hidden
                       >
@@ -336,10 +360,10 @@ export default function SignupPage() {
             {/* Child Emails (Parent only) */}
             {mode === 'parent' && (
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <label className="block text-sm font-heading font-semibold text-foreground mb-2">
                   Child&apos;s Account Email(s) *
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   Enter the email address(es) used for your child&apos;s student account
                 </p>
                 {childEmails.map((email, index) => (
@@ -351,7 +375,7 @@ export default function SignupPage() {
                         handleChildEmailChange(index, e.target.value);
                         if (inlineError) setInlineError('');
                       }}
-                      className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
+                      className="flex-1 px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="child@email.com"
                       required
                     />
@@ -369,7 +393,7 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={handleAddChildEmail}
-                  className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium mt-1"
+                  className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium mt-1"
                 >
                   <Plus className="w-4 h-4" />
                   Add another child
@@ -379,28 +403,39 @@ export default function SignupPage() {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-heading font-semibold text-foreground mb-2">
                 Password * (min 6 characters)
               </label>
-              <input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => {
-                  setFormData({ ...formData, password: e.target.value });
-                  if (inlineError) setInlineError('');
-                }}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition text-gray-800"
-                placeholder="••••••••"
-                required
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => {
+                    setFormData({ ...formData, password: e.target.value });
+                    if (inlineError) setInlineError('');
+                  }}
+                  className="w-full px-4 py-3 pr-12 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  disabled={isLoading}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gradient-to-r from-primary-500 to-purple-600 text-white font-bold py-3 px-6 rounded-xl hover:from-primary-600 hover:to-purple-700 transform hover:scale-105 transition duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="w-full bg-gradient-to-r from-emerald-600 to-green-500 text-white font-heading font-bold py-3 px-6 rounded-xl hover:from-emerald-700 hover:to-green-600 shadow-md hover:shadow-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -414,11 +449,11 @@ export default function SignupPage() {
           </form>
 
           {/* Login Link */}
-          <p className="text-center text-gray-600 mt-6">
+          <p className="text-center text-muted-foreground mt-6">
             Already have an account?{' '}
             <Link
               href="/login"
-              className="text-primary-600 font-semibold hover:text-primary-700 transition"
+              className="font-heading font-semibold text-emerald-600 hover:text-emerald-700 transition"
             >
               Log In
             </Link>

@@ -24,6 +24,13 @@ import {
 import toast from 'react-hot-toast';
 import api, { batchAPI, coachAPI, type Batch } from '@/lib/api';
 
+const PRIORITY_TAG_LABELS: Record<string, string> = {
+  inactive_week: 'Inactive 7+ days',
+  low_accuracy: 'Low accuracy',
+  no_puzzles_yet: 'No puzzles yet',
+  low_xp: 'Low XP',
+};
+
 interface Student {
   id: number;
   username: string;
@@ -36,6 +43,7 @@ interface Student {
   success_rate: number;
   days_since_active?: number;
   is_active?: boolean;
+  priority_tags?: string[];
 }
 
 /** Sortable numeric columns (table headers map to these Student keys). */
@@ -45,7 +53,7 @@ interface ClassOverview {
   total_students: number;
   average_xp: number;
   most_active: { id: number; username: string; xp: number }[];
-  needs_attention: { id: number; username: string; xp: number }[];
+  needs_attention: { id: number; username: string; xp: number; tags: string[] }[];
 }
 
 const statCard =
@@ -168,16 +176,10 @@ export default function StudentsPage() {
     router.push(`/coach/students/${studentId}`);
   };
 
-  const atRiskIds = useMemo(() => {
-    const ids = new Set<number>();
-    overview?.needs_attention.forEach((n) => ids.add(n.id));
-    return ids;
-  }, [overview]);
-
   const filteredStudents = useMemo(() => {
     let list = students;
-    if (atRiskFilter && atRiskIds.size > 0) {
-      list = list.filter((s) => atRiskIds.has(s.id));
+    if (atRiskFilter) {
+      list = list.filter((s) => (s.priority_tags?.length ?? 0) > 0);
     }
     if (selectedBatchId !== null) {
       if (batchStudentsLoading) {
@@ -208,7 +210,6 @@ export default function StudentsPage() {
   }, [
     students,
     atRiskFilter,
-    atRiskIds,
     selectedBatchId,
     batchStudentIds,
     batchStudentsLoading,
@@ -364,8 +365,8 @@ export default function StudentsPage() {
           >
             <span
               className="absolute right-3 top-3 inline-flex items-center text-muted-foreground/70"
-              title="Students who have earned less than 50 XP so far and may need extra support."
-              aria-label="Students who have earned less than 50 XP so far and may need extra support."
+              title="Students who are inactive, have low puzzle accuracy, low XP, or have not tried puzzles yet."
+              aria-label="Students who are inactive, have low puzzle accuracy, low XP, or have not tried puzzles yet."
             >
               <Info className="h-4 w-4" />
             </span>
@@ -551,6 +552,18 @@ export default function StudentsPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">{student.email}</p>
+                      {(student.priority_tags?.length ?? 0) > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {(student.priority_tags ?? []).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-destructive/25 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive"
+                            >
+                              {PRIORITY_TAG_LABELS[tag] ?? tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </Link>
                   </td>
                   <td className="px-4 py-3">

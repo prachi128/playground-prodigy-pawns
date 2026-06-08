@@ -161,6 +161,106 @@ export function normalizePuzzleMoves(fen: string, moves: string | null | undefin
     .map((token) => normalizeMoveToken(game, token))
 }
 
+/** UCI string from a chess.js move result (includes promotion suffix when needed). */
+export function formatPlayedUci(move: { from: string; to: string; promotion?: string }): string {
+  return `${move.from}${move.to}${move.promotion ?? ""}`
+}
+
+function applyUciMove(game: Chess, uci: string) {
+  const from = uci.slice(0, 2)
+  const to = uci.slice(2, 4)
+  const promotion = uci.length > 4 ? uci[4].toLowerCase() : "q"
+  return game.move({ from, to, promotion })
+}
+
+export type PuzzleFormat = "lichess" | "direct"
+
+export type PuzzleFormatSource = {
+  puzzle_format?: string | null
+  lichess_id?: string | null
+}
+
+/** Resolve how fen + moves should be played (API may omit puzzle_format on older rows). */
+export function resolvePuzzleFormat(puzzle: PuzzleFormatSource): PuzzleFormat {
+  const explicit = puzzle.puzzle_format?.trim().toLowerCase()
+  if (explicit === "lichess" || explicit === "direct") {
+    return explicit
+  }
+  if (puzzle.lichess_id) {
+    return "lichess"
+  }
+  return "direct"
+}
+
+export type PuzzlePlayState = {
+  displayFen: string
+  solutionMoves: string[]
+  playerColor: "w" | "b"
+  puzzleFormat: PuzzleFormat
+  /** Progress through solutionMoves (includes Lichess setup at index 0 when lichess format). */
+  movesMade: string[]
+  lastMove: { from: string; to: string } | null
+}
+
+/**
+ * Initialize board state for solving.
+ * - lichess: fen is before opponent setup; auto-play moves[0].
+ * - direct: fen is the position to solve; student plays from moves[0].
+ */
+export function initializePuzzlePlayState(
+  fen: string,
+  moves: string | null | undefined,
+  format: PuzzleFormat = "direct",
+): PuzzlePlayState {
+  const solutionMoves = normalizePuzzleMoves(fen, moves)
+  const game = new Chess(fen)
+  let movesMade: string[] = []
+  let lastMove: { from: string; to: string } | null = null
+
+  if (format === "lichess" && solutionMoves.length > 0) {
+    const setupApplied = applyUciMove(game, solutionMoves[0])
+    if (!setupApplied) {
+      throw new Error("Failed to apply puzzle setup move")
+    }
+    lastMove = { from: setupApplied.from, to: setupApplied.to }
+    movesMade = [solutionMoves[0]]
+  }
+
+  return {
+    displayFen: game.fen(),
+    solutionMoves,
+    playerColor: game.turn(),
+    puzzleFormat: format,
+    movesMade,
+    lastMove,
+  }
+}
+
+/** After a correct student move, auto-play opponent replies until the student's next turn. */
+export function applyOpponentReplies(
+  game: Chess,
+  solutionMoves: string[],
+  movesMade: string[],
+  playerColor: "w" | "b",
+): { movesMade: string[]; lastMove: { from: string; to: string } | null } {
+  let updatedMoves = [...movesMade]
+  let lastMove: { from: string; to: string } | null = null
+
+  while (updatedMoves.length < solutionMoves.length) {
+    const nextMove = solutionMoves[updatedMoves.length]
+    const nextFrom = nextMove.slice(0, 2)
+    const nextPiece = game.get(nextFrom as any)
+    if (!nextPiece || nextPiece.color === playerColor) break
+
+    const applied = applyUciMove(game, nextMove)
+    if (!applied) break
+    updatedMoves = [...updatedMoves, nextMove]
+    lastMove = { from: applied.from, to: applied.to }
+  }
+
+  return { movesMade: updatedMoves, lastMove }
+}
+
 // Calculate accuracy percentage
 export function calculateAccuracy(solved: number, attempts: number): number {
   if (attempts === 0) return 0;

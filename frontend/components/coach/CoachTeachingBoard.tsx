@@ -165,7 +165,7 @@ export function CoachTeachingBoard() {
   return (
     <ChessboardProvider options={boardOptions}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-        <div className="mx-auto w-full max-w-[min(520px,100%)] shrink-0">
+        <div className="relative mx-auto w-full max-w-[min(520px,100%)] shrink-0">
           <Chessboard />
         </div>
 

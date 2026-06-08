@@ -9,7 +9,7 @@ import os
 import secrets
 import json
 
-from models import Batch, StudentBatch, ClassSession, Announcement, Payment, User, UserRole, CoachSignupInvite, AdminAuditLog
+from models import Batch, StudentBatch, ClassSession, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
 from auth import get_current_user
 from database import get_db
 from audit_service import log_admin_action
@@ -57,6 +57,42 @@ def _parse_billing_month(s: str) -> tuple[int, int]:
 def _is_past_tenth_of_billing_month(billing_month: str, now: datetime) -> bool:
     y, m = _parse_billing_month(billing_month)
     return now.date() > date(y, m, 10)
+
+
+def _notify_batch_students(
+    db: Session,
+    batch_id: int,
+    *,
+    title: str,
+    message: str,
+    link_url: Optional[str] = "/dashboard",
+) -> int:
+    student_ids = [
+        sid
+        for (sid,) in (
+            db.query(StudentBatch.student_id)
+            .join(User, User.id == StudentBatch.student_id)
+            .filter(
+                StudentBatch.batch_id == batch_id,
+                StudentBatch.is_active == True,
+                User.role == UserRole.student,
+                User.is_active == True,
+            )
+            .distinct()
+            .all()
+        )
+    ]
+    for student_id in student_ids:
+        db.add(
+            Notification(
+                user_id=student_id,
+                category="system",
+                title=title,
+                message=message,
+                link_url=link_url,
+            )
+        )
+    return len(student_ids)
 
 
 # ==================== BATCH CRUD ====================
@@ -227,6 +263,15 @@ def create_class_session(batch_id: int, data: ClassSessionCreate, coach: User = 
         created_by=coach.id,
     )
     db.add(session)
+    coach_name = coach.full_name or coach.username or "Your coach"
+    class_topic = (data.topic or "New class session").strip()
+    _notify_batch_students(
+        db,
+        batch_id,
+        title="New class scheduled",
+        message=f"{coach_name} scheduled: {class_topic}.",
+        link_url="/dashboard",
+    )
     db.commit()
     db.refresh(session)
     return ClassSessionResponse(
@@ -270,6 +315,14 @@ def create_announcement(batch_id: int, data: AnnouncementCreate, coach: User = D
         created_by=coach.id,
     )
     db.add(ann)
+    coach_name = coach.full_name or coach.username or "Your coach"
+    _notify_batch_students(
+        db,
+        batch_id,
+        title=f"Batch announcement: {data.title}",
+        message=f"{coach_name}: {data.message}",
+        link_url="/dashboard",
+    )
     db.commit()
     db.refresh(ann)
     return AnnouncementResponse(

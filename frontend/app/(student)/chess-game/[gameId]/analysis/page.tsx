@@ -2,23 +2,31 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { gameAPI, GameAnalysis, GameAnalysisMove } from '@/lib/api';
 import { Loader2, ArrowLeft, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '@/lib/store';
+import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
 
 export default function GameAnalysisPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuthStore();
   const gameId = parseInt(params.gameId as string);
 
   const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
   const [chess, setChess] = useState<Chess | null>(null);
   const [currentPly, setCurrentPly] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const shopBoardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -122,8 +130,8 @@ export default function GameAnalysisPage() {
                     borderRadius: '8px',
                     boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
                   },
-                  darkSquareStyle: { backgroundColor: '#769656' },
-                  lightSquareStyle: { backgroundColor: '#eeeed2' },
+                  darkSquareStyle: shopBoardSquareStyles.darkSquareStyle,
+                  lightSquareStyle: shopBoardSquareStyles.lightSquareStyle,
                 }}
               />
             </div>

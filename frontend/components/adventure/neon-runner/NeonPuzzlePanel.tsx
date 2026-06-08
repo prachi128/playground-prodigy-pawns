@@ -1,8 +1,17 @@
+"use client"
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Chess } from "chess.js"
 import { Chessboard } from "react-chessboard"
 import { puzzleAPI, type Puzzle } from "@/lib/api"
-import { normalizePuzzleMoves } from "@/lib/utils"
+import {
+  applyOpponentReplies,
+  formatPlayedUci,
+  initializePuzzlePlayState,
+  resolvePuzzleFormat,
+} from "@/lib/utils"
+import { useAuthStore } from "@/lib/store"
+import { getShopBoardSquareStyles } from "@/lib/shop-cosmetics"
 
 type NeonPuzzlePanelProps = {
   puzzle: Puzzle
@@ -12,14 +21,24 @@ type NeonPuzzlePanelProps = {
 }
 
 export function NeonPuzzlePanel({ puzzle, attemptNumber, onSolved, onFailed }: NeonPuzzlePanelProps) {
-  const [game, setGame] = useState(() => new Chess(puzzle.fen))
+  const { user } = useAuthStore()
+  const playState = useMemo(
+    () =>
+      initializePuzzlePlayState(puzzle.fen, puzzle.moves, resolvePuzzleFormat(puzzle)),
+    [puzzle.fen, puzzle.moves, puzzle.puzzle_format, puzzle.lichess_id],
+  )
+  const [game, setGame] = useState(() => new Chess(playState.displayFen))
+  const [movesMade, setMovesMade] = useState<string[]>(() => playState.movesMade)
+  const playerColor = playState.playerColor
   const [seconds, setSeconds] = useState(30)
-  const [movesMade, setMovesMade] = useState<string[]>([])
   const [hintsUsed, setHintsUsed] = useState(0)
   const [result, setResult] = useState<"playing" | "solved" | "failed">("playing")
   const [startTime] = useState(() => Date.now())
 
-  const solution = useMemo(() => normalizePuzzleMoves(puzzle.fen, puzzle.moves), [puzzle.fen, puzzle.moves])
+  const shopBoardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  )
 
   useEffect(() => {
     if (result !== "playing") return
@@ -39,24 +58,31 @@ export function NeonPuzzlePanel({ puzzle, attemptNumber, onSolved, onFailed }: N
 
   const onDrop = useCallback(
     (from: string, to: string) => {
-      if (result !== "playing") return false
+      if (result !== "playing" || game.turn() !== playerColor) return false
       try {
-        const next = new Chess(game.fen())
-        const move = next.move({ from, to, promotion: "q" })
+        const workingGame = new Chess(game.fen())
+        const move = workingGame.move({ from, to, promotion: "q" })
         if (!move) return false
-        const played = `${from}${to}${move.promotion ?? ""}`
-        const updatedMoves = [...movesMade, played]
-        setMovesMade(updatedMoves)
-        setGame(next)
-
-        const expected = solution[updatedMoves.length - 1]
+        const played = formatPlayedUci(move)
+        const expected = playState.solutionMoves[movesMade.length]
         if (!expected || played.toLowerCase() !== expected.toLowerCase()) {
           setResult("failed")
           onFailed()
-          return true
+          return false
         }
 
-        const completed = updatedMoves.length >= solution.length
+        let updatedMoves = [...movesMade, played]
+        const replies = applyOpponentReplies(
+          workingGame,
+          playState.solutionMoves,
+          updatedMoves,
+          playerColor,
+        )
+        updatedMoves = replies.movesMade
+        setMovesMade(updatedMoves)
+        setGame(workingGame)
+
+        const completed = updatedMoves.length >= playState.solutionMoves.length
         if (!completed) return true
 
         const timeTaken = Math.max(1, Math.floor((Date.now() - startTime) / 1000))
@@ -80,7 +106,7 @@ export function NeonPuzzlePanel({ puzzle, attemptNumber, onSolved, onFailed }: N
         return false
       }
     },
-    [result, game, movesMade, solution, startTime, puzzle, hintsUsed, onFailed, onSolved]
+    [result, game, movesMade, playState, startTime, puzzle, hintsUsed, onFailed, onSolved, playerColor],
   )
 
   function showHint() {
@@ -98,13 +124,21 @@ export function NeonPuzzlePanel({ puzzle, attemptNumber, onSolved, onFailed }: N
             </p>
             <p className={`font-heading text-2xl font-black ${seconds <= 8 ? "text-red-400" : "text-emerald-300"}`}>{seconds}</p>
           </div>
-          <div style={{ maxWidth: 420 }}>
+          <div className="relative" style={{ maxWidth: 420 }}>
             <Chessboard
               key={game.fen()}
               options={{
                 position: game.fen(),
+                allowDragging: result === "playing",
+                canDragPiece: ({ square }) => {
+                  if (!square || result !== "playing" || game.turn() !== playerColor) return false
+                  const piece = game.get(square as any)
+                  return Boolean(piece && piece.color === playerColor)
+                },
                 onPieceDrop: ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) =>
                   sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
+                darkSquareStyle: shopBoardSquareStyles.darkSquareStyle,
+                lightSquareStyle: shopBoardSquareStyles.lightSquareStyle,
               }}
             />
           </div>

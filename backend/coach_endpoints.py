@@ -3,16 +3,19 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case, or_
 from typing import List, Optional
 from pydantic import BaseModel, field_serializer
-from models import Puzzle, User, DifficultyLevel, UserRole
+from models import Puzzle, User, DifficultyLevel, PuzzleFormat, UserRole, Assignment, PuzzleAttempt, Game
 from schemas import UserResponse
 from auth import get_current_user
 from database import get_db
 from stockfish_service import get_stockfish_service
-from datetime import datetime
+from puzzle_utils import resolve_puzzle_format
+from datetime import datetime, timedelta
+
+from student_management_backend import _coach_roster_student_ids, _is_admin
 
 router = APIRouter(prefix="/api/coach", tags=["coach"])
 
@@ -41,6 +44,8 @@ class PuzzleWithAnalysis(BaseModel):
     description: Optional[str]
     fen: str
     moves: str
+    puzzle_format: Optional[str] = None
+    lichess_id: Optional[str] = None
     difficulty: str
     rating: int
     theme: Optional[str]
@@ -49,6 +54,16 @@ class PuzzleWithAnalysis(BaseModel):
     success_count: Optional[int] = 0
     created_at: Optional[datetime] = None
     is_active: bool
+
+    @field_serializer("puzzle_format")
+    def serialize_puzzle_format(self, v, info):
+        if v is not None:
+            if hasattr(v, "value"):
+                return v.value
+            return str(v).strip().lower()
+        if info.data.get("lichess_id"):
+            return "lichess"
+        return "direct"
 
     @field_serializer("attempts_count", "success_count")
     def serialize_count(self, v):
@@ -131,7 +146,8 @@ def create_puzzle(
         title=puzzle_data.title,
         description=puzzle_data.description or f"Tactical puzzle - {theme}",
         fen=puzzle_data.fen,
-        moves=best_move,  # Stockfish-generated solution
+        moves=best_move,  # Stockfish-generated solution from fen (direct format)
+        puzzle_format=PuzzleFormat.DIRECT.value,
         difficulty=DifficultyLevel[difficulty.upper()],
         rating=rating,
         theme=theme,
@@ -300,8 +316,12 @@ def revalidate_puzzle(
             # Single move
             solution_moves = [moves_str]
         
-        # Validate the puzzle
-        validation = sf.validate_puzzle(puzzle.fen, solution_moves)
+        # Validate the puzzle (format-aware: Lichess setup vs direct solve)
+        validation = sf.validate_puzzle(
+            puzzle.fen,
+            solution_moves,
+            puzzle_format=resolve_puzzle_format(puzzle),
+        )
         
         if not validation["success"]:
             return {
@@ -399,3 +419,166 @@ def get_coach_stats(
 ):
     """Get statistics for coach dashboard (aggregated in two queries)."""
     return _compute_coach_stats(db)
+
+
+@router.get("/priorities")
+def get_coach_priorities(
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """
+    Snapshot for the coach dashboard: students who may need follow-up and
+    assignments that are overdue or due within three days.
+    """
+    now = datetime.utcnow()
+    soon = now + timedelta(days=3)
+
+    q = db.query(User).filter(User.role == UserRole.student, User.is_active == True)
+    roster = _coach_roster_student_ids(user, db)
+    if not _is_admin(user) and roster is not None:
+        if not roster:
+            students = []
+        else:
+            students = q.filter(User.id.in_(roster)).all()
+    else:
+        students = q.all()
+
+    ids = [s.id for s in students]
+    attempt_map: dict = {}
+    last_map: dict = {}
+    if ids:
+        att_rows = (
+            db.query(
+                PuzzleAttempt.user_id,
+                func.count(PuzzleAttempt.id),
+                func.sum(case((PuzzleAttempt.is_solved == True, 1), else_=0)),
+            )
+            .filter(PuzzleAttempt.user_id.in_(ids))
+            .group_by(PuzzleAttempt.user_id)
+            .all()
+        )
+        for uid, cnt, sol in att_rows:
+            attempt_map[int(uid)] = (int(cnt or 0), int(sol or 0))
+        last_rows = (
+            db.query(PuzzleAttempt.user_id, func.max(PuzzleAttempt.attempted_at))
+            .filter(PuzzleAttempt.user_id.in_(ids))
+            .group_by(PuzzleAttempt.user_id)
+            .all()
+        )
+        for uid, mx in last_rows:
+            if mx is not None:
+                last_map[int(uid)] = mx
+
+    inactive_students: List[dict] = []
+    low_accuracy_students: List[dict] = []
+    low_game_activity_students: List[dict] = []
+    for s in students:
+        attempted, solved = attempt_map.get(s.id, (0, 0))
+        rate = (solved / attempted * 100) if attempted else 0.0
+        last_a = last_map.get(s.id) or s.last_login or s.created_at
+        days = (now - last_a).days if last_a else 999
+        if days > 7:
+            inactive_students.append(
+                {"id": s.id, "username": s.username, "days_since_active": days}
+            )
+        if attempted >= 5 and rate < 50:
+            low_accuracy_students.append(
+                {
+                    "id": s.id,
+                    "username": s.username,
+                    "success_rate": round(rate, 1),
+                    "attempts": attempted,
+                }
+            )
+
+    game_totals: dict[int, int] = {}
+    game_recent: dict[int, int] = {}
+    if ids:
+        game_rows = (
+            db.query(
+                User.id,
+                func.count(Game.id),
+                func.sum(
+                    case(
+                        (Game.started_at >= (now - timedelta(days=14)), 1),
+                        else_=0,
+                    )
+                ),
+            )
+            .select_from(User)
+            .outerjoin(
+                Game,
+                or_(Game.white_player_id == User.id, Game.black_player_id == User.id),
+            )
+            .filter(User.id.in_(ids))
+            .group_by(User.id)
+            .all()
+        )
+        for uid, total, recent14 in game_rows:
+            game_totals[int(uid)] = int(total or 0)
+            game_recent[int(uid)] = int(recent14 or 0)
+
+    for s in students:
+        total_games = game_totals.get(s.id, 0)
+        recent14 = game_recent.get(s.id, 0)
+        if total_games == 0:
+            low_game_activity_students.append(
+                {"id": s.id, "username": s.username, "reason": "No games played yet"}
+            )
+        elif recent14 == 0:
+            low_game_activity_students.append(
+                {"id": s.id, "username": s.username, "reason": "No games in last 14 days"}
+            )
+
+    inactive_students.sort(key=lambda x: x["days_since_active"], reverse=True)
+    low_accuracy_students.sort(key=lambda x: x["success_rate"])
+    low_game_activity_students.sort(key=lambda x: x["username"])
+
+    aq = (
+        db.query(Assignment)
+        .options(joinedload(Assignment.batch), joinedload(Assignment.student))
+        .filter(Assignment.is_active == True, Assignment.due_date.isnot(None))
+    )
+    if not _is_admin(user):
+        aq = aq.filter(Assignment.coach_id == user.id)
+    assignments = aq.all()
+
+    overdue: List[dict] = []
+    due_soon: List[dict] = []
+    for a in assignments:
+        due = a.due_date
+        if due is None:
+            continue
+        target = "—"
+        if a.batch_id and a.batch:
+            target = f"Batch: {a.batch.name}"
+        elif a.student_id and a.student:
+            target = a.student.username
+        row = {
+            "id": a.id,
+            "title": a.title,
+            "due_date": due.isoformat(),
+            "target_label": target,
+        }
+        if due < now:
+            overdue.append(row)
+        elif due <= soon:
+            due_soon.append(row)
+
+    overdue.sort(key=lambda x: x["due_date"])
+    due_soon.sort(key=lambda x: x["due_date"])
+
+    return {
+        "inactive_students": inactive_students[:25],
+        "low_accuracy_students": low_accuracy_students[:25],
+        "low_game_activity_students": low_game_activity_students[:25],
+        "assignments_overdue": overdue[:25],
+        "assignments_due_soon": due_soon[:25],
+        "counts": {
+            "inactive_students": len(inactive_students),
+            "low_accuracy_students": len(low_accuracy_students),
+            "low_game_activity_students": len(low_game_activity_students),
+            "assignments_overdue": len(overdue),
+            "assignments_due_soon": len(due_soon),
+        },
+    }

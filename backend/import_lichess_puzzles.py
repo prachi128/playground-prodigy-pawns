@@ -17,7 +17,7 @@ import chess
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import DifficultyLevel, Puzzle, PuzzleTheme
+from models import DifficultyLevel, Puzzle, PuzzleFormat, PuzzleTheme
 
 
 DEFAULT_MAX_RATING = 10_000  # uncapped expert by default
@@ -95,6 +95,7 @@ def upsert_puzzle(
             description=description,
             fen=fen,
             moves=moves,
+            puzzle_format=PuzzleFormat.LICHESS.value,
             difficulty=difficulty,
             rating=rating,
             theme=theme_text,
@@ -113,6 +114,7 @@ def upsert_puzzle(
             puzzle.description = description
             puzzle.fen = fen
             puzzle.moves = moves
+            puzzle.puzzle_format = PuzzleFormat.LICHESS.value
             puzzle.difficulty = difficulty
             puzzle.rating = rating
             puzzle.theme = theme_text

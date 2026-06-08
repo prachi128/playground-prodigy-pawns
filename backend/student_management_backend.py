@@ -1,11 +1,23 @@
 # student_management_backend.py - Coach student management API
 
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from typing import List, Optional, Set
-from pydantic import BaseModel
-from models import User, UserRole, Puzzle, PuzzleAttempt, Batch, StudentBatch
+from sqlalchemy import case, exists, func, or_
+from typing import List, Optional, Set, Tuple
+from pydantic import BaseModel, Field
+from models import (
+    User,
+    UserRole,
+    Puzzle,
+    PuzzleAttempt,
+    Game,
+    Batch,
+    StudentBatch,
+    PuzzleTheme,
+    Notification,
+)
 from auth import get_current_user
 from database import get_db
 from datetime import datetime, timedelta
@@ -37,6 +49,7 @@ class StudentStats(BaseModel):
     total_puzzles_attempted: int
     total_puzzles_solved: int
     success_rate: float
+    priority_tags: List[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -67,11 +80,37 @@ class StudentDetailedStats(BaseModel):
 
     puzzles_this_week: int
     xp_this_week: int
+    games_played: int
+    games_won: int
+    game_win_rate: float
+    games_this_week: int
     days_since_active: int
     is_active: bool = True
+    theme_performance: List["ThemePerformanceRow"] = Field(default_factory=list)
+    weekly_buckets: List["WeeklyBucket"] = Field(default_factory=list)
+    weekly_trend: str = "insufficient_data"
 
     class Config:
         from_attributes = True
+
+
+class ThemePerformanceRow(BaseModel):
+    theme_key: str
+    attempts: int
+    solved: int
+    accuracy_pct: float
+
+
+class WeeklyBucket(BaseModel):
+    period_label: str
+    start_date: str
+    attempts: int
+    solved: int
+    accuracy_pct: float
+
+
+class StudentNudgeRequest(BaseModel):
+    message: Optional[str] = Field(None, max_length=500)
 
 
 class CoachAccountRow(BaseModel):
@@ -174,6 +213,142 @@ def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool
         .first()
     )
     return bool(row)
+
+
+def _compute_student_priority_tags(
+    total_xp: int,
+    attempted: int,
+    solved: int,
+    days_since_active: int,
+) -> List[str]:
+    tags: List[str] = []
+    if days_since_active > 7:
+        tags.append("inactive_week")
+    if attempted >= 5:
+        rate = (solved / attempted * 100) if attempted else 0.0
+        if rate < 50:
+            tags.append("low_accuracy")
+    if attempted == 0 and days_since_active > 3:
+        tags.append("no_puzzles_yet")
+    if total_xp < 50:
+        tags.append("low_xp")
+    return tags
+
+
+def _student_theme_performance_rows(db: Session, student_id: int) -> List[ThemePerformanceRow]:
+    agg: dict[str, dict] = defaultdict(lambda: {"attempts": 0, "solved": 0})
+
+    themed = (
+        db.query(
+            PuzzleTheme.theme_key,
+            func.count(PuzzleAttempt.id),
+            func.sum(case((PuzzleAttempt.is_solved == True, 1), else_=0)),
+        )
+        .select_from(PuzzleAttempt)
+        .join(Puzzle, Puzzle.id == PuzzleAttempt.puzzle_id)
+        .join(PuzzleTheme, PuzzleTheme.puzzle_id == Puzzle.id)
+        .filter(PuzzleAttempt.user_id == student_id)
+        .group_by(PuzzleTheme.theme_key)
+        .all()
+    )
+    for tk, c, sol in themed:
+        agg[tk]["attempts"] += int(c or 0)
+        agg[tk]["solved"] += int(sol or 0)
+
+    has_rows = exists().where(PuzzleTheme.puzzle_id == Puzzle.id)
+    legacy = (
+        db.query(Puzzle.theme, PuzzleAttempt.is_solved)
+        .select_from(PuzzleAttempt)
+        .join(Puzzle, Puzzle.id == PuzzleAttempt.puzzle_id)
+        .filter(
+            PuzzleAttempt.user_id == student_id,
+            ~has_rows,
+            Puzzle.theme.isnot(None),
+            Puzzle.theme != "",
+        )
+        .all()
+    )
+    for theme_str, is_solved in legacy:
+        parts = [p.strip() for p in theme_str.replace(",", " ").split() if p.strip()]
+        for token in parts:
+            agg[token]["attempts"] += 1
+            if is_solved:
+                agg[token]["solved"] += 1
+
+    rows: List[ThemePerformanceRow] = []
+    for key, v in agg.items():
+        att, sol = v["attempts"], v["solved"]
+        pct = round((sol / att * 100), 1) if att else 0.0
+        rows.append(ThemePerformanceRow(theme_key=key, attempts=att, solved=sol, accuracy_pct=pct))
+    rows.sort(key=lambda r: r.attempts, reverse=True)
+    return rows[:20]
+
+
+def _weekly_buckets_and_trend(db: Session, student_id: int, now: datetime) -> Tuple[List[WeeklyBucket], str]:
+    buckets: List[WeeklyBucket] = []
+    for w in range(3, -1, -1):
+        week_end = now - timedelta(days=w * 7)
+        week_start = week_end - timedelta(days=7)
+        att = (
+            db.query(func.count(PuzzleAttempt.id))
+            .filter(
+                PuzzleAttempt.user_id == student_id,
+                PuzzleAttempt.attempted_at >= week_start,
+                PuzzleAttempt.attempted_at < week_end,
+            )
+            .scalar()
+            or 0
+        )
+        sol = (
+            db.query(func.count(PuzzleAttempt.id))
+            .filter(
+                PuzzleAttempt.user_id == student_id,
+                PuzzleAttempt.attempted_at >= week_start,
+                PuzzleAttempt.attempted_at < week_end,
+                PuzzleAttempt.is_solved == True,
+            )
+            .scalar()
+            or 0
+        )
+        pct = round((sol / att * 100), 1) if att else 0.0
+        label = f"{week_start.strftime('%b %d')} – {(week_end - timedelta(seconds=1)).strftime('%b %d')}"
+        buckets.append(
+            WeeklyBucket(
+                period_label=label,
+                start_date=week_start.date().isoformat(),
+                attempts=int(att),
+                solved=int(sol),
+                accuracy_pct=pct,
+            )
+        )
+
+    last, prev = buckets[-1], buckets[-2]
+    min_att = 3
+
+    def acc(b: WeeklyBucket) -> Optional[float]:
+        if not b.attempts:
+            return None
+        return b.solved / b.attempts * 100
+
+    if last.attempts < min_att and prev.attempts < min_att:
+        trend = "insufficient_data"
+    else:
+        a1, a2 = acc(last), acc(prev)
+        if a1 is None and a2 is None:
+            trend = "insufficient_data"
+        elif a1 is None:
+            trend = "stable"
+        elif a2 is None:
+            trend = "improving" if a1 >= 50 else "stable"
+        else:
+            if a1 > a2 + 5:
+                trend = "improving"
+            elif a1 < a2 - 5:
+                trend = "declining"
+            else:
+                trend = "stable"
+
+    return buckets, trend
 
 
 @router.get("/coaches", response_model=List[CoachAccountRow])
@@ -388,7 +563,54 @@ def get_class_overview(
     average_xp = total_xp / len(students)
     sorted_by_xp = sorted(students, key=lambda s: s.total_xp, reverse=True)
     most_active = [{"id": s.id, "username": s.username, "xp": s.total_xp} for s in sorted_by_xp[:5]]
-    needs_attention = [{"id": s.id, "username": s.username, "xp": s.total_xp} for s in students if s.total_xp < 50]
+
+    ids = [s.id for s in students]
+    attempt_map: dict[int, tuple[int, int]] = {}
+    last_map: dict[int, datetime] = {}
+    if ids:
+        att_rows = (
+            db.query(
+                PuzzleAttempt.user_id,
+                func.count(PuzzleAttempt.id),
+                func.sum(case((PuzzleAttempt.is_solved == True, 1), else_=0)),
+            )
+            .filter(PuzzleAttempt.user_id.in_(ids))
+            .group_by(PuzzleAttempt.user_id)
+            .all()
+        )
+        for uid, cnt, sol in att_rows:
+            attempt_map[int(uid)] = (int(cnt or 0), int(sol or 0))
+        last_rows = (
+            db.query(PuzzleAttempt.user_id, func.max(PuzzleAttempt.attempted_at))
+            .filter(PuzzleAttempt.user_id.in_(ids))
+            .group_by(PuzzleAttempt.user_id)
+            .all()
+        )
+        for uid, mx in last_rows:
+            if mx is not None:
+                last_map[int(uid)] = mx
+
+    now = datetime.utcnow()
+    needs_attention: list[dict] = []
+    for s in students:
+        attempted, solved = attempt_map.get(s.id, (0, 0))
+        success_rate = (solved / attempted * 100) if attempted else 0.0
+        last_attempt = last_map.get(s.id) or s.last_login or s.created_at
+        if last_attempt is None:
+            days_since = 999
+        else:
+            days_since = (now - last_attempt).days
+        xp_val = s.total_xp or 0
+        tags = _compute_student_priority_tags(xp_val, attempted, solved, days_since)
+        if tags:
+            needs_attention.append(
+                {
+                    "id": s.id,
+                    "username": s.username,
+                    "xp": xp_val,
+                    "tags": tags,
+                }
+            )
 
     return {
         "total_students": len(students),
@@ -487,6 +709,9 @@ def get_all_students(
             days_since_active = (datetime.utcnow() - last_active).days
 
         xp_val = student.total_xp or 0
+        priority_tags = _compute_student_priority_tags(
+            xp_val, attempted, solved, days_since_active
+        )
         student_stats.append(
             StudentStats(
                 id=student.id,
@@ -516,6 +741,7 @@ def get_all_students(
                     else None
                 ),
                 is_unassigned=student.primary_coach_id is None,
+                priority_tags=priority_tags,
             )
         )
     return student_stats
@@ -693,6 +919,44 @@ def get_student_details(
         .scalar()
         or 0
     )
+    games_played = (
+        db.query(func.count(Game.id))
+        .filter(
+            or_(
+                Game.white_player_id == student.id,
+                Game.black_player_id == student.id,
+            ),
+            Game.ended_at.isnot(None),
+        )
+        .scalar()
+        or 0
+    )
+    games_won = (
+        db.query(func.count(Game.id))
+        .filter(
+            Game.winner_id == student.id,
+            Game.ended_at.isnot(None),
+        )
+        .scalar()
+        or 0
+    )
+    games_this_week = (
+        db.query(func.count(Game.id))
+        .filter(
+            or_(
+                Game.white_player_id == student.id,
+                Game.black_player_id == student.id,
+            ),
+            Game.started_at >= week_ago,
+        )
+        .scalar()
+        or 0
+    )
+    game_win_rate = (games_won / games_played * 100) if games_played > 0 else 0.0
+
+    now = datetime.utcnow()
+    theme_performance = _student_theme_performance_rows(db, student.id)
+    weekly_buckets, weekly_trend = _weekly_buckets_and_trend(db, student.id, now)
 
     return StudentDetailedStats(
         id=student.id,
@@ -710,8 +974,15 @@ def get_student_details(
         expert_solved=expert_solved,
         puzzles_this_week=puzzles_this_week,
         xp_this_week=xp_this_week,
+        games_played=games_played,
+        games_won=games_won,
+        game_win_rate=round(game_win_rate, 1),
+        games_this_week=games_this_week,
         days_since_active=days_since_active,
         is_active=bool(student.is_active),
+        theme_performance=theme_performance,
+        weekly_buckets=weekly_buckets,
+        weekly_trend=weekly_trend,
     )
 
 
@@ -742,6 +1013,46 @@ def award_bonus_xp(
         "message": f"Awarded {xp_amount} XP to {student.username}",
         "new_xp": student.total_xp,
     }
+
+
+@router.post("/{student_id}/nudge")
+def nudge_student(
+    student_id: int,
+    payload: StudentNudgeRequest,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Send an in-app reminder notification to a student on the coach roster."""
+    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _coach_can_access_student(coach, db, student_id):
+        raise HTTPException(status_code=404, detail="Student not found")
+    if student.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot nudge a deactivated student",
+        )
+
+    coach_name = (coach.full_name or coach.username or "Your coach").strip()
+    default_msg = (
+        f"{coach_name} suggests you log in soon and practice puzzles or finish any open assignments."
+    )
+    message = (payload.message or default_msg).strip()
+    if not message:
+        message = default_msg
+
+    note = Notification(
+        user_id=student.id,
+        category="coach",
+        title="Message from your coach",
+        message=message,
+        link_url="/puzzles",
+    )
+    db.add(note)
+    db.commit()
+
+    return {"success": True, "message": "Reminder sent"}
 
 
 @router.put("/{student_id}/deactivate")

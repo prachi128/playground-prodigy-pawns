@@ -1,12 +1,18 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { Chess } from "chess.js"
 import { Chessboard } from "react-chessboard"
 import { ArrowRight, Lightbulb, RotateCcw, X } from "lucide-react"
 import { puzzleAPI, Puzzle } from "@/lib/api"
 import { useAuthStore } from "@/lib/store"
-import { normalizePuzzleMoves } from "@/lib/utils"
+import {
+  applyOpponentReplies,
+  formatPlayedUci,
+  initializePuzzlePlayState,
+  resolvePuzzleFormat,
+} from "@/lib/utils"
+import { getShopBoardSquareStyles } from "@/lib/shop-cosmetics"
 import toast from "react-hot-toast"
 
 interface PuzzleModalProps {
@@ -17,69 +23,112 @@ interface PuzzleModalProps {
 
 export function PuzzleModal({ puzzle, onClose, onSolve }: PuzzleModalProps) {
   const { user, updateUser } = useAuthStore()
-  const [puzzleGame, setPuzzleGame] = useState<Chess>(new Chess(puzzle.fen))
-  const [puzzleMoves, setPuzzleMoves] = useState<string[]>([])
+  const playState = useMemo(
+    () =>
+      initializePuzzlePlayState(puzzle.fen, puzzle.moves, resolvePuzzleFormat(puzzle)),
+    [puzzle.fen, puzzle.moves, puzzle.puzzle_format, puzzle.lichess_id],
+  )
+  const [puzzleGame, setPuzzleGame] = useState<Chess>(() => new Chess(playState.displayFen))
+  const [movesMade, setMovesMade] = useState<string[]>(() => playState.movesMade)
+  const [playerColor, setPlayerColor] = useState<"w" | "b">(() => playState.playerColor)
   const [puzzleHints, setPuzzleHints] = useState(0)
-  const [puzzleStartTime] = useState(Date.now())
+  const puzzleStartTimeRef = useRef<number>(0)
   const [puzzleResult, setPuzzleResult] = useState<"solved" | "wrong" | null>(null)
+
+  const shopBoardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  )
+
+  const resetBoard = useCallback(() => {
+    const fresh = initializePuzzlePlayState(puzzle.fen, puzzle.moves)
+    setPuzzleGame(new Chess(fresh.displayFen))
+    setMovesMade(fresh.movesMade)
+    setPlayerColor(fresh.playerColor)
+    setPuzzleResult(null)
+    puzzleStartTimeRef.current = 0
+  }, [puzzle])
 
   const onPuzzleDrop = useCallback(
     (src: string, dst: string) => {
-      if (puzzleResult) return false
+      if (puzzleResult || puzzleGame.turn() !== playerColor) return false
       try {
-        const move = puzzleGame.move({ from: src, to: dst, promotion: "q" })
-        if (!move) return false
-        const newMoves = [...puzzleMoves, `${src}${dst}`]
-        setPuzzleMoves(newMoves)
-        setPuzzleGame(new Chess(puzzleGame.fen()))
-
-        const solution = normalizePuzzleMoves(puzzle.fen, puzzle.moves)
-        const done = newMoves.length >= solution.length
-
-        if (done) {
-          const timeTaken = Math.floor((Date.now() - puzzleStartTime) / 1000)
-          puzzleAPI
-            .submitAttempt(puzzle.id, {
-              is_solved: true,
-              moves_made: newMoves.join(" "),
-              time_taken: timeTaken,
-              hints_used: puzzleHints,
-            })
-            .then((result) => {
-              if (result.is_solved && user && result.xp_earned) {
-                updateUser({ total_xp: user.total_xp + result.xp_earned })
-              }
-              if (result.is_solved) {
-                setPuzzleResult("solved")
-                onSolve(50, 500)
-              } else {
-                setPuzzleResult("wrong")
-              }
-            })
-            .catch(() => {})
+        if (puzzleStartTimeRef.current === 0) {
+          puzzleStartTimeRef.current = Date.now()
         }
+        const workingGame = new Chess(puzzleGame.fen())
+        const move = workingGame.move({ from: src, to: dst, promotion: "q" })
+        if (!move) return false
+
+        const played = formatPlayedUci(move)
+        const expected = playState.solutionMoves[movesMade.length]
+        if (!expected || played !== expected) {
+          setPuzzleResult("wrong")
+          return false
+        }
+
+        let updatedMoves = [...movesMade, played]
+        const replies = applyOpponentReplies(
+          workingGame,
+          playState.solutionMoves,
+          updatedMoves,
+          playerColor,
+        )
+        updatedMoves = replies.movesMade
+        setMovesMade(updatedMoves)
+        setPuzzleGame(workingGame)
+
+        const isComplete = updatedMoves.length >= playState.solutionMoves.length
+        if (!isComplete) return true
+
+        const timeTaken = Math.floor((Date.now() - puzzleStartTimeRef.current) / 1000)
+        puzzleAPI
+          .submitAttempt(puzzle.id, {
+            is_solved: true,
+            moves_made: updatedMoves.join(" "),
+            time_taken: timeTaken,
+            hints_used: puzzleHints,
+          })
+          .then((result) => {
+            if (result.is_solved && user && result.xp_earned) {
+              updateUser({ total_xp: user.total_xp + result.xp_earned })
+            }
+            if (result.is_solved) {
+              setPuzzleResult("solved")
+              onSolve(50, 500)
+            } else {
+              setPuzzleResult("wrong")
+            }
+          })
+          .catch(() => {})
         return true
       } catch {
         return false
       }
     },
-    [puzzleGame, puzzle, puzzleMoves, puzzleResult, puzzleStartTime, puzzleHints, user, updateUser, onSolve]
+    [
+      puzzleGame,
+      puzzle,
+      movesMade,
+      puzzleResult,
+      puzzleHints,
+      user,
+      updateUser,
+      onSolve,
+      playState,
+      playerColor,
+    ],
   )
 
   const handleHint = useCallback(() => {
-    const solution = normalizePuzzleMoves(puzzle.fen, puzzle.moves)
-    if (puzzleMoves.length < solution.length) {
-      const next = solution[puzzleMoves.length]
+    if (movesMade.length < playState.solutionMoves.length) {
+      const next = playState.solutionMoves[movesMade.length]
       toast(`Try: ${next.substring(0, 2)} → ${next.substring(2, 4)}`, { icon: "💡", duration: 4000 })
       setPuzzleHints((h) => h + 1)
     }
-  }, [puzzle, puzzleMoves])
+  }, [playState.solutionMoves, movesMade])
 
-  const resetBoard = useCallback(() => {
-    setPuzzleGame(new Chess(puzzle.fen))
-    setPuzzleMoves([])
-    setPuzzleResult(null)
-  }, [puzzle])
+  const sideLabel = playerColor === "w" ? "White to move" : "Black to move"
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -139,17 +188,23 @@ export function PuzzleModal({ puzzle, onClose, onSolve }: PuzzleModalProps) {
         {/* Chessboard */}
         {!puzzleResult && (
           <div className="p-4 flex flex-col items-center gap-3">
-            <p className="font-heading text-sm font-bold text-gray-300">Find the best move!</p>
-            <div style={{ maxWidth: 320 }}>
+            <p className="font-heading text-sm font-bold text-gray-300">{sideLabel}</p>
+            <div className="relative" style={{ maxWidth: 320 }}>
               <Chessboard
                 key={puzzleGame.fen()}
                 options={{
                   position: puzzleGame.fen(),
+                  allowDragging: true,
+                  canDragPiece: ({ square }) => {
+                    if (!square || puzzleGame.turn() !== playerColor) return false
+                    const piece = puzzleGame.get(square as any)
+                    return Boolean(piece && piece.color === playerColor)
+                  },
                   onPieceDrop: ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) =>
                     sourceSquare && targetSquare ? onPuzzleDrop(sourceSquare, targetSquare) : false,
                   boardStyle: { borderRadius: "8px", boxShadow: "0 5px 15px rgba(0,0,0,0.4)" },
-                  darkSquareStyle: { backgroundColor: "#6b8e23" },
-                  lightSquareStyle: { backgroundColor: "#f0d9b5" },
+                  darkSquareStyle: shopBoardSquareStyles.darkSquareStyle,
+                  lightSquareStyle: shopBoardSquareStyles.lightSquareStyle,
                 }}
               />
             </div>

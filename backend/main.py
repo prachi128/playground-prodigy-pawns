@@ -39,6 +39,7 @@ from models import (
     AssignmentCompletion,
     StudentBatch,
     ShopPurchase,
+    UserShopItem,
 )
 from database import get_db, SessionLocal, validate_required_schema
 from auth import (
@@ -175,10 +176,37 @@ def update_ratings_after_game(game: Game, db: Session) -> None:
     min_rating = 100
     expected_white = 1.0 / (1.0 + 10.0 ** ((rb - rw) / 400.0))
     delta_white = K * (score_white - expected_white)
+    old_white_level = int(white.level or LEVEL_MIN)
+    old_black_level = int(black.level or LEVEL_MIN)
+
     white.rating = max(min_rating, round((white.rating or 100) + delta_white))
     white.level = level_from_rating(white.rating)
     black.rating = max(min_rating, round((black.rating or 100) - delta_white))
     black.level = level_from_rating(black.rating)
+
+    old_white_title = get_level_category(old_white_level)
+    new_white_title = get_level_category(white.level)
+    if white.level > old_white_level and new_white_title != old_white_title:
+        create_notification(
+            db,
+            white.id,
+            "achievement",
+            "New title unlocked!",
+            f"You advanced from {old_white_title} to {new_white_title}.",
+            link_url="/profile",
+        )
+
+    old_black_title = get_level_category(old_black_level)
+    new_black_title = get_level_category(black.level)
+    if black.level > old_black_level and new_black_title != old_black_title:
+        create_notification(
+            db,
+            black.id,
+            "achievement",
+            "New title unlocked!",
+            f"You advanced from {old_black_title} to {new_black_title}.",
+            link_url="/profile",
+        )
 
 
 GLICKO2_SCALE = 173.7178
@@ -1180,9 +1208,23 @@ def update_profile(
     
     if user_update.full_name:
         current_user.full_name = user_update.full_name
-    if user_update.avatar_url:
-        current_user.avatar_url = user_update.avatar_url
-    if user_update.age:
+    if user_update.username is not None:
+        new_username = user_update.username.strip()
+        if len(new_username) < 3:
+            raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+        if not re.fullmatch(r"[A-Za-z0-9_]+", new_username):
+            raise HTTPException(status_code=400, detail="Username can contain only letters, numbers, and underscores")
+        username_taken = (
+            db.query(User)
+            .filter(User.username == new_username, User.id != user_id)
+            .first()
+        )
+        if username_taken:
+            raise HTTPException(status_code=400, detail="Username is already taken")
+        current_user.username = new_username
+    if user_update.avatar_url is not None:
+        current_user.avatar_url = user_update.avatar_url.strip()
+    if user_update.age is not None:
         current_user.age = user_update.age
     
     db.commit()
@@ -1645,15 +1687,6 @@ def submit_puzzle_attempt(
     )
     
     db.add(puzzle_attempt)
-    if authoritative_solved:
-        create_notification(
-            db,
-            current_user.id,
-            "achievement",
-            "Puzzle solved!",
-            f"You earned {xp_earned} XP. Great work!",
-            link_url=f"/puzzles/{puzzle_id}",
-        )
     if assignment_id is not None and authoritative_solved:
         _record_assignment_completion_if_eligible(
             db, current_user.id, assignment_id, puzzle_id
@@ -2920,16 +2953,38 @@ def create_notification(
     return notification
 
 
+def _cleanup_old_notifications(max_age_days: int = 60) -> None:
+    """Background job: hard-delete notifications older than max_age_days."""
+    db = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
+        (
+            db.query(Notification)
+            .filter(Notification.created_at < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
 @app.get("/api/notifications", response_model=List[NotificationResponse])
 def get_notifications(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=100),
 ):
-    """Get current user's notifications, newest first."""
+    """Get current user's notifications, newest first.
+
+    Only returns recent notifications (last 14 days) to keep the bell focused.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=14)
     notifications = (
         db.query(Notification)
-        .filter(Notification.user_id == user_id)
+        .filter(
+            Notification.user_id == user_id,
+            Notification.created_at >= cutoff,
+        )
         .order_by(Notification.created_at.desc())
         .limit(limit)
         .all()
@@ -3003,15 +3058,52 @@ class ShopPurchaseRequest(BaseModel):
     item_key: str
 
 
+class ShopEquipRequest(BaseModel):
+    item_key: str
+
+
 SHOP_CATALOG = [
-    {"item_key": "cool_sunglasses", "name": "Cool Sunglasses", "stars_cost": 5, "rarity": "Common"},
-    {"item_key": "golden_crown", "name": "Golden Crown", "stars_cost": 8, "rarity": "Rare"},
-    {"item_key": "fire_trail", "name": "Fire Trail", "stars_cost": 12, "rarity": "Epic"},
-    {"item_key": "space_theme", "name": "Space Theme", "stars_cost": 15, "rarity": "Epic"},
-    {"item_key": "castle_theme", "name": "Castle Theme", "stars_cost": 13, "rarity": "Rare"},
-    {"item_key": "dragon_pet", "name": "Dragon Pet", "stars_cost": 25, "rarity": "Legendary"},
+    {"item_key": "cool_sunglasses", "name": "Cool Sunglasses", "stars_cost": 5, "rarity": "Common", "category": "accessory"},
+    {"item_key": "golden_crown", "name": "Golden Crown", "stars_cost": 8, "rarity": "Rare", "category": "accessory"},
+    {"item_key": "fire_trail", "name": "Fire Trail", "stars_cost": 12, "rarity": "Epic", "category": "trail"},
+    {"item_key": "space_theme", "name": "Space Theme", "stars_cost": 15, "rarity": "Epic", "category": "board_theme"},
+    {"item_key": "castle_theme", "name": "Castle Theme", "stars_cost": 13, "rarity": "Rare", "category": "board_theme"},
+    {"item_key": "dragon_pet", "name": "Dragon Pet", "stars_cost": 25, "rarity": "Legendary", "category": "companion"},
 ]
 SHOP_CATALOG_BY_KEY = {item["item_key"]: item for item in SHOP_CATALOG}
+SHOP_CATEGORY_TO_USER_FIELD = {
+    "accessory": "equipped_accessory_item_key",
+    "board_theme": "equipped_board_theme_item_key",
+    "trail": "equipped_trail_item_key",
+    "companion": "equipped_companion_item_key",
+}
+
+
+def _equipped_items_payload(user: User) -> Dict[str, Optional[str]]:
+    return {
+        "accessory": user.equipped_accessory_item_key,
+        "board_theme": user.equipped_board_theme_item_key,
+        "trail": user.equipped_trail_item_key,
+        "companion": user.equipped_companion_item_key,
+    }
+
+
+def _catalog_items_payload(user: User, owned_keys: Set[str]) -> List[Dict[str, object]]:
+    equipped = _equipped_items_payload(user)
+    out: List[Dict[str, object]] = []
+    for item in SHOP_CATALOG:
+        key = str(item["item_key"])
+        category = str(item["category"])
+        out.append({
+            "item_key": key,
+            "name": item["name"],
+            "stars_cost": int(item["stars_cost"]),
+            "rarity": item["rarity"],
+            "category": category,
+            "owned": key in owned_keys,
+            "equipped": equipped.get(category) == key,
+        })
+    return out
 
 
 @app.get("/api/rewards/wallet")
@@ -3069,7 +3161,43 @@ def get_shop_catalog(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"items": SHOP_CATALOG, "star_balance": user.star_balance}
+    owned_rows = db.query(UserShopItem).filter(UserShopItem.user_id == user.id).all()
+    owned_keys = {row.item_key for row in owned_rows}
+    return {
+        "items": _catalog_items_payload(user, owned_keys),
+        "star_balance": user.star_balance,
+        "equipped_items": _equipped_items_payload(user),
+    }
+
+
+@app.get("/api/shop/inventory")
+def get_shop_inventory(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    owned_rows = (
+        db.query(UserShopItem)
+        .filter(UserShopItem.user_id == user.id)
+        .order_by(UserShopItem.purchased_at.desc())
+        .all()
+    )
+    return {
+        "owned_items": [
+            {
+                "item_key": row.item_key,
+                "item_name": row.item_name,
+                "category": row.category,
+                "rarity": row.rarity,
+                "purchased_at": row.purchased_at,
+            }
+            for row in owned_rows
+        ],
+        "equipped_items": _equipped_items_payload(user),
+    }
 
 
 @app.post("/api/shop/purchase")
@@ -3087,6 +3215,15 @@ def purchase_shop_item(
         raise HTTPException(status_code=404, detail="Item not found")
 
     stars_cost = int(item["stars_cost"])
+    category = str(item["category"])
+    existing = (
+        db.query(UserShopItem)
+        .filter(UserShopItem.user_id == user.id, UserShopItem.item_key == item["item_key"])
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Item already owned")
+
     if user.star_balance < stars_cost:
         raise HTTPException(
             status_code=400,
@@ -3101,7 +3238,19 @@ def purchase_shop_item(
         stars_spent=stars_cost,
         delivery_status="pending",
     )
+    owned_item = UserShopItem(
+        user_id=user.id,
+        item_key=str(item["item_key"]),
+        item_name=str(item["name"]),
+        category=category,
+        rarity=str(item["rarity"]),
+    )
+    field = SHOP_CATEGORY_TO_USER_FIELD.get(category)
+    if field and not getattr(user, field):
+        setattr(user, field, str(item["item_key"]))
+
     db.add(purchase)
+    db.add(owned_item)
     db.commit()
     db.refresh(purchase)
 
@@ -3122,6 +3271,45 @@ def purchase_shop_item(
         "star_balance": user.star_balance,
         "delivery_status": purchase.delivery_status,
         "purchased_at": purchase.purchased_at,
+        "owned": True,
+        "equipped_items": _equipped_items_payload(user),
+    }
+
+
+@app.post("/api/shop/equip")
+def equip_shop_item(
+    payload: ShopEquipRequest,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    item = SHOP_CATALOG_BY_KEY.get(payload.item_key)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    owned = (
+        db.query(UserShopItem)
+        .filter(UserShopItem.user_id == user.id, UserShopItem.item_key == payload.item_key)
+        .first()
+    )
+    if not owned:
+        raise HTTPException(status_code=400, detail="You do not own this item yet")
+
+    category = str(item["category"])
+    field = SHOP_CATEGORY_TO_USER_FIELD.get(category)
+    if not field:
+        raise HTTPException(status_code=400, detail="Item category cannot be equipped")
+    setattr(user, field, payload.item_key)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "equipped_item_key": payload.item_key,
+        "category": category,
+        "equipped_items": _equipped_items_payload(user),
     }
 
 

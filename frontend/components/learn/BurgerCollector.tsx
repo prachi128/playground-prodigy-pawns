@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState, useCallback, useMemo, useEffect, type CSSProperties } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Flame, Lock, Mountain, Sparkles } from 'lucide-react'
+import { Lock, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { playSound } from '@/utils/audio'
 import { updateStudentStats } from '@/app/(student)/actions/game-actions'
@@ -12,7 +12,6 @@ import {
   type PieceTypeCode,
   type PieceLessonMeta,
   type PieceLessonStep,
-  type BlockedSquare,
   getPieceLessonSet,
 } from '@/lib/data/basics-levels'
 
@@ -28,6 +27,7 @@ const PIECE_TO_BOARD: Record<PieceTypeCode, string> = {
   k: 'wK',
   p: 'wP',
 }
+const FILES = 'abcdefgh'
 
 function playPopSound() {
   if (typeof window === 'undefined') return
@@ -77,6 +77,52 @@ function isLegalMoveForPiece(pieceType: PieceTypeCode, from: string, to: string)
   }
 }
 
+function splitSquare(square: string): { file: number; rank: number } {
+  return { file: square.charCodeAt(0) - 97, rank: parseInt(square[1], 10) }
+}
+
+function toSquare(file: number, rank: number): string {
+  return `${String.fromCharCode(97 + file)}${rank}`
+}
+
+function inBounds(file: number, rank: number): boolean {
+  return file >= 0 && file < 8 && rank >= 1 && rank <= 8
+}
+
+function pawnMoveSets(
+  from: string,
+  burgersRemaining: Set<string>
+): { legal: string[]; capture: string[] } {
+  const { file, rank } = splitSquare(from)
+  const legal: string[] = []
+  const capture: string[] = []
+
+  const oneForwardRank = rank + 1
+  if (inBounds(file, oneForwardRank)) {
+    const oneForward = toSquare(file, oneForwardRank)
+    if (!burgersRemaining.has(oneForward)) {
+      legal.push(oneForward)
+      if (rank === 2) {
+        const twoForwardRank = rank + 2
+        const twoForward = toSquare(file, twoForwardRank)
+        if (inBounds(file, twoForwardRank) && !burgersRemaining.has(twoForward)) {
+          legal.push(twoForward)
+        }
+      }
+    }
+  }
+
+  for (const df of [-1, 1]) {
+    const tf = file + df
+    const tr = rank + 1
+    if (!inBounds(tf, tr)) continue
+    const target = toSquare(tf, tr)
+    if (burgersRemaining.has(target)) capture.push(target)
+  }
+
+  return { legal, capture }
+}
+
 /** Legal empty-square destinations vs burger squares (capture-style highlight). Blocked squares excluded. */
 function getCollectorLegalDestinations(
   from: string,
@@ -84,12 +130,15 @@ function getCollectorLegalDestinations(
   blocked: Set<string>,
   burgersRemaining: Set<string>
 ): { legal: string[]; capture: string[] } {
+  if (pieceType === 'p') {
+    return pawnMoveSets(from, burgersRemaining)
+  }
+
   const legal: string[] = []
   const capture: string[] = []
-  const files = 'abcdefgh'
   for (let rank = 1; rank <= 8; rank += 1) {
     for (let fi = 0; fi < 8; fi += 1) {
-      const sq = `${files[fi]}${rank}`
+      const sq = `${FILES[fi]}${rank}`
       if (sq === from || blocked.has(sq)) continue
       if (!isLegalMoveForPiece(pieceType, from, sq)) continue
       if (burgersRemaining.has(sq)) capture.push(sq)
@@ -116,7 +165,141 @@ function difficultyLabel(lessonIndex: number): { title: string; emoji: string; c
   if (n <= 6) {
     return { title: 'Spicy challenge', emoji: '🌶️', chipClass: 'bg-orange-100 text-orange-900 border-orange-300' }
   }
-  return { title: 'Boss burger', emoji: '👑', chipClass: 'bg-fuchsia-100 text-fuchsia-900 border-fuchsia-400' }
+  return { title: 'Boss platter', emoji: '👑', chipClass: 'bg-fuchsia-100 text-fuchsia-900 border-fuchsia-400' }
+}
+
+type CollectibleStyle = {
+  items: string[]
+  burgerScale: number
+}
+
+function collectibleStyleForLevel(lessonIndex: number): CollectibleStyle {
+  const level = lessonIndex + 1
+  if (level <= 2) return { items: ['🍔'], burgerScale: 1.0 }
+  if (level <= 4) return { items: ['🍔', '🍟', '🥤'], burgerScale: 1.0 }
+  if (level === 5) return { items: ['🍔', '🌶️'], burgerScale: 1.0 }
+  if (level === 6) return { items: ['🍔', '🌶️', '🫑'], burgerScale: 1.0 }
+  if (level === 7) return { items: ['🍔', '🥬', '🍅', '🧅'], burgerScale: 1.25 }
+  if (level === 8) return { items: ['🍔', '🥤', '🥬', '🍅'], burgerScale: 1.15 }
+  if (level <= 11) return { items: ['🍔', '🍟', '🥤', '🌶️', '🫑'], burgerScale: 1.2 }
+  return { items: ['🍔', '🍟', '🥤', '🌶️', '🫑', '🥬', '🍅', '🧅'], burgerScale: 1.25 }
+}
+
+function distance(a: string, b: string): number {
+  const sa = splitSquare(a)
+  const sb = splitSquare(b)
+  return Math.abs(sa.file - sb.file) + Math.abs(sa.rank - sb.rank)
+}
+
+function legalSquaresFromStart(startSquare: string, pieceType: PieceTypeCode): string[] {
+  const out: string[] = []
+  for (let rank = 1; rank <= 8; rank += 1) {
+    for (let fi = 0; fi < 8; fi += 1) {
+      const sq = `${FILES[fi]}${rank}`
+      if (sq === startSquare) continue
+      if (pieceType === 'p') continue
+      if (isLegalMoveForPiece(pieceType, startSquare, sq)) out.push(sq)
+    }
+  }
+  return out
+}
+
+function spreadPick(candidates: string[], count: number, startSquare: string): string[] {
+  if (count <= 0) return []
+  if (candidates.length <= count) return [...candidates]
+  const picked: string[] = []
+  const byStartDist = [...candidates].sort((a, b) => distance(b, startSquare) - distance(a, startSquare))
+  picked.push(byStartDist[0])
+  while (picked.length < count) {
+    let best = ''
+    let bestScore = -1
+    for (const c of candidates) {
+      if (picked.includes(c)) continue
+      const minDistToPicked = Math.min(...picked.map((p) => distance(c, p)))
+      const score = minDistToPicked * 10 + distance(c, startSquare)
+      if (score > bestScore) {
+        bestScore = score
+        best = c
+      }
+    }
+    if (!best) break
+    picked.push(best)
+  }
+  return picked
+}
+
+function generatePawnLessons(totalLessons: number): PieceLessonStep[] {
+  const starts = ['b2', 'c2', 'd2', 'e2', 'f2', 'g2']
+  const lessons: PieceLessonStep[] = []
+  for (let i = 0; i < totalLessons; i += 1) {
+    const startSquare = starts[i % starts.length]
+    const { file } = splitSquare(startSquare)
+    let currentFile = file
+    let currentRank = 2
+    let dir = i % 2 === 0 ? -1 : 1
+    const steps = Math.min(2 + Math.floor(i / 2), 6)
+    const starSquares: string[] = []
+    for (let step = 0; step < steps; step += 1) {
+      const nextRank = currentRank + 1
+      let nextFile = currentFile + dir
+      if (!inBounds(nextFile, nextRank)) {
+        dir = -dir
+        nextFile = currentFile + dir
+      }
+      if (!inBounds(nextFile, nextRank)) break
+      starSquares.push(toSquare(nextFile, nextRank))
+      currentFile = nextFile
+      currentRank = nextRank
+    }
+    lessons.push({ startSquare, starSquares })
+  }
+  return lessons
+}
+
+function generateBurgerLessons(meta: PieceLessonMeta, totalLessons: number): PieceLessonStep[] {
+  if (meta.pieceType === 'p') {
+    return generatePawnLessons(totalLessons)
+  }
+
+  const startsByPiece: Record<Exclude<PieceTypeCode, 'p'>, string[]> = {
+    r: ['d4', 'e5', 'c3', 'f6', 'b5', 'g4'],
+    b: ['d4', 'e5', 'c4', 'f5', 'b3', 'g6'],
+    n: ['d4', 'e5', 'c4', 'f5', 'b3', 'g6'],
+    q: ['d4', 'e5', 'c4', 'f5', 'b3', 'g6'],
+    k: ['d4', 'e5', 'c4', 'f5', 'd5', 'e4'],
+  }
+
+  const pieceStarts = startsByPiece[meta.pieceType as Exclude<PieceTypeCode, 'p'>]
+  const lessons: PieceLessonStep[] = []
+  for (let i = 0; i < totalLessons; i += 1) {
+    const startSquare = pieceStarts[i % pieceStarts.length]
+    const candidates = legalSquaresFromStart(startSquare, meta.pieceType)
+    const requestedCount = Math.min(3 + Math.floor(i / 2), meta.pieceType === 'k' || meta.pieceType === 'n' ? 8 : 12)
+    let candidatePool = candidates
+
+    // Rook ramp: from level 4 onward, use off-line targets that are NOT one rook move
+    // from the start square. This forces route planning with intermediate moves.
+    if (meta.pieceType === 'r' && i >= 3) {
+      const s = splitSquare(startSquare)
+      const twoStepCandidates: string[] = []
+      for (let rank = 1; rank <= 8; rank += 1) {
+        for (let fi = 0; fi < 8; fi += 1) {
+          const sq = `${FILES[fi]}${rank}`
+          if (sq === startSquare) continue
+          const t = splitSquare(sq)
+          if (t.file === s.file || t.rank === s.rank) continue
+          twoStepCandidates.push(sq)
+        }
+      }
+      if (twoStepCandidates.length > 0) {
+        candidatePool = twoStepCandidates
+      }
+    }
+
+    const starSquares = spreadPick(candidatePool, requestedCount, startSquare)
+    lessons.push({ startSquare, starSquares })
+  }
+  return lessons
 }
 
 export interface BurgerCollectorProps {
@@ -125,16 +308,8 @@ export interface BurgerCollectorProps {
   onAllComplete?: () => void
 }
 
-function blockedSet(blocked: BlockedSquare[] | undefined): Set<string> {
-  return new Set((blocked ?? []).map((b) => b.square))
-}
-
-function blockedTypeMap(blocked: BlockedSquare[] | undefined): Map<string, 'lava' | 'rock'> {
-  const m = new Map<string, 'lava' | 'rock'>()
-  for (const b of blocked ?? []) {
-    m.set(b.square, b.type)
-  }
-  return m
+function blockedSet(): Set<string> {
+  return new Set()
 }
 
 /** Single-lesson board: collect burgers (same data as star squares) with burger emoji overlay. */
@@ -157,8 +332,7 @@ function BurgerLessonBoard({
   onWrongMove?: (msg: string) => void
   onStashStatsChange?: (stats: { collected: number; total: number }) => void
 }) {
-  const blockedSquares = useMemo(() => blockedSet(step.blocked), [step.blocked])
-  const blockedTypes = useMemo(() => blockedTypeMap(step.blocked), [step.blocked])
+  const blockedSquares = useMemo(() => blockedSet(), [])
 
   const [heroSquare, setHeroSquare] = useState(step.startSquare)
   const [effectivePieceType, setEffectivePieceType] = useState<PieceTypeCode>(meta.pieceType)
@@ -171,6 +345,16 @@ function BurgerLessonBoard({
   const [savedRewards, setSavedRewards] = useState(false)
   const totalBurgers = step.starSquares.length
   const collectedCount = totalBurgers - burgersRemaining.size
+  const collectibleStyle = useMemo(() => collectibleStyleForLevel(lessonIndex), [lessonIndex])
+  const collectiblesBySquare = useMemo(() => {
+    const out = new Map<string, string>()
+    const sortedSquares = [...step.starSquares].sort()
+    const itemPool = collectibleStyle.items
+    sortedSquares.forEach((sq, idx) => {
+      out.set(sq, itemPool[idx % itemPool.length])
+    })
+    return out
+  }, [step.starSquares, collectibleStyle.items])
 
   useEffect(() => {
     onStashStatsChange?.({ collected: collectedCount, total: totalBurgers })
@@ -192,19 +376,13 @@ function BurgerLessonBoard({
       if (sourceSquare === targetSquare) return false
       if (sourceSquare !== heroSquare) return false
 
-      if (blockedSquares.has(targetSquare)) {
-        const kind = blockedTypes.get(targetSquare)
-        playOopsSound()
-        const msg =
-          kind === 'lava'
-            ? 'Sizzling lava! Pick a different square. 🌋'
-            : 'Rock wall! You cannot land there. 🪨'
-        toast.error(msg, { duration: 2500 })
-        onWrongMove?.(msg)
-        return false
-      }
-
-      if (!isLegalMoveForPiece(effectivePieceType, sourceSquare, targetSquare)) {
+      const { legal, capture } = getCollectorLegalDestinations(
+        heroSquare,
+        effectivePieceType,
+        blockedSquares,
+        burgersRemaining
+      )
+      if (!legal.includes(targetSquare) && !capture.includes(targetSquare)) {
         const msg = `${meta.pieceName}s move differently! Try again.`
         toast.error(msg, { duration: 2200 })
         onWrongMove?.(msg)
@@ -222,11 +400,14 @@ function BurgerLessonBoard({
         playPopSound()
         if (nextRemaining.size === 0) {
           const nextExists = lessonIndex + 1 < totalLessons
-          setHasNext(nextExists)
-          setShowComplete(true)
-          if (!nextExists && !savedRewards) {
+          if (nextExists) {
+            setHasNext(true)
+            setShowComplete(true)
+          } else if (!savedRewards) {
+            // Final lesson: award rewards and trigger piece-complete celebration immediately.
             setSavedRewards(true)
             updateStudentStats(50, 100).catch((e) => console.error('Failed to save rewards:', e))
+            onLessonComplete(false)
           }
         }
       }
@@ -244,7 +425,6 @@ function BurgerLessonBoard({
       onWrongMove,
       savedRewards,
       blockedSquares,
-      blockedTypes,
       clearSelection,
     ]
   )
@@ -310,25 +490,6 @@ function BurgerLessonBoard({
 
   const squareStyles: Record<string, CSSProperties> = useMemo(() => {
     const styles: Record<string, CSSProperties> = {}
-    burgersRemaining.forEach((square) => {
-      styles[square] = {
-        backgroundImage:
-          'radial-gradient(circle, rgba(251, 191, 36, 0.55) 32%, rgba(249, 115, 22, 0.25) 55%, transparent 58%)',
-        borderRadius: '50%',
-        boxShadow: 'inset 0 0 12px rgba(255, 255, 255, 0.35)',
-      }
-    })
-    for (const b of step.blocked ?? []) {
-      styles[b.square] = {
-        ...(styles[b.square] || {}),
-        backgroundImage:
-          b.type === 'lava'
-            ? 'repeating-linear-gradient(135deg, rgba(220, 38, 38, 0.55) 0 6px, rgba(251, 146, 60, 0.45) 6px 12px)'
-            : 'repeating-linear-gradient(90deg, rgba(100, 116, 139, 0.5) 0 4px, rgba(148, 163, 184, 0.35) 4px 8px)',
-        borderRadius: '6px',
-        boxShadow: b.type === 'lava' ? 'inset 0 0 10px rgba(255, 80, 0, 0.4)' : 'inset 0 0 8px rgba(0,0,0,0.2)',
-      }
-    }
     if (selectedSquare) {
       styles[selectedSquare] = {
         ...(styles[selectedSquare] || {}),
@@ -348,37 +509,16 @@ function BurgerLessonBoard({
       }
     })
     return styles
-  }, [burgersRemaining, step.blocked, selectedSquare, legalTargets, captureTargets])
+  }, [burgersRemaining, selectedSquare, legalTargets, captureTargets])
 
   return (
     <>
-      {/* Progress dots */}
-      <div className="mb-3 flex justify-center gap-1.5">
-        {Array.from({ length: totalLessons }, (_, i) => {
-          const locked = i > unlockedUpToIndex
-          const dotClass = locked
-            ? 'h-2.5 w-2.5 bg-muted-foreground/20 opacity-50 ring-1 ring-muted-foreground/30'
-            : i < lessonIndex
-              ? 'h-2.5 w-2.5 bg-emerald-500 shadow-sm'
-              : i === lessonIndex
-                ? 'h-3 w-3 bg-amber-500 ring-2 ring-amber-300 ring-offset-2'
-                : 'h-2.5 w-2.5 bg-muted-foreground/30'
-          return (
-            <span
-              key={i}
-              className={`rounded-full transition-all ${dotClass}`}
-              title={locked ? `Level ${i + 1} — finish the previous level to unlock` : `Lesson ${i + 1}`}
-            />
-          )
-        })}
-      </div>
-
       <div className="relative mx-auto w-full max-w-[min(100vw-2rem,500px)] aspect-square max-h-[min(100vw-2rem,500px)]">
         <div
-          className="absolute -inset-3 -z-10 rounded-3xl bg-gradient-to-br from-amber-300 via-orange-400 to-rose-400 opacity-85 blur-sm"
+          className="absolute -inset-2 -z-10 rounded-3xl bg-black/10 blur-md"
           aria-hidden
         />
-        <div className="relative h-full w-full overflow-hidden rounded-2xl border-[10px] border-amber-900/90 shadow-[0_12px_40px_rgba(180,83,9,0.35)]">
+        <div className="relative h-full w-full overflow-hidden rounded-2xl border-2 border-border shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
           <Chessboard
             options={{
               id: `burger-collector-${meta.pieceType}-${lessonIndex}`,
@@ -416,40 +556,21 @@ function BurgerLessonBoard({
                   className="absolute flex items-center justify-center"
                   style={{ left: `${left}%`, bottom: `${bottom}%`, width: '12.5%', height: '12.5%' }}
                 >
-                  <motion.span
+                  <span
                     className="text-[clamp(1.5rem,5.5vw,2.25rem)] drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)]"
-                    animate={{ y: [0, -3, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                      transform:
+                        collectiblesBySquare.get(square) === '🍔'
+                          ? `scale(${collectibleStyle.burgerScale})`
+                          : 'scale(1)',
+                    }}
                   >
-                    🍔
-                  </motion.span>
+                    {collectiblesBySquare.get(square) ?? '🍔'}
+                  </span>
                 </motion.div>
               )
             })}
           </AnimatePresence>
-        </div>
-
-        {/* Lava / rock icons on blocked squares (pointer-events none) */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg" style={{ margin: '10px' }}>
-          {(step.blocked ?? []).map((b) => {
-            const fileIndex = b.square.charCodeAt(0) - 97
-            const rank = parseInt(b.square[1], 10)
-            const left = (fileIndex / 8) * 100
-            const bottom = ((rank - 1) / 8) * 100
-            return (
-              <div
-                key={b.square}
-                className="absolute flex items-center justify-center opacity-90"
-                style={{ left: `${left}%`, bottom: `${bottom}%`, width: '12.5%', height: '12.5%' }}
-              >
-                {b.type === 'lava' ? (
-                  <Flame className="h-[32%] min-h-[18px] w-[32%] min-w-[18px] text-red-600 drop-shadow-md" aria-hidden />
-                ) : (
-                  <Mountain className="h-[30%] min-h-[16px] w-[30%] min-w-[16px] text-slate-600 drop-shadow-md" aria-hidden />
-                )}
-              </div>
-            )
-          })}
         </div>
 
         <AnimatePresence>
@@ -473,7 +594,7 @@ function BurgerLessonBoard({
                 >
                   🍔✨
                 </motion.p>
-                <h3 className="font-heading mb-2 text-2xl font-black text-amber-900">Yum! All burgers collected!</h3>
+                <h3 className="font-heading mb-2 text-2xl font-black text-amber-900">Yum! All snacks collected!</h3>
                 <p className="mb-4 font-heading text-sm font-semibold text-amber-900/80">
                   {hasNext
                     ? 'You leveled up your snack skills! Ready for the next one?'
@@ -496,36 +617,20 @@ function BurgerLessonBoard({
   )
 }
 
-function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex = 0, onAllComplete }: BurgerCollectorProps) {
+function BurgerLessonStudio({ pieceType, onAllComplete }: BurgerCollectorProps) {
   const meta = getPieceLessonSet(pieceType)
+  const burgerLessons = useMemo(() => generateBurgerLessons(meta, 15), [meta])
   /** Max lesson index the student may open (0-based). Completing level n unlocks n+1. */
   const [unlockedUpToIndex, setUnlockedUpToIndex] = useState(0)
   const [lessonIndex, setLessonIndex] = useState(0)
-  const step = meta.lessons[lessonIndex]
-  const totalLessons = meta.lessonCount
+  const step = burgerLessons[lessonIndex]
+  const totalLessons = burgerLessons.length
   const levelChip = difficultyLabel(lessonIndex)
 
   const [stashStats, setStashStats] = useState(() => ({
     collected: 0,
-    total: step.starSquares.length,
+    total: burgerLessons[0]?.starSquares.length ?? 0,
   }))
-
-  useEffect(() => {
-    const m = getPieceLessonSet(pieceType)
-    const s = m.lessons[lessonIndex]
-    setStashStats({ collected: 0, total: s.starSquares.length })
-  }, [lessonIndex, pieceType])
-
-  useEffect(() => {
-    setUnlockedUpToIndex(0)
-    setLessonIndex(0)
-  }, [pieceType])
-
-  useEffect(() => {
-    if (lessonIndex > unlockedUpToIndex) {
-      setLessonIndex(unlockedUpToIndex)
-    }
-  }, [lessonIndex, unlockedUpToIndex])
 
   const handleStashStatsChange = useCallback((stats: { collected: number; total: number }) => {
     setStashStats(stats)
@@ -535,12 +640,14 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex
     (hasNext: boolean) => {
       setUnlockedUpToIndex((u) => Math.min(Math.max(u, lessonIndex + (hasNext ? 1 : 0)), totalLessons - 1))
       if (hasNext) {
-        setLessonIndex((i) => Math.min(i + 1, totalLessons - 1))
+        const nextIndex = Math.min(lessonIndex + 1, totalLessons - 1)
+        setLessonIndex(nextIndex)
+        setStashStats({ collected: 0, total: burgerLessons[nextIndex].starSquares.length })
       } else {
         onAllComplete?.()
       }
     },
-    [lessonIndex, totalLessons, onAllComplete]
+    [lessonIndex, totalLessons, onAllComplete, burgerLessons]
   )
 
   return (
@@ -565,7 +672,11 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex
               key={i}
               type="button"
               disabled={!unlocked}
-              onClick={() => unlocked && setLessonIndex(i)}
+              onClick={() => {
+                if (!unlocked) return
+                setLessonIndex(i)
+                setStashStats({ collected: 0, total: burgerLessons[i].starSquares.length })
+              }}
               aria-label={unlocked ? `Open level ${i + 1}` : `Level ${i + 1} locked`}
               title={unlocked ? `Level ${i + 1}` : 'Finish the previous level to unlock'}
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-2 font-heading text-xs font-bold transition-all sm:h-8 sm:w-full sm:max-w-[2.5rem] sm:px-0 ${
@@ -616,14 +727,14 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex
         </motion.div>
         <div
           className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 p-4 text-center shadow-md sm:text-left"
-          aria-label="Burger collection progress"
+          aria-label="Snack collection progress"
         >
           <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-center sm:gap-3">
             <span className="text-3xl" aria-hidden>
               🍔
             </span>
             <div className="min-w-0 flex-1 text-center sm:text-left">
-              <p className="font-heading text-[10px] font-bold uppercase tracking-wide text-amber-800 sm:text-xs">Burger stash</p>
+              <p className="font-heading text-[10px] font-bold uppercase tracking-wide text-amber-800 sm:text-xs">Snack stash</p>
               <p className="font-heading text-lg font-extrabold leading-tight text-amber-950 sm:text-xl">
                 {stashStats.collected} / {stashStats.total} collected
               </p>
@@ -645,9 +756,7 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex
             <h3 className="font-heading font-bold text-card-foreground">Your mission</h3>
           </div>
           <p className="font-heading text-sm font-semibold text-muted-foreground">
-            Drag your {meta.pieceName} to land on every burger. Later levels add{' '}
-            <span className="font-bold text-red-600">lava</span> and <span className="font-bold text-slate-600">rocks</span>{' '}
-            — do not land on those squares!
+            Drag your {meta.pieceName} to collect all food items using legal chess moves.
           </p>
         </div>
         <Link
@@ -668,5 +777,5 @@ function BurgerLessonStudio({ pieceType, initialLessonIndex: _initialLessonIndex
 }
 
 export function BurgerCollector(props: BurgerCollectorProps) {
-  return <BurgerLessonStudio {...props} />
+  return <BurgerLessonStudio key={props.pieceType} {...props} />
 }

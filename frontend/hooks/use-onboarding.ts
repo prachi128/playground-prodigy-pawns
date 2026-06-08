@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export interface OnboardingState {
   hasSeenWelcome: boolean
@@ -14,33 +14,35 @@ export interface OnboardingState {
 }
 
 export function useOnboarding() {
-  const [state, setState] = useState<OnboardingState>({
-    hasSeenWelcome: false,
-    completedChecklist: {
-      firstQuest: false,
-      threePuzzles: false,
-      firstGame: false,
-      firstBadge: false,
-    },
-    tooltipsSeen: new Set(),
-  })
-
-  useEffect(() => {
+  const [state, setState] = useState<OnboardingState>(() => {
+    const defaultState: OnboardingState = {
+      hasSeenWelcome: false,
+      completedChecklist: {
+        firstQuest: false,
+        threePuzzles: false,
+        firstGame: false,
+        firstBadge: false,
+      },
+      tooltipsSeen: new Set(),
+    }
     try {
       const saved = localStorage.getItem('onboarding-state')
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (parsed.tooltipsSeen && Array.isArray(parsed.tooltipsSeen)) {
-          parsed.tooltipsSeen = new Set(parsed.tooltipsSeen)
-        } else {
-          parsed.tooltipsSeen = new Set()
+        if (typeof parsed === 'object' && parsed !== null) {
+          if ('tooltipsSeen' in parsed && Array.isArray(parsed.tooltipsSeen)) {
+            parsed.tooltipsSeen = new Set(parsed.tooltipsSeen)
+          } else {
+            parsed.tooltipsSeen = new Set()
+          }
+          return parsed as OnboardingState
         }
-        setState(parsed)
       }
     } catch {
       // ignore invalid saved state
     }
-  }, [])
+    return defaultState
+  })
 
   const updateState = (updates: Partial<OnboardingState>) => {
     const newState = { ...state, ...updates }

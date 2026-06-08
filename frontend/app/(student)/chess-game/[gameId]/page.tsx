@@ -2,11 +2,13 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { gameAPI, Game, User, usersAPI } from '@/lib/api';
 import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from '@/lib/avatar';
+import { AvatarShopCosmetics } from '@/components/dashboard/avatar-shop-cosmetics';
+import { getShopBoardSquareStyles, resolveShopCosmeticsForPlayer } from '@/lib/shop-cosmetics';
 import { getBotById } from '@/lib/bot-opponents';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
@@ -334,7 +336,7 @@ export default function ChessGamePage() {
       const isPromotionRank = targetRank === '8' || targetRank === '1';
       
       // Try move without promotion first
-      let moveOptions: any = {
+      const moveOptions: any = {
         from: sourceSquare,
         to: targetSquare,
       };
@@ -571,6 +573,19 @@ export default function ChessGamePage() {
   const opponentPlayer = isWhite ? blackPlayer : whitePlayer;
   const showClock = !isBotGameCheck;
 
+  const boardSquareStyles = useMemo(() => {
+    if (user?.equipped_board_theme_item_key) {
+      return getShopBoardSquareStyles(user.equipped_board_theme_item_key);
+    }
+    if (isBotGameCheck) {
+      return {
+        lightSquareStyle: { backgroundColor: botTheme.boardLight },
+        darkSquareStyle: { backgroundColor: botTheme.boardDark },
+      };
+    }
+    return getShopBoardSquareStyles(null);
+  }, [user?.equipped_board_theme_item_key, isBotGameCheck, botTheme.boardLight, botTheme.boardDark]);
+
   // Parse backend datetimes as UTC so client clock matches server clock.
   const toUtcMs = (value: string | Date | null | undefined): number => {
     if (!value) return Date.now();
@@ -698,34 +713,40 @@ export default function ChessGamePage() {
                 : 'border-gray-800 bg-gray-900'
             }`}>
               <div className="flex items-center gap-1.5">
-                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
-                  (opponentPlayer as any)?.isBot
-                    ? opponentColor === 'white'
-                      ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
-                      : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
-                    : opponentColor === 'white'
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-gray-700 text-white'
-                }`}>
-                  {(opponentPlayer as any)?.isBot
-                    ? botAvatar
-                    : getAvatarDisplayUrl((opponentPlayer as User | null)?.avatar_url) &&
-                        !isDefaultOrEmptyAvatar((opponentPlayer as User | null)?.avatar_url) &&
-                        !opponentAvatarError
-                      ? (
-                        <img
-                          src={getAvatarDisplayUrl((opponentPlayer as User).avatar_url)}
-                          alt=""
-                          className="h-7 w-7 rounded-full object-cover"
-                          onError={() => setOpponentAvatarError(true)}
-                        />
-                      )
-                      : (opponentPlayer as User)?.username?.trim()
-                        ? usernameInitial((opponentPlayer as User).username)
-                        : opponentColor === 'white'
-                          ? 'W'
-                          : 'B'}
-                </div>
+                <AvatarShopCosmetics
+                  size="xs"
+                  className="h-7 w-7 shrink-0"
+                  {...resolveShopCosmeticsForPlayer(opponentPlayer as User, user ?? null)}
+                >
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
+                    (opponentPlayer as any)?.isBot
+                      ? opponentColor === 'white'
+                        ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
+                        : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
+                      : opponentColor === 'white'
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-gray-700 text-white'
+                  }`}>
+                    {(opponentPlayer as any)?.isBot
+                      ? botAvatar
+                      : getAvatarDisplayUrl((opponentPlayer as User | null)?.avatar_url) &&
+                          !isDefaultOrEmptyAvatar((opponentPlayer as User | null)?.avatar_url) &&
+                          !opponentAvatarError
+                        ? (
+                          <img
+                            src={getAvatarDisplayUrl((opponentPlayer as User).avatar_url)}
+                            alt=""
+                            className="h-7 w-7 rounded-full object-cover"
+                            onError={() => setOpponentAvatarError(true)}
+                          />
+                        )
+                        : (opponentPlayer as User)?.username?.trim()
+                          ? usernameInitial((opponentPlayer as User).username)
+                          : opponentColor === 'white'
+                            ? 'W'
+                            : 'B'}
+                  </div>
+                </AvatarShopCosmetics>
                 <div className="min-w-0">
                   <p className={`font-heading text-xs font-bold truncate ${opponentColor === 'white' ? 'text-gray-900' : 'text-white'}`}>
                     {((opponentPlayer as any)?.full_name || (opponentPlayer as any)?.username || 'Opponent')}{' '}
@@ -775,8 +796,8 @@ export default function ChessGamePage() {
                       boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
                       opacity: isMakingMove ? 0.7 : 1,
                     },
-                    darkSquareStyle: { backgroundColor: isBotGameCheck ? botTheme.boardDark : '#769656' },
-                    lightSquareStyle: { backgroundColor: isBotGameCheck ? botTheme.boardLight : '#eeeed2' },
+                    darkSquareStyle: boardSquareStyles.darkSquareStyle,
+                    lightSquareStyle: boardSquareStyles.lightSquareStyle,
                     squareStyles: lastMove ? {
                       [lastMove.from]: {
                         backgroundColor: 'rgba(255, 255, 0, 0.4)',
@@ -799,36 +820,42 @@ export default function ChessGamePage() {
                 : 'border-gray-800 bg-gray-900'
             }`}>
               <div className="flex items-center gap-1.5">
-                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
-                  (myPlayer as any)?.isBot
-                    ? myColor === 'white'
-                      ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
-                      : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
-                    : myColor === 'white'
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-gray-700 text-white'
-                }`}>
-                  {(myPlayer as any)?.isBot
-                    ? botAvatar
-                    : getAvatarDisplayUrl((myPlayer as User | null)?.avatar_url) &&
-                        !isDefaultOrEmptyAvatar((myPlayer as User | null)?.avatar_url) &&
-                        !myAvatarError
-                      ? (
-                        <img
-                          src={getAvatarDisplayUrl((myPlayer as User).avatar_url)}
-                          alt=""
-                          className="h-7 w-7 rounded-full object-cover"
-                          onError={() => setMyAvatarError(true)}
-                        />
-                      )
-                      : (myPlayer as User)?.username?.trim() || user?.username?.trim()
-                        ? usernameInitial(
-                            (myPlayer as User)?.username ?? user?.username,
-                          )
-                        : myColor === 'white'
-                          ? 'W'
-                          : 'B'}
-                </div>
+                <AvatarShopCosmetics
+                  size="xs"
+                  className="h-7 w-7 shrink-0"
+                  {...resolveShopCosmeticsForPlayer(myPlayer as User, user ?? null)}
+                >
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold overflow-hidden ${
+                    (myPlayer as any)?.isBot
+                      ? myColor === 'white'
+                        ? 'bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg text-gray-800'
+                        : 'bg-gradient-to-br from-gray-700 to-gray-800 shadow-lg text-white'
+                      : myColor === 'white'
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-gray-700 text-white'
+                  }`}>
+                    {(myPlayer as any)?.isBot
+                      ? botAvatar
+                      : getAvatarDisplayUrl((myPlayer as User | null)?.avatar_url) &&
+                          !isDefaultOrEmptyAvatar((myPlayer as User | null)?.avatar_url) &&
+                          !myAvatarError
+                        ? (
+                          <img
+                            src={getAvatarDisplayUrl((myPlayer as User).avatar_url)}
+                            alt=""
+                            className="h-7 w-7 rounded-full object-cover"
+                            onError={() => setMyAvatarError(true)}
+                          />
+                        )
+                        : (myPlayer as User)?.username?.trim() || user?.username?.trim()
+                          ? usernameInitial(
+                              (myPlayer as User)?.username ?? user?.username,
+                            )
+                          : myColor === 'white'
+                            ? 'W'
+                            : 'B'}
+                  </div>
+                </AvatarShopCosmetics>
                 <div className="min-w-0">
                   <p className={`font-heading text-xs font-bold truncate ${myColor === 'white' ? 'text-gray-900' : 'text-white'}`}>
                     {((myPlayer as any)?.full_name || user?.full_name || 'You')}{' '}

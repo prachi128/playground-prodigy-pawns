@@ -395,20 +395,22 @@ export default function EditPuzzlePage() {
           <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
             <h2 className="mb-4 font-heading text-xl font-bold text-card-foreground">Board preview</h2>
 
-            <div className="mx-auto w-full max-w-[400px]">
+            <div className="relative mx-auto w-full max-w-[400px]">
               {tacticalPosition || fen.trim() ? (
-                <Chessboard
-                  key={tacticalPosition || fen}
-                  options={{
-                    position: tacticalPosition || fen,
-                    boardStyle: {
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
-                    },
-                    darkSquareStyle: { backgroundColor: COACH_DARK_SQ },
-                    lightSquareStyle: { backgroundColor: COACH_LIGHT_SQ },
-                  }}
-                />
+                <>
+                  <Chessboard
+                    key={tacticalPosition || fen}
+                    options={{
+                      position: tacticalPosition || fen,
+                      boardStyle: {
+                        borderRadius: '12px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                      },
+                      darkSquareStyle: { backgroundColor: COACH_DARK_SQ },
+                      lightSquareStyle: { backgroundColor: COACH_LIGHT_SQ },
+                    }}
+                  />
+                </>
               ) : (
                 <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-muted/50">
                   <p className="text-center text-sm text-muted-foreground">Enter a FEN position to see preview</p>

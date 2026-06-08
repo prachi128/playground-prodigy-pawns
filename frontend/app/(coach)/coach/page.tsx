@@ -2,15 +2,25 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { BarChart3, TrendingUp, Target, Trophy, Users, Layers, Loader2 } from 'lucide-react';
+import {
+  BarChart3,
+  TrendingUp,
+  Target,
+  Trophy,
+  Users,
+  Layers,
+  Loader2,
+  ListChecks,
+  AlertTriangle,
+  CalendarClock,
+} from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useCoachStats } from '@/contexts/coach-stats-context';
-import { adminAPI, type AdminOperationalMetrics } from '@/lib/api';
-import { useState } from 'react';
+import { adminAPI, coachAPI, type AdminOperationalMetrics, type CoachPriorities } from '@/lib/api';
 
 function formatStat(n: number): string {
   return n.toLocaleString('en-US');
@@ -28,6 +38,8 @@ export default function CoachDashboard() {
   const { stats, statsLoading } = useCoachStats();
   const [adminMetrics, setAdminMetrics] = useState<AdminOperationalMetrics | null>(null);
   const [adminMetricsLoading, setAdminMetricsLoading] = useState(false);
+  const [priorities, setPriorities] = useState<CoachPriorities | null>(null);
+  const [prioritiesLoading, setPrioritiesLoading] = useState(true);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -54,6 +66,25 @@ export default function CoachDashboard() {
         if (!cancelled) setAdminMetrics(null);
       } finally {
         if (!cancelled) setAdminMetricsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || (user.role !== 'coach' && user.role !== 'admin')) return;
+    let cancelled = false;
+    (async () => {
+      setPrioritiesLoading(true);
+      try {
+        const data = await coachAPI.getPriorities();
+        if (!cancelled) setPriorities(data);
+      } catch {
+        if (!cancelled) setPriorities(null);
+      } finally {
+        if (!cancelled) setPrioritiesLoading(false);
       }
     })();
     return () => {
@@ -120,6 +151,121 @@ export default function CoachDashboard() {
               </div>
             </div>
           </Link>
+        </div>
+
+        <div className="mb-8 rounded-xl border border-border bg-card p-6 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-heading flex items-center gap-2 text-xl font-bold text-foreground">
+              <ListChecks className="h-5 w-5 text-primary" aria-hidden />
+              Today&apos;s priorities
+            </h2>
+            <Link
+              href="/coach/assignments"
+              className="text-sm font-semibold text-primary hover:text-primary/90"
+            >
+              View assignments
+            </Link>
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">
+            A quick snapshot of who may need a check-in and which homework is due. Links open the right page in one
+            click.
+          </p>
+          {prioritiesLoading ? (
+            <p className="text-sm text-muted-foreground">Loading priorities…</p>
+          ) : !priorities ? (
+            <p className="text-sm text-muted-foreground">Could not load priorities. Try again later.</p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-lg border border-border/80 bg-muted/20 p-4">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-foreground">
+                  <Users className="h-4 w-4 text-[hsl(var(--blue-dark))]" aria-hidden />
+                  Students to check in
+                </h3>
+                <ul className="space-y-2 text-sm">
+                  {priorities.inactive_students.slice(0, 5).map((s) => (
+                    <li key={`in-${s.id}`} className="flex flex-wrap items-center justify-between gap-2">
+                      <Link href={`/coach/students/${s.id}`} className="font-medium text-primary hover:underline">
+                        {s.username}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">Inactive {s.days_since_active}d</span>
+                    </li>
+                  ))}
+                  {priorities.low_accuracy_students.slice(0, 5).map((s) => (
+                    <li key={`la-${s.id}`} className="flex flex-wrap items-center justify-between gap-2">
+                      <Link href={`/coach/students/${s.id}`} className="font-medium text-primary hover:underline">
+                        {s.username}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">{s.success_rate}% on {s.attempts} tries</span>
+                    </li>
+                  ))}
+                  {priorities.low_game_activity_students.slice(0, 5).map((s) => (
+                    <li key={`lg-${s.id}`} className="flex flex-wrap items-center justify-between gap-2">
+                      <Link href={`/coach/students/${s.id}`} className="font-medium text-primary hover:underline">
+                        {s.username}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">{s.reason}</span>
+                    </li>
+                  ))}
+                  {priorities.inactive_students.length === 0 &&
+                    priorities.low_accuracy_students.length === 0 &&
+                    priorities.low_game_activity_students.length === 0 && (
+                    <li className="text-muted-foreground">No one flagged right now. Great work.</li>
+                    )}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/20 p-4">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-foreground">
+                  <CalendarClock className="h-4 w-4 text-[hsl(var(--gold-dark))]" aria-hidden />
+                  Assignment deadlines
+                </h3>
+                <ul className="space-y-3 text-sm">
+                  {priorities.assignments_overdue.length > 0 && (
+                    <li>
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-destructive">
+                        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                        Overdue
+                      </p>
+                      <ul className="space-y-1">
+                        {priorities.assignments_overdue.slice(0, 4).map((a) => (
+                          <li key={a.id}>
+                            <Link
+                              href={`/coach/assignments/${a.id}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {a.title}
+                            </Link>
+                            <span className="text-muted-foreground"> · {a.target_label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )}
+                  {priorities.assignments_due_soon.length > 0 && (
+                    <li>
+                      <p className="mb-1 text-xs font-semibold text-[hsl(var(--gold-dark))]">Due within 3 days</p>
+                      <ul className="space-y-1">
+                        {priorities.assignments_due_soon.slice(0, 4).map((a) => (
+                          <li key={a.id}>
+                            <Link
+                              href={`/coach/assignments/${a.id}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {a.title}
+                            </Link>
+                            <span className="text-muted-foreground"> · {a.target_label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )}
+                  {priorities.assignments_overdue.length === 0 &&
+                    priorities.assignments_due_soon.length === 0 && (
+                      <li className="text-muted-foreground">No upcoming or overdue deadlines with dates set.</li>
+                    )}
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
 
         {user?.role === 'admin' && (

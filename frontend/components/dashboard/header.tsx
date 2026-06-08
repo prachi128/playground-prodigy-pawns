@@ -16,7 +16,9 @@ import {
   Settings,
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
-import { usernameInitial } from "@/lib/avatar"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
+import { AvatarShopCosmetics } from "@/components/dashboard/avatar-shop-cosmetics"
+import { resolveShopCosmeticsForPlayer } from "@/lib/shop-cosmetics"
 import { useRouter } from "next/navigation"
 import { notificationsAPI, type ApiNotification } from "@/lib/api"
 
@@ -86,9 +88,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isWiggling, setIsWiggling] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>("all")
-  const [swipingId, setSwipingId] = useState<number | null>(null)
-  const [swipeX, setSwipeX] = useState(0)
-  const touchStartX = useRef(0)
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -182,34 +182,22 @@ export function Header({ onMenuClick }: HeaderProps) {
     try {
       await notificationsAPI.dismiss(id)
       setNotifications((prev) => prev.filter((n) => n.id !== id))
-      setSwipingId(null)
-      setSwipeX(0)
     } catch {
       // keep UI unchanged on error
     }
   }
 
-  function handleTouchStart(id: number, e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX
-    setSwipingId(id)
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    if (swipingId === null) return
-    const delta = touchStartX.current - e.touches[0].clientX
-    setSwipeX(Math.max(0, Math.min(delta, 120)))
-  }
-
-  function handleTouchEnd() {
-    if (swipingId === null) return
-    if (swipeX > 80) dismissNotification(swipingId)
-    else { setSwipingId(null); setSwipeX(0) }
-  }
-
   const displayName = user?.full_name?.split(" ")[0] ?? "Player"
+  const profileInitial = personInitial(user?.full_name, user?.username)
+  const avatarSrc = getAvatarDisplayUrl(user?.avatar_url)
+  const showAvatarImage = Boolean(avatarSrc) && !isDefaultOrEmptyAvatar(user?.avatar_url) && !avatarLoadFailed
   const totalXP = user?.total_xp ?? 0
   const rating = user?.rating ?? 0
   const stars = user?.star_balance ?? 0
+
+  useEffect(() => {
+    setAvatarLoadFailed(false)
+  }, [avatarSrc])
 
   return (
     <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 bg-gradient-to-r from-emerald-600 to-green-500 px-3 shadow-md sm:gap-3 sm:px-4 lg:px-6">
@@ -304,15 +292,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{DATE_GROUP_LABELS[group]}</p>
                         </div>
                         {items.map((notification) => {
-                          const isSwiping = swipingId === notification.id
                           const { time } = getDateGroupAndTime(notification.created_at)
                           return (
-                            <div key={notification.id} className="relative overflow-hidden" onTouchStart={(e) => handleTouchStart(notification.id, e)} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
-                              <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-red-500 text-sm font-bold text-white">Dismiss</div>
+                            <div key={notification.id} className="relative overflow-hidden">
                               <button
                                 onClick={() => handleNotificationClick(notification)}
-                                className={`relative flex w-full items-start gap-3 px-4 py-3 text-left transition-all hover:bg-emerald-50/60 ${!notification.read ? "bg-blue-50/50" : "bg-card"}`}
-                                style={{ transform: isSwiping ? `translateX(-${swipeX}px)` : "translateX(0)", transition: isSwiping ? "none" : "transform 0.2s ease-out" }}
+                                className={`relative flex w-full items-start gap-3 px-4 py-3 pr-11 text-left transition-all hover:bg-emerald-50/60 ${!notification.read ? "bg-blue-50/50" : "bg-card"}`}
                               >
                                 <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${notification.category === "coach" ? "bg-emerald-100" : notification.category === "achievement" ? "bg-amber-100" : "bg-blue-100"}`}>
                                   {getCategoryIcon(notification.category)}
@@ -326,6 +311,17 @@ export function Header({ onMenuClick }: HeaderProps) {
                                   <p className="mt-1 text-[10px] font-medium text-muted-foreground/50">{time}</p>
                                 </div>
                               </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void dismissNotification(notification.id)
+                                }}
+                                className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                aria-label="Dismiss notification"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
                             </div>
                           )
                         })}
@@ -335,7 +331,16 @@ export function Header({ onMenuClick }: HeaderProps) {
                 )}
               </div>
               <div className="border-t border-border bg-card px-4 py-3 text-center">
-                <button className="font-heading text-sm font-bold text-emerald-600 transition-colors hover:text-emerald-700">View All Notifications</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false)
+                    router.push("/notifications")
+                  }}
+                  className="font-heading text-sm font-bold text-emerald-600 transition-colors hover:text-emerald-700"
+                >
+                  View All Notifications
+                </button>
               </div>
             </div>
           )}
@@ -343,12 +348,29 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <button
           onClick={() => router.push("/profile")}
-          className="h-10 w-10 overflow-hidden rounded-full ring-3 ring-white/30 transition-transform hover:scale-105 cursor-pointer"
+          className="h-10 w-10 rounded-full p-0 ring-3 ring-white/30 transition-transform hover:scale-105 cursor-pointer"
           aria-label="View profile"
         >
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-lg font-bold text-white">
-            {usernameInitial(user?.username)}
-          </div>
+          <AvatarShopCosmetics
+            size="sm"
+            className="h-10 w-10"
+            {...resolveShopCosmeticsForPlayer(user ?? null, user ?? null)}
+          >
+            <div className="h-10 w-10 overflow-hidden rounded-full">
+              {showAvatarImage ? (
+                <img
+                  src={avatarSrc}
+                  alt={displayName}
+                  className="h-full w-full object-cover"
+                  onError={() => setAvatarLoadFailed(true)}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-lg font-bold text-white">
+                  {profileInitial}
+                </div>
+              )}
+            </div>
+          </AvatarShopCosmetics>
         </button>
       </div>
     </header>

@@ -1,7 +1,9 @@
 "use client"
 
 import { useAuthStore } from "@/lib/store"
-import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, usernameInitial } from "@/lib/avatar"
+import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
+import { AvatarShopCosmetics } from "@/components/dashboard/avatar-shop-cosmetics"
+import { resolveShopCosmeticsForPlayer } from "@/lib/shop-cosmetics"
 import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -53,17 +55,24 @@ export function ProfileContent() {
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
               {/* Avatar */}
               <div className="relative">
-                <div className="h-32 w-32 overflow-hidden rounded-full ring-4 ring-white/50 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-4xl font-bold text-white shadow-xl">
-                  {getAvatarDisplayUrl(user.avatar_url) && !isDefaultOrEmptyAvatar(user.avatar_url) ? (
-                    <img 
-                      src={getAvatarDisplayUrl(user.avatar_url)} 
-                      alt={user.full_name || "Avatar"} 
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span>{usernameInitial(user.username)}</span>
-                  )}
-                </div>
+                <AvatarShopCosmetics
+                  size="lg"
+                  companionPlacement="bl"
+                  className="h-32 w-32"
+                  {...resolveShopCosmeticsForPlayer(user, user)}
+                >
+                  <div className="h-32 w-32 overflow-hidden rounded-full ring-4 ring-white/50 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-4xl font-bold text-white shadow-xl">
+                    {getAvatarDisplayUrl(user.avatar_url) && !isDefaultOrEmptyAvatar(user.avatar_url) ? (
+                      <img 
+                        src={getAvatarDisplayUrl(user.avatar_url)} 
+                        alt={user.full_name || "Avatar"} 
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span>{personInitial(user.full_name, user.username)}</span>
+                    )}
+                  </div>
+                </AvatarShopCosmetics>
                 <div className="absolute -bottom-2 -right-2 h-10 w-10 bg-yellow-400 rounded-full flex items-center justify-center font-bold text-purple-800 text-lg shadow-lg ring-4 ring-white">
                   {user.level}
                 </div>
@@ -166,20 +175,20 @@ export function ProfileContent() {
             </div>
           </div>
 
-          {/* Status Card */}
+          {/* Stars Card */}
           <div className="overflow-hidden rounded-2xl border-2 border-purple-200 bg-card shadow-sm">
             <div className="bg-gradient-to-r from-purple-400 to-indigo-500 px-4 py-3">
               <div className="flex items-center gap-2">
-                <User className="h-5 w-5 text-white" />
-                <h3 className="font-heading text-lg font-bold text-white">Status</h3>
+                <Star className="h-5 w-5 fill-white text-white" />
+                <h3 className="font-heading text-lg font-bold text-white">Stars</h3>
               </div>
             </div>
             <div className="p-4 text-center">
-              <div className="text-2xl font-bold text-card-foreground mb-1">
-                {user.is_active ? "🟢 Active" : "⚫ Inactive"}
+              <div className="text-4xl font-bold text-card-foreground mb-1">
+                {user.star_balance}
               </div>
               <p className="font-heading text-sm text-muted-foreground">
-                {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                Available Stars
               </p>
             </div>
           </div>

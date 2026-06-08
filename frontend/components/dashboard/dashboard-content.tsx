@@ -122,8 +122,6 @@ export function DashboardContent() {
       <LevelCard
         currentLevel={user?.level ?? 4}
         rating={user?.rating ?? 100}
-        totalXP={user?.total_xp ?? 0}
-        userName={user?.full_name ?? "Player"}
       />
 
       {/* Star Shop Preview */}

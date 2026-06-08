@@ -33,13 +33,6 @@ export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) 
 
   // Listen for sidebar collapse state changes (match sidebar: collapsed on mobile/tablet, expanded on desktop when no saved value)
   useEffect(() => {
-    const saved = localStorage.getItem("sidebar-collapsed")
-    if (saved !== null) {
-      setSidebarCollapsed(saved === "true")
-    } else {
-      setSidebarCollapsed(typeof window !== "undefined" && window.innerWidth < 1024)
-    }
-
     const handleStorageChange = () => {
       const current = localStorage.getItem("sidebar-collapsed")
       setSidebarCollapsed(current !== null ? current === "true" : (typeof window !== "undefined" && window.innerWidth < 1024))

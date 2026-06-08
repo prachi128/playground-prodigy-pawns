@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { Sparkles } from 'lucide-react'
 
 interface QuestCharacterProps {
@@ -10,9 +10,7 @@ interface QuestCharacterProps {
   onAnimationComplete?: () => void
 }
 
-export function QuestCharacter({ questIndex, isActive, isCompleted, onAnimationComplete }: QuestCharacterProps) {
-  const [showCelebration, setShowCelebration] = useState(false)
-
+export function QuestCharacter({ questIndex, isActive, isCompleted }: QuestCharacterProps) {
   const getCharacterPiece = () => {
     if (questIndex <= 1) return '♟'
     if (questIndex === 2) return '♞'
@@ -32,16 +30,7 @@ export function QuestCharacter({ questIndex, isActive, isCompleted, onAnimationC
   const hasWisdomGlow = questIndex >= 3
   const hasStrengthAura = questIndex >= 4
 
-  useEffect(() => {
-    if (isCompleted && !showCelebration) {
-      setShowCelebration(true)
-      const timer = setTimeout(() => {
-        setShowCelebration(false)
-        onAnimationComplete?.()
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [isCompleted, showCelebration, onAnimationComplete])
+  const showCelebration = isCompleted
 
   const piece = getCharacterPiece()
   const sizeClass = getSizeClass()

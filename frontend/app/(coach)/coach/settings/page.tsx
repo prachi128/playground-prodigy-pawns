@@ -11,16 +11,16 @@ import {
   getAvatarDisplayUrl,
   isDefaultOrEmptyAvatar,
   PRESET_AVATAR_PATHS,
-  usernameInitial,
+  personInitial,
 } from '@/lib/avatar';
-import { Settings, User, LogOut, Loader2, Save, Upload, ImageIcon, X } from 'lucide-react';
+import { Settings, User, LogOut, Loader2, Save, Upload, ImageIcon, X, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const cardClass = 'rounded-xl border border-border bg-card p-6 shadow-sm';
 
 export default function CoachSettingsPage() {
   const router = useRouter();
-  const { isAuthenticated, user, logout, updateUser } = useAuthStore();
+  const { isAuthenticated, user, logout, updateUser, refreshCurrentUser } = useAuthStore();
 
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -28,6 +28,7 @@ export default function CoachSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [removingAvatar, setRemovingAvatar] = useState(false);
   const [avatarImgError, setAvatarImgError] = useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,7 +52,7 @@ export default function CoachSettingsPage() {
   const displaySrc = getAvatarDisplayUrl(avatarUrl);
   const showPlaceholder =
     !displaySrc || avatarImgError || isDefaultOrEmptyAvatar(avatarUrl);
-  const initial = usernameInitial(user?.username);
+  const initial = personInitial(user?.full_name, user?.username);
 
   const handleUploadClick = () => fileInputRef.current?.click();
 
@@ -72,6 +73,7 @@ export default function CoachSettingsPage() {
     try {
       const updated = await userAPI.uploadAvatar(file);
       updateUser(updated);
+      await refreshCurrentUser();
       setAvatarUrl(updated.avatar_url ?? '');
       setAvatarImgError(false);
       setAvatarDialogOpen(false);
@@ -118,6 +120,7 @@ export default function CoachSettingsPage() {
         age: ageNum,
       });
       updateUser(updated);
+      await refreshCurrentUser();
       setAvatarUrl(updated.avatar_url ?? '');
       toast.success('Profile updated');
     } catch (err: unknown) {
@@ -128,6 +131,27 @@ export default function CoachSettingsPage() {
       toast.error(typeof detail === 'string' ? detail : 'Failed to update profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setRemovingAvatar(true);
+    try {
+      const updated = await userAPI.updateProfile({ avatar_url: '' });
+      updateUser(updated);
+      await refreshCurrentUser();
+      setAvatarUrl('');
+      setAvatarImgError(false);
+      setAvatarDialogOpen(false);
+      toast.success('Profile photo removed');
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to remove profile photo');
+    } finally {
+      setRemovingAvatar(false);
     }
   };
 
@@ -352,6 +376,15 @@ export default function CoachSettingsPage() {
               </div>
 
               <div className="border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveAvatar()}
+                  disabled={removingAvatar}
+                  className="mb-3 inline-flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
+                >
+                  {removingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Remove profile photo
+                </button>
                 <p className="mb-2 text-sm font-semibold text-foreground">Upload a photo</p>
                 <input
                   ref={fileInputRef}

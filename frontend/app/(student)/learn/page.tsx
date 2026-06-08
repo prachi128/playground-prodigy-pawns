@@ -3,26 +3,24 @@
 'use client';
 
 import Link from 'next/link';
-import { BookOpen, Star, Hamburger } from 'lucide-react';
-
 const learnCards = [
   {
     title: 'Lessons',
     description: 'Video lessons, readings, and interactive exercises to master chess',
+    image: '/images/learn-chess.jpg',
     gradient: 'from-pink-400 to-rose-500',
     borderColor: 'border-pink-300',
     emoji: '📚',
     href: '/learn/lessons',
-    icon: BookOpen,
   },
   {
     title: 'Burger Collector',
     description: 'Collect stars by completing challenges and leveling up your skills',
+    image: '/images/learn-burger-collector-tile.jpg',
     gradient: 'from-amber-400 to-yellow-500',
     borderColor: 'border-amber-300',
     emoji: '🍔',
     href: '/learn/burger-collector',
-    icon: Hamburger,
   },
 ];
 
@@ -58,9 +56,13 @@ export default function LearnLandingPage() {
               style={{ animationDelay: `${idx * 120}ms` }}
             >
               <div
-                className={`relative flex h-40 w-full items-center justify-center overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-44 transition-transform duration-300 group-hover:scale-105`}
+                className={`relative h-40 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-44 transition-transform duration-300 group-hover:scale-105`}
               >
-                <card.icon className="h-20 w-20 text-white/90 transition-transform duration-300 group-hover:scale-110" />
+                <img
+                  src={card.image}
+                  alt={card.title}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                />
                 <div className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-xl shadow-lg">
                   {card.emoji}
                 </div>

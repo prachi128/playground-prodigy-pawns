@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { CoachSidebar } from "./coach-sidebar";
 
 const COACH_SIDEBAR_COLLAPSED_KEY = "coach-sidebar-collapsed";
@@ -11,15 +11,13 @@ interface CoachLayoutProps {
 
 export function CoachLayout({ children }: CoachLayoutProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  useEffect(() => {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      setSidebarCollapsed(window.localStorage.getItem(COACH_SIDEBAR_COLLAPSED_KEY) === "1");
+      return window.localStorage.getItem(COACH_SIDEBAR_COLLAPSED_KEY) === "1";
     } catch {
-      /* ignore */
+      return false;
     }
-  }, []);
+  });
 
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((c) => {

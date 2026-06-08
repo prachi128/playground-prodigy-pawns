@@ -20,11 +20,27 @@ import {
   FileText,
   UserX,
   UserCheck,
+  Send,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api, { batchAPI, type Batch } from '@/lib/api';
+import api, { batchAPI, coachAPI, type Batch } from '@/lib/api';
 import ConfirmDialog from '@/components/ConfirmDialog';
+
+interface ThemePerformanceRow {
+  theme_key: string;
+  attempts: number;
+  solved: number;
+  accuracy_pct: number;
+}
+
+interface WeeklyBucket {
+  period_label: string;
+  start_date: string;
+  attempts: number;
+  solved: number;
+  accuracy_pct: number;
+}
 
 interface StudentDetails {
   id: number;
@@ -42,8 +58,26 @@ interface StudentDetails {
   expert_solved: number;
   puzzles_this_week: number;
   xp_this_week: number;
+  games_played: number;
+  games_won: number;
+  game_win_rate: number;
+  games_this_week: number;
   days_since_active: number;
   is_active?: boolean;
+  theme_performance?: ThemePerformanceRow[];
+  weekly_buckets?: WeeklyBucket[];
+  weekly_trend?: string;
+}
+
+const WEEKLY_TREND_LABELS: Record<string, string> = {
+  improving: 'Improving',
+  stable: 'Stable',
+  declining: 'Needs support',
+  insufficient_data: 'Not enough recent data',
+};
+
+function formatThemeLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 const statCard =
@@ -69,6 +103,9 @@ export default function StudentDetailPage() {
   const [isReactivating, setIsReactivating] = useState(false);
   const deactivateLock = useRef(false);
   const reactivateLock = useRef(false);
+  const [showNudgeDialog, setShowNudgeDialog] = useState(false);
+  const [nudgeMessage, setNudgeMessage] = useState('');
+  const [nudgeSending, setNudgeSending] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
@@ -159,6 +196,24 @@ export default function StudentDetailPage() {
     }
   };
 
+  const handleSendNudge = async () => {
+    setNudgeSending(true);
+    try {
+      await coachAPI.nudgeStudent(studentId, nudgeMessage.trim() || null);
+      toast.success('Reminder sent to student');
+      setShowNudgeDialog(false);
+      setNudgeMessage('');
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to send reminder');
+    } finally {
+      setNudgeSending(false);
+    }
+  };
+
   const handleReactivate = async () => {
     if (reactivateLock.current) return;
     reactivateLock.current = true;
@@ -239,14 +294,24 @@ export default function StudentDetailPage() {
               Generate Report
             </button>
             {isStudentActive && (
-              <button
-                type="button"
-                onClick={() => setShowAwardDialog(true)}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-              >
-                <Award className="h-5 w-5" />
-                Award XP
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowNudgeDialog(true)}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted/60"
+                >
+                  <Send className="h-5 w-5" />
+                  Send reminder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAwardDialog(true)}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                >
+                  <Award className="h-5 w-5" />
+                  Award XP
+                </button>
+              </>
             )}
             {isAdmin && isStudentActive && (
               <button
@@ -285,7 +350,7 @@ export default function StudentDetailPage() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <div className={statCard}>
           <div className="mb-2 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--gold-light))]">
@@ -332,6 +397,19 @@ export default function StudentDetailPage() {
 
         <div className={statCard}>
           <div className="mb-2 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--blue-light))]/70">
+              <Trophy className="h-5 w-5 text-[hsl(var(--blue-dark))]" />
+            </div>
+            <h3 className="text-sm font-semibold text-muted-foreground">Games</h3>
+          </div>
+          <p className="font-heading text-3xl font-bold text-[hsl(var(--blue-dark))]">{student.games_played}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {student.games_won} wins · {student.game_win_rate}% win rate
+          </p>
+        </div>
+
+        <div className={statCard}>
+          <div className="mb-2 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--purple-light))]/90">
               <Calendar className="h-5 w-5 text-[hsl(var(--purple-dark))]" />
             </div>
@@ -344,6 +422,92 @@ export default function StudentDetailPage() {
                 ? 'Yesterday'
                 : `${student.days_since_active} days ago`}
           </p>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        <div className={`${panelCard} lg:col-span-2`}>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-heading flex items-center gap-2 text-lg font-bold text-card-foreground">
+              <BarChart3 className="h-5 w-5 text-primary" />
+              Recent weekly activity
+            </h2>
+            {student.weekly_trend && (
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  student.weekly_trend === 'improving'
+                    ? 'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]'
+                    : student.weekly_trend === 'declining'
+                      ? 'border border-destructive/30 bg-destructive/10 text-destructive'
+                      : 'border border-border bg-muted text-muted-foreground'
+                }`}
+              >
+                {WEEKLY_TREND_LABELS[student.weekly_trend] ?? student.weekly_trend}
+              </span>
+            )}
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Four rolling weeks of puzzle attempts. Trend compares the latest week to the one before.
+          </p>
+          {(student.weekly_buckets?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No weekly breakdown yet.</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {(student.weekly_buckets ?? []).map((w) => (
+                <div key={w.start_date} className="rounded-lg border border-border/80 bg-muted/30 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">{w.period_label}</p>
+                  <p className="mt-1 font-heading text-lg font-bold text-foreground">{w.attempts} attempts</p>
+                  <p className="text-sm text-muted-foreground">{w.solved} solved · {w.accuracy_pct}%</p>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${Math.min(w.accuracy_pct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className={`${panelCard} lg:col-span-2`}>
+          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
+            <Target className="h-5 w-5 text-primary" />
+            Performance by puzzle topic
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Accuracy by theme (from your puzzle library tags). Use this to spot strengths and topics to assign next.
+          </p>
+          {(student.theme_performance?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No themed attempts yet. Topics appear after students solve tagged puzzles.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Topic</th>
+                    <th className="px-3 py-2 text-right font-semibold">Attempts</th>
+                    <th className="px-3 py-2 text-right font-semibold">Solved</th>
+                    <th className="px-3 py-2 text-right font-semibold">Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(student.theme_performance ?? []).map((row) => (
+                    <tr key={row.theme_key} className="border-t border-border">
+                      <td className="px-3 py-2 font-medium capitalize text-foreground">
+                        {formatThemeLabel(row.theme_key)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.attempts}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{row.solved}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.accuracy_pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -397,6 +561,13 @@ export default function StudentDetailPage() {
               <span className="text-sm font-medium text-foreground">XP this week</span>
               <span className="text-sm font-semibold text-[hsl(var(--gold-dark))]">
                 {student.xp_this_week} XP
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+              <span className="text-sm font-medium text-foreground">Games this week</span>
+              <span className="text-sm font-semibold text-[hsl(var(--blue-dark))]">
+                {student.games_this_week}
               </span>
             </div>
 
@@ -496,6 +667,67 @@ export default function StudentDetailPage() {
           </div>
         </div>
       </div>
+
+      {showNudgeDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nudge-title"
+          >
+            <h3
+              id="nudge-title"
+              className="font-heading mb-2 flex items-center gap-2 text-xl font-bold text-card-foreground"
+            >
+              <Send className="h-6 w-6 text-primary" />
+              Send in-app reminder
+            </h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              The student gets a notification with a link to puzzles. Leave blank to use a friendly default message.
+            </p>
+            <textarea
+              value={nudgeMessage}
+              onChange={(e) => setNudgeMessage(e.target.value)}
+              rows={3}
+              maxLength={500}
+              placeholder="Optional personal note…"
+              className="mb-4 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNudgeDialog(false);
+                  setNudgeMessage('');
+                }}
+                disabled={nudgeSending}
+                className="flex-1 rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendNudge()}
+                disabled={nudgeSending}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {nudgeSending ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-5 w-5" />
+                    Send
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAwardDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">

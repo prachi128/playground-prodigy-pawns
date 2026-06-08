@@ -11,9 +11,27 @@ interface MapSceneryProps {
 
 export function MapScenery({ weather = 'sunny', showAnimated = true }: MapSceneryProps) {
   const [isClient, setIsClient] = useState(false)
+  const [rainDrops, setRainDrops] = useState<Array<{ left: number; top: number; delay: number }>>([])
+  const [snowFlakes, setSnowFlakes] = useState<Array<{ left: number; delay: number }>>([])
 
   useEffect(() => {
     setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    setRainDrops(
+      Array.from({ length: 30 }, () => ({
+        left: Math.random() * 100,
+        top: Math.random() * 50,
+        delay: Math.random() * 0.8,
+      })),
+    )
+    setSnowFlakes(
+      Array.from({ length: 40 }, () => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 3,
+      })),
+    )
   }, [])
 
   if (!isClient) return null
@@ -34,8 +52,8 @@ export function MapScenery({ weather = 'sunny', showAnimated = true }: MapScener
         }}
       />
 
-      {weather === 'sunny' && <div className="animate-sun-fade absolute top-12 right-16 h-20 w-20 rounded-full bg-yellow-300 shadow-lg shadow-yellow-400/50" />}
-      {weather === 'rain' && <div className="animate-moon-glow absolute top-16 right-20 h-16 w-16 rounded-full bg-gray-100 opacity-60" />}
+      {showAnimated && weather === 'sunny' && <div className="animate-sun-fade absolute top-12 right-16 h-20 w-20 rounded-full bg-yellow-300 shadow-lg shadow-yellow-400/50" />}
+      {showAnimated && weather === 'rain' && <div className="animate-moon-glow absolute top-16 right-20 h-16 w-16 rounded-full bg-gray-100 opacity-60" />}
 
       <div className="absolute top-12 left-0 h-full w-full">
         {[0, 1, 2, 3].map((i) => (
@@ -47,7 +65,7 @@ export function MapScenery({ weather = 'sunny', showAnimated = true }: MapScener
         ))}
       </div>
 
-      {weather === 'sunny' && (
+      {showAnimated && weather === 'sunny' && (
         <div className="absolute top-20 left-0 h-full w-full">
           {[0, 1, 2].map((i) => (
             <div key={`bird-${i}`} className="animate-bird-fly absolute" style={{ left: `${10 + i * 25}%`, top: `${15 + i * 15}%`, animationDelay: `${i * 2}s` }}>
@@ -60,18 +78,18 @@ export function MapScenery({ weather = 'sunny', showAnimated = true }: MapScener
         </div>
       )}
 
-      {weather === 'rain' && (
+      {showAnimated && weather === 'rain' && (
         <div className="absolute inset-0 pointer-events-none">
-          {[...Array(30)].map((_, i) => (
-            <div key={`rain-${i}`} className="animate-rain-fall absolute w-1 h-8 bg-gradient-to-b from-blue-300 to-transparent rounded-full" style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 50}%`, animationDelay: `${Math.random() * 0.8}s`, opacity: 0.6 }} />
+          {rainDrops.map((drop, i) => (
+            <div key={`rain-${i}`} className="animate-rain-fall absolute h-8 w-1 rounded-full bg-gradient-to-b from-blue-300 to-transparent" style={{ left: `${drop.left}%`, top: `${drop.top}%`, animationDelay: `${drop.delay}s`, opacity: 0.6 }} />
           ))}
         </div>
       )}
 
-      {weather === 'snow' && (
+      {showAnimated && weather === 'snow' && (
         <div className="absolute inset-0 pointer-events-none">
-          {[...Array(40)].map((_, i) => (
-            <div key={`snow-${i}`} className="animate-snowflake-fall absolute" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 3}s` }}>
+          {snowFlakes.map((flake, i) => (
+            <div key={`snow-${i}`} className="animate-snowflake-fall absolute" style={{ left: `${flake.left}%`, animationDelay: `${flake.delay}s` }}>
               <svg width="20" height="20" viewBox="0 0 20 20" fill="white">
                 <circle cx="10" cy="10" r="2" opacity="0.9" />
                 {[0, 60, 120].map((angle) => (

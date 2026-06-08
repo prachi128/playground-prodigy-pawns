@@ -16,10 +16,18 @@ const SLUG_BY_PIECE: Record<PieceTypeCode, string> = {
   k: 'king',
   p: 'pawn',
 }
+const PIECE_SYMBOL_BY_TYPE: Record<PieceTypeCode, string> = {
+  r: '♖',
+  b: '♗',
+  n: '♘',
+  q: '♕',
+  k: '♔',
+  p: '♙',
+}
 
 export default function BurgerCollectorLandingPage() {
   return (
-    <div className="relative mx-auto max-w-6xl overflow-hidden pt-4 sm:pt-6">
+    <div className="relative mx-auto max-w-6xl overflow-hidden pt-0">
       <div
         className="pointer-events-none absolute inset-0 -z-10 opacity-25"
         style={{
@@ -31,7 +39,7 @@ export default function BurgerCollectorLandingPage() {
 
       {/* Hero intro */}
       <section className="mb-6">
-        <div className="relative overflow-hidden rounded-3xl border-4 border-amber-400 bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 p-5 shadow-xl sm:p-7">
+        <div className="relative overflow-hidden rounded-3xl border-2 border-border bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 p-5 shadow-xl sm:p-7">
           <div className="absolute -right-6 -top-6 text-8xl opacity-20" aria-hidden>
             🍔
           </div>
@@ -48,8 +56,8 @@ export default function BurgerCollectorLandingPage() {
               </p>
               <h1 className="font-heading text-3xl font-black text-amber-950 sm:text-4xl">Burger Collector</h1>
               <p className="mt-1 max-w-xl font-heading text-sm font-semibold text-amber-950/85 sm:text-base">
-                Grab every burger with your piece! Early levels are easy snack runs — later levels add lava 🌋 and rocks 🪨.
-                Can you beat all {PIECE_LESSON_SETS.r.lessonCount} levels?
+                Collect every food item with your piece! Early levels are easy snack runs and later levels need smarter moves.
+                Can you beat all 15 levels?
               </p>
             </div>
           </div>
@@ -67,20 +75,14 @@ export default function BurgerCollectorLandingPage() {
               <Link
                 key={pieceType}
                 href={`/learn/burger-collector/${slug}`}
-                className="animate-bounce-in hover-wiggle group relative flex items-center gap-4 overflow-hidden rounded-3xl border-4 border-amber-300/90 bg-white p-4 shadow-md transition-all duration-200 hover:-translate-y-1 hover:border-amber-500 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                className="animate-bounce-in hover-wiggle group relative flex items-center gap-4 overflow-hidden rounded-3xl border-2 border-border bg-white p-4 shadow-md transition-all duration-200 hover:-translate-y-1 hover:border-border hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 style={{ animationDelay: `${idx * 80}ms` }}
               >
-                <span className="absolute right-3 top-3 text-2xl opacity-40 transition-opacity group-hover:opacity-70" aria-hidden>
-                  🍔
-                </span>
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 text-2xl font-bold text-white shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                  {meta.pieceName[0]}
+                  {PIECE_SYMBOL_BY_TYPE[pieceType]}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="font-heading text-lg font-extrabold text-card-foreground">{meta.pieceName}</h2>
-                  <p className="font-heading text-sm font-semibold text-muted-foreground">
-                    {meta.lessonCount} levels · hotter snacks as you go!
-                  </p>
                 </div>
                 <ChevronRight className="h-6 w-6 shrink-0 text-amber-600" />
               </Link>

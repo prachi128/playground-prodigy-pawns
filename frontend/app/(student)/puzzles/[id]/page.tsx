@@ -6,13 +6,20 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { puzzleAPI, Puzzle } from '@/lib/api';
-import { getDifficultyColor, normalizePuzzleMoves, parseThemeList } from '@/lib/utils';
+import {
+  applyOpponentReplies,
+  formatPlayedUci,
+  initializePuzzlePlayState,
+  parseThemeList,
+  resolvePuzzleFormat,
+} from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { Lightbulb, RotateCcw, Check, X, Trophy, ArrowLeft } from 'lucide-react';
+import { RotateCcw, Check, X, Trophy, ArrowLeft, RefreshCw, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
+import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
 
 function PuzzleSolvePageContent() {
   const router = useRouter();
@@ -42,6 +49,15 @@ function PuzzleSolvePageContent() {
   const [legalTargets, setLegalTargets] = useState<string[]>([]);
   const [captureTargets, setCaptureTargets] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
+  const [playerColor, setPlayerColor] = useState<'w' | 'b'>('w');
+  const [solutionMoves, setSolutionMoves] = useState<string[]>([]);
+  const [moveFeedback, setMoveFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [isBoardFlipped, setIsBoardFlipped] = useState(false);
+
+  const shopBoardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  );
 
   useEffect(() => {
     loadPuzzle();
@@ -51,12 +67,20 @@ function PuzzleSolvePageContent() {
     try {
       const data = await puzzleAPI.getById(puzzleId);
       setPuzzle(data);
-      const chess = new Chess(data.fen);
-      setGame(chess);
+      const playState = initializePuzzlePlayState(
+        data.fen,
+        data.moves,
+        resolvePuzzleFormat(data),
+      );
+      setSolutionMoves(playState.solutionMoves);
+      setGame(new Chess(playState.displayFen));
+      setPlayerColor(playState.playerColor);
+      setMovesMade(playState.movesMade);
+      setLastMove(playState.lastMove);
       setSelectedSquare(null);
       setLegalTargets([]);
       setCaptureTargets([]);
-      setLastMove(null);
+      setMoveFeedback(null);
       setStartTime(Date.now());
     } catch (error) {
       console.error('Failed to load puzzle:', error);
@@ -69,20 +93,41 @@ function PuzzleSolvePageContent() {
 
   const getLegalTargets = (square: string) => {
     if (!game || isCorrect !== null) return [];
-    const piece = game.get(square);
-    if (!piece || piece.color !== game.turn()) return [];
-    const moves = game.moves({ square, verbose: true });
-    return moves.map((move) => ({
+    if (game.turn() !== playerColor) return [];
+    const piece = game.get(square as any);
+    if (!piece || piece.color !== game.turn() || piece.color !== playerColor) return [];
+    const moves = game.moves({ square: square as any, verbose: true });
+    return moves.map((move: any) => ({
       to: move.to,
       isCapture: Boolean(move.captured) || move.flags.includes('e'),
     }));
   };
 
+  const submitIncorrectAttempt = async (moves: string[]) => {
+    if (!puzzle) return;
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    try {
+      await puzzleAPI.submitAttempt(
+        puzzle.id,
+        {
+          is_solved: false,
+          moves_made: moves.join(' '),
+          time_taken: timeTaken,
+        },
+        assignmentIdForApi != null ? { assignmentId: assignmentIdForApi } : undefined
+      );
+    } catch {
+      // Keep gameplay smooth even if analytics submission fails.
+    }
+  };
+
   const onDrop = (sourceSquare: string, targetSquare: string) => {
     if (!game || !puzzle || isCorrect !== null) return false;
+    if (game.turn() !== playerColor) return false;
 
     try {
-      const move = game.move({
+      const workingGame = new Chess(game.fen());
+      const move = workingGame.move({
         from: sourceSquare,
         to: targetSquare,
         promotion: 'q',
@@ -90,19 +135,35 @@ function PuzzleSolvePageContent() {
 
       if (move === null) return false;
 
-      const newMoves = [...movesMade, `${sourceSquare}${targetSquare}`];
-      setMovesMade(newMoves);
-      setGame(new Chess(game.fen()));
-      setLastMove({ from: sourceSquare, to: targetSquare });
+      const attemptedMove = formatPlayedUci(move);
+      const expectedMove = solutionMoves[movesMade.length];
+
+      if (!expectedMove || attemptedMove !== expectedMove) {
+        setMoveFeedback('wrong');
+        void submitIncorrectAttempt([...movesMade, attemptedMove]);
+        toast.error('Oops! Not the puzzle move. Try again!');
+        return false;
+      }
+
+      let updatedMoves = [...movesMade, attemptedMove];
+      let latestMove = { from: sourceSquare, to: targetSquare };
+      setMoveFeedback('correct');
+      setTimeout(() => setMoveFeedback(null), 1200);
+
+      const replies = applyOpponentReplies(workingGame, solutionMoves, updatedMoves, playerColor);
+      updatedMoves = replies.movesMade;
+      if (replies.lastMove) latestMove = replies.lastMove;
+
+      setMovesMade(updatedMoves);
+      setGame(workingGame);
+      setLastMove(latestMove);
       setSelectedSquare(null);
       setLegalTargets([]);
       setCaptureTargets([]);
-
-      const solutionMoves = normalizePuzzleMoves(puzzle.fen, puzzle.moves);
-      const isComplete = newMoves.length >= solutionMoves.length;
+      const isComplete = updatedMoves.length >= solutionMoves.length;
 
       if (isComplete) {
-        handlePuzzleSolved(newMoves);
+        handlePuzzleSolved(updatedMoves);
       }
 
       return true;
@@ -226,14 +287,21 @@ function PuzzleSolvePageContent() {
 
   const resetPuzzle = () => {
     if (puzzle) {
-      const chess = new Chess(puzzle.fen);
-      setGame(chess);
-      setMovesMade([]);
+      const playState = initializePuzzlePlayState(
+        puzzle.fen,
+        puzzle.moves,
+        resolvePuzzleFormat(puzzle),
+      );
+      setSolutionMoves(playState.solutionMoves);
+      setGame(new Chess(playState.displayFen));
+      setPlayerColor(playState.playerColor);
+      setMovesMade(playState.movesMade);
       setIsCorrect(null);
       setSelectedSquare(null);
       setLegalTargets([]);
       setCaptureTargets([]);
-      setLastMove(null);
+      setLastMove(playState.lastMove);
+      setMoveFeedback(null);
       setStartTime(Date.now());
     }
   };
@@ -270,6 +338,8 @@ function PuzzleSolvePageContent() {
     return styles;
   }, [captureTargets, lastMove, legalTargets, selectedSquare]);
 
+  const sideToMoveLabel = playerColor === 'w' ? 'White to move' : 'Black to move';
+
   if (isLoading || !puzzle || !game) {
     return (
       <div className="mx-auto max-w-6xl flex items-center justify-center py-12">
@@ -286,13 +356,39 @@ function PuzzleSolvePageContent() {
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2">
-          <div className="bg-card rounded-xl p-2 shadow-xl border-2 border-border">
+          <div className="relative bg-card rounded-xl p-2 shadow-xl border-2 border-border">
+            <div className="absolute right-2 top-3 z-20 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setIsBoardFlipped((prev) => !prev)}
+                aria-label="Flip board"
+                title="Flip board"
+                className="h-8 w-8 rounded-full border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+              >
+                <RefreshCw className="mx-auto h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => toast('Board settings coming soon!', { icon: '⚙️' })}
+                aria-label="Board settings"
+                title="Board settings"
+                className="h-8 w-8 rounded-full border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+              >
+                <Settings className="mx-auto h-4 w-4" />
+              </button>
+            </div>
             <div className="mx-auto w-full max-w-[min(100%,410px)] sm:max-w-[480px]">
               {game && puzzle && (
                 <Chessboard
                   key={game.fen()}
                   options={{
                     position: game.fen(),
+                    allowDragging: isCorrect === null,
+                    canDragPiece: ({ square }) => {
+                      if (!square || isCorrect !== null || game.turn() !== playerColor) return false;
+                      const piece = game.get(square as any);
+                      return Boolean(piece && piece.color === playerColor);
+                    },
                     onPieceDrop: ({ sourceSquare, targetSquare }) =>
                       sourceSquare && targetSquare ? onDrop(sourceSquare, targetSquare) : false,
                     onSquareClick: ({ square }) => {
@@ -303,6 +399,9 @@ function PuzzleSolvePageContent() {
                       borderRadius: '12px',
                       boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)',
                     },
+                    boardOrientation: isBoardFlipped ? 'black' : 'white',
+                    darkSquareStyle: shopBoardSquareStyles.darkSquareStyle,
+                    lightSquareStyle: shopBoardSquareStyles.lightSquareStyle,
                     squareStyles,
                   }}
                 />
@@ -378,43 +477,30 @@ function PuzzleSolvePageContent() {
             </div>
           )}
 
-          <div className="bg-card rounded-xl p-3 shadow-lg border-2 border-border">
-            <h3 className="font-heading font-bold text-foreground mb-2 text-sm">Puzzle Info</h3>
-            <div className="space-y-1.5">
-              <div>
-                <p className="font-sans text-xs text-muted-foreground mb-0.5">Difficulty</p>
-                <span
-                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-heading font-bold border-2 ${getDifficultyColor(
-                    puzzle.difficulty
-                  )}`}
+          <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-xl p-3 shadow-lg border-2 border-amber-200">
+            <div className="flex items-start gap-2">
+              <div className="w-9 h-9 rounded-full bg-amber-300 flex items-center justify-center text-lg flex-shrink-0">
+                🦊
+              </div>
+              <div className="flex-1">
+                <p className="font-heading font-bold text-amber-900 text-sm mb-1">{sideToMoveLabel}</p>
+                <p
+                  className={`font-sans text-xs ${
+                    moveFeedback === 'correct'
+                      ? 'text-green-700'
+                      : moveFeedback === 'wrong'
+                        ? 'text-red-700'
+                        : 'text-amber-800'
+                  }`}
                 >
-                  {puzzle.difficulty}
-                </span>
-              </div>
-              {parseThemeList(puzzle.theme).length > 0 && (
-                <div>
-                  <p className="font-sans text-xs text-muted-foreground mb-0.5">Theme</p>
-                  <div className="flex flex-wrap gap-1">
-                    {parseThemeList(puzzle.theme).map((t) => (
-                      <span key={t} className="inline-block px-2 py-0.5 rounded-full text-xs font-heading font-bold bg-blue-100 text-blue-800 border-2 border-blue-300 capitalize">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="font-sans text-xs text-muted-foreground">Rating:</span>
-                <span className="font-heading font-bold text-foreground text-xs">{puzzle.rating}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-sans text-xs text-muted-foreground">Success:</span>
-                <span className="font-heading font-bold text-foreground text-xs">
-                  {puzzle.attempts_count > 0
-                    ? Math.round((puzzle.success_count / puzzle.attempts_count) * 100)
-                    : 0}
-                  %
-                </span>
+                  {isCorrect
+                    ? 'You did it, superstar! Ready for another puzzle adventure?'
+                    : moveFeedback === 'correct'
+                      ? 'Great move! Nice thinking! 🌟'
+                      : moveFeedback === 'wrong'
+                        ? 'That one is not the puzzle move. Try a different idea!'
+                        : 'Pick a smart move and surprise Coach Fox. You can do it!'}
+                </p>
               </div>
             </div>
           </div>
@@ -430,21 +516,20 @@ function PuzzleSolvePageContent() {
             </button>
           </div>
 
-          <div className="bg-card rounded-xl p-3 shadow-lg border-2 border-border">
-            <h3 className="font-heading font-bold text-foreground mb-1.5 text-sm">Progress</h3>
-            <div className="space-y-1 font-sans text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Moves:</span>
-                <span className="font-heading font-bold text-foreground">{movesMade.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Time:</span>
-                <span className="font-heading font-bold text-foreground">
-                  {Math.floor((Date.now() - startTime) / 1000)}s
-                </span>
+          {isCorrect && (
+            <div className="bg-gradient-to-r from-pink-100 via-purple-100 to-blue-100 rounded-xl p-3 shadow-lg border-2 border-pink-300">
+              <div className="flex items-start gap-2">
+                <div className="text-2xl animate-bounce">🎉</div>
+                <div>
+                  <p className="font-heading font-bold text-purple-900 text-sm">Hooray! Puzzle Complete!</p>
+                  <p className="font-sans text-purple-800 text-xs">
+                    Congratulations, champ! You solved it perfectly. Keep shining!
+                  </p>
+                  <p className="font-sans text-sm mt-1">🥳 ⭐ 🎊</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

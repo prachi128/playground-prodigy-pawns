@@ -171,7 +171,7 @@ export default function PuzzleSolveLegacyPage() {
 
         <div className="grid lg:grid-cols-3 gap-3">
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-2 shadow-xl border-3 border-gray-200">
+            <div className="relative bg-white rounded-xl p-2 shadow-xl border-3 border-gray-200">
               <div className="w-full max-w-[350px] mx-auto">
                 {game && puzzle && (
                   <Chessboard

@@ -23,12 +23,15 @@ export function CoachSidebar({
 }: CoachSidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const [adminOpen, setAdminOpen] = useState(true);
+  const [teachingOpen, setTeachingOpen] = useState(true);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const navItems = coachNav.filter(
     (item) => !item.adminOnly || user?.role === "admin",
   );
-  const mainNavItems = navItems.filter((item) => !item.adminOnly);
-  const adminNavItems = navItems.filter((item) => item.adminOnly);
+  const teachingNavItems = navItems.filter((item) => item.section === "teaching");
+  const coachNavItems = navItems.filter((item) => item.section === "coach");
+  const adminNavItems = navItems.filter((item) => item.section === "admin");
 
   const linkClass = (href: string, isCollapsedDesktop: boolean) => {
     const isActive =
@@ -119,35 +122,109 @@ export function CoachSidebar({
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-2 scrollbar-hide">
-          {mainNavItems.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/coach" && pathname?.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={linkClass(item.href, collapsed)}
-                onClick={onCloseMobile}
-                title={collapsed ? item.label : undefined}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {isActive && (
-                  <span
-                    className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]"
-                    aria-hidden
-                  />
-                )}
-                <Icon
-                  className={`h-5 w-5 shrink-0 transition-colors ${
-                    isActive ? "text-amber-300" : "text-sidebar-foreground/55 group-hover:text-sidebar-foreground/80"
-                  }`}
-                />
-                <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>{item.label}</span>
-              </Link>
-            );
-          })}
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={() => setTeachingOpen((o) => !o)}
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.08em] text-sidebar-foreground/70 transition-colors hover:bg-white/8 hover:text-sidebar-foreground/90 ${
+                collapsed ? "lg:justify-center lg:px-2" : ""
+              }`}
+              aria-expanded={teachingOpen}
+              title={collapsed ? "Teaching" : undefined}
+            >
+              <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Teaching</span>
+              <ChevronRight
+                className={`ml-auto h-4 w-4 shrink-0 transition-transform ${
+                  teachingOpen ? "rotate-90" : ""
+                } ${collapsed ? "lg:hidden" : ""}`}
+              />
+            </button>
+            {teachingOpen && (
+              <div className="mt-1 space-y-1">
+                {teachingNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== "/coach" && pathname?.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={linkClass(item.href, collapsed)}
+                      onClick={onCloseMobile}
+                      title={collapsed ? item.label : undefined}
+                      aria-current={isActive ? "page" : undefined}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]"
+                          aria-hidden
+                        />
+                      )}
+                      <Icon
+                        className={`h-5 w-5 shrink-0 transition-colors ${
+                          isActive ? "text-amber-300" : "text-sidebar-foreground/55 group-hover:text-sidebar-foreground/80"
+                        }`}
+                      />
+                      <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <button
+              type="button"
+              onClick={() => setCoachOpen((o) => !o)}
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.08em] text-sidebar-foreground/70 transition-colors hover:bg-white/8 hover:text-sidebar-foreground/90 ${
+                collapsed ? "lg:justify-center lg:px-2" : ""
+              }`}
+              aria-expanded={coachOpen}
+              title={collapsed ? "Coach" : undefined}
+            >
+              <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Coach</span>
+              <ChevronRight
+                className={`ml-auto h-4 w-4 shrink-0 transition-transform ${
+                  coachOpen ? "rotate-90" : ""
+                } ${collapsed ? "lg:hidden" : ""}`}
+              />
+            </button>
+            {coachOpen && (
+              <div className="mt-1 space-y-1">
+                {coachNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== "/coach" && pathname?.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={linkClass(item.href, collapsed)}
+                      onClick={onCloseMobile}
+                      title={collapsed ? item.label : undefined}
+                      aria-current={isActive ? "page" : undefined}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]"
+                          aria-hidden
+                        />
+                      )}
+                      <Icon
+                        className={`h-5 w-5 shrink-0 transition-colors ${
+                          isActive ? "text-amber-300" : "text-sidebar-foreground/55 group-hover:text-sidebar-foreground/80"
+                        }`}
+                      />
+                      <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {adminNavItems.length > 0 && (
             <div className="mt-2 border-t border-white/10 pt-2">

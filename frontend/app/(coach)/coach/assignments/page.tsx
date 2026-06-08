@@ -93,6 +93,14 @@ function isOverdue(due: string | null) {
   return new Date(due) < new Date();
 }
 
+function isDueSoon(due: string | null) {
+  if (!due) return false;
+  const t = new Date(due).getTime();
+  if (t < Date.now()) return false;
+  const days = (t - Date.now()) / 86_400_000;
+  return days <= 3;
+}
+
 // ── Component ────────────────────────────────────────────────
 
 export default function AssignmentsPage() {
@@ -435,23 +443,35 @@ export default function AssignmentsPage() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <BookOpen className="h-3.5 w-3.5" />
                   {a.puzzle_count} puzzle{a.puzzle_count !== 1 ? 's' : ''}
                 </span>
                 {a.due_date ? (
-                  <span
-                    className={`flex items-center gap-1 font-medium ${
-                      isOverdue(a.due_date) ? 'text-destructive' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {isOverdue(a.due_date) ? (
-                      <XCircle className="h-3.5 w-3.5" />
-                    ) : (
-                      <Clock className="h-3.5 w-3.5" />
+                  <span className="flex flex-wrap items-center justify-end gap-1.5">
+                    {isOverdue(a.due_date) && (
+                      <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">
+                        Overdue
+                      </span>
                     )}
-                    Due {formatDate(a.due_date)}
+                    {!isOverdue(a.due_date) && isDueSoon(a.due_date) && (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                        Due soon
+                      </span>
+                    )}
+                    <span
+                      className={`flex items-center gap-1 font-medium ${
+                        isOverdue(a.due_date) ? 'text-destructive' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {isOverdue(a.due_date) ? (
+                        <XCircle className="h-3.5 w-3.5" />
+                      ) : (
+                        <Clock className="h-3.5 w-3.5" />
+                      )}
+                      Due {formatDate(a.due_date)}
+                    </span>
                   </span>
                 ) : (
                   <span className="text-muted-foreground/70">No deadline</span>

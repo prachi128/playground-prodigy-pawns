@@ -9,6 +9,24 @@ import { usernameInitial } from '@/lib/avatar';
 import { Loader2, CreditCard, CheckCircle, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null &&
+    'detail' in error.response.data &&
+    typeof error.response.data.detail === 'string'
+  ) {
+    return error.response.data.detail;
+  }
+  return 'Failed to start payment';
+}
+
 export default function ParentPaymentsPage() {
   const searchParams = useSearchParams();
   const [children, setChildren] = useState<ChildInfo[]>([]);
@@ -52,9 +70,9 @@ export default function ParentPaymentsPage() {
         batch_id: child.batch_id,
         billing_month: billingMonth,
       });
-      window.location.href = result.checkout_url;
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to start payment');
+      window.location.assign(result.checkout_url);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error));
       setPayingFor(null);
     }
   };
