@@ -17,8 +17,8 @@ test.describe("coach panel", () => {
     await page.locator('input[type="password"]').fill(coachPassword);
     await page.getByRole("button", { name: /sign up as coach/i }).click();
 
-    await expectRoute(page, "/coach");
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 30000 });
+    await expectRoute(page, "/coach/teaching");
+    await expect(page.getByRole("heading", { name: "Coach" })).toBeVisible({ timeout: 30000 });
 
     await page.goto("/coach/puzzles");
     await expect(page.getByText("Loading puzzles…")).toBeHidden({ timeout: 15000 });

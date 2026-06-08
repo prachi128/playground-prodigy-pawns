@@ -5,14 +5,13 @@ import { Chessboard, ChessboardProvider, SparePiece } from 'react-chessboard';
 import { Chess, type Color, type PieceSymbol, type Square } from 'chess.js';
 import { Copy, RotateCcw, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '@/lib/store';
+import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
 
 const START_FEN = new Chess().fen();
 
 const WHITE_SPARE = ['wP', 'wR', 'wN', 'wB', 'wQ', 'wK'] as const;
 const BLACK_SPARE = ['bP', 'bR', 'bN', 'bB', 'bQ', 'bK'] as const;
-
-const coachDarkSq = 'hsl(152 41% 28%)';
-const coachLightSq = 'hsl(134 55% 92%)';
 
 function pieceTypeToPiece(pieceType: string): { type: PieceSymbol; color: Color } {
   const color = pieceType[0] as Color;
@@ -83,8 +82,13 @@ function applyTeachingDrop(
 }
 
 export function CoachTeachingBoard() {
+  const { user } = useAuthStore();
   const [fen, setFen] = useState(START_FEN);
   const fenRef = useRef(fen);
+  const boardSquareStyles = useMemo(
+    () => getShopBoardSquareStyles(user?.equipped_board_theme_item_key),
+    [user?.equipped_board_theme_item_key],
+  );
   useEffect(() => {
     fenRef.current = fen;
   }, [fen]);
@@ -154,18 +158,18 @@ export function CoachTeachingBoard() {
       clearArrowsOnPositionChange: true,
       boardStyle: {
         borderRadius: '12px',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.22)',
       },
-      darkSquareStyle: { backgroundColor: coachDarkSq },
-      lightSquareStyle: { backgroundColor: coachLightSq },
+      darkSquareStyle: boardSquareStyles.darkSquareStyle,
+      lightSquareStyle: boardSquareStyles.lightSquareStyle,
     }),
-    [fen, onPieceDrop],
+    [fen, onPieceDrop, boardSquareStyles],
   );
 
   return (
     <ChessboardProvider options={boardOptions}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
-        <div className="relative mx-auto w-full max-w-[min(520px,100%)] shrink-0">
+        <div className="relative mx-auto w-full max-w-[min(100%,430px)] shrink-0 sm:max-w-[500px]">
           <Chessboard />
         </div>
 
@@ -173,10 +177,6 @@ export function CoachTeachingBoard() {
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Spare pieces
-            </p>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Drag pieces onto the board. Drag pieces off the board or use Clear to remove them. Draw arrows
-              with right-drag on the board (same as Lichess).
             </p>
             <div className="space-y-4">
               <div>

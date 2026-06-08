@@ -120,7 +120,7 @@ export default function SignupPage() {
       login(response.user);
       toast.success(`Welcome to Prodigy Pawns, ${response.user.full_name}!`);
       const redirectPath = response.user.role === 'coach' || response.user.role === 'admin'
-        ? '/coach'
+        ? '/coach/teaching'
         : response.user.role === 'parent'
         ? '/parent'
         : '/dashboard';

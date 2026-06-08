@@ -31,7 +31,7 @@ export function CoachLayout({ children }: CoachLayoutProps) {
     });
   }, []);
 
-  const mainPadLg = sidebarCollapsed ? "lg:pl-16" : "lg:pl-64";
+  const mainPadLg = sidebarCollapsed ? "lg:pl-16" : "lg:pl-44";
 
   return (
     <div data-coach-shell className="relative min-h-screen bg-background">

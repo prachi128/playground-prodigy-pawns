@@ -77,7 +77,7 @@ export default function CoachInviteSignupPage() {
       });
       login(response.user);
       toast.success('Coach account created');
-      router.push('/coach');
+      router.push('/coach/teaching');
     } catch (err: unknown) {
       const detail =
         err && typeof err === 'object' && 'response' in err
