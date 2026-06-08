@@ -8,18 +8,23 @@ class UserBase(BaseModel):
     username: str
     full_name: str
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    email: Optional[EmailStr] = None
+    username: str
+    full_name: str
     password: str = Field(..., min_length=6)
     age: Optional[int] = None
     gender: Optional[str] = None  # 'girl' | 'boy' for students
     avatar_url: Optional[str] = None  # e.g. /avatars/girl1.png
+    guardian_email: Optional[EmailStr] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    identifier: str = Field(..., min_length=1)
+    account_type: Literal["student", "parent_coach"] = "parent_coach"
 
 class ResetPasswordRequest(BaseModel):
     token: str
@@ -28,6 +33,7 @@ class ResetPasswordRequest(BaseModel):
 class UserResponse(UserBase):
     id: int
     role: str
+    guardian_email: Optional[str] = None
     age: Optional[int]
     gender: Optional[str] = None
     avatar_url: str
@@ -367,7 +373,44 @@ class ParentSignup(BaseModel):
     full_name: str
     password: str = Field(..., min_length=6)
     phone: Optional[str] = None
-    child_emails: List[str]  # emails of existing student accounts to link
+    child_emails: List[str] = Field(default_factory=list)  # legacy: link by student account email
+
+
+class ParentChildCreate(BaseModel):
+    full_name: str
+    username: str
+    password: str = Field(..., min_length=4)
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class BulkStudentRow(BaseModel):
+    first_name: str
+    last_name: str
+    username: str
+    password: Optional[str] = Field(None, min_length=4)
+    guardian_email: Optional[EmailStr] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
+
+
+class BulkStudentCreateRequest(BaseModel):
+    students: List[BulkStudentRow] = Field(..., min_length=1, max_length=50)
+    default_password: Optional[str] = Field(None, min_length=4)
+
+
+class BulkStudentCreatedRow(BaseModel):
+    student_id: int
+    full_name: str
+    username: str
+    guardian_email: Optional[str] = None
+    password: str
+
+
+class BulkStudentCreateResponse(BaseModel):
+    created: List[BulkStudentCreatedRow]
+    warnings: List[str] = Field(default_factory=list)
 
 
 class CoachSignup(BaseModel):

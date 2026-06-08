@@ -1,17 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Loader2, Mail, Sparkles } from 'lucide-react';
 import { Fredoka, Nunito } from 'next/font/google';
 
+type AccountType = 'student' | 'parent_coach';
+
 const fredoka = Fredoka({ subsets: ['latin'], variable: '--font-fredoka' });
 const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito' });
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
+  const [accountType, setAccountType] = useState<AccountType>('parent_coach');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('type') === 'student') {
+      setAccountType('student');
+    }
+  }, []);
+  const [identifier, setIdentifier] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [inlineError, setInlineError] = useState('');
@@ -20,8 +30,11 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setInlineError('');
 
-    if (!email.trim()) {
-      const msg = 'Please enter your email address.';
+    if (!identifier.trim()) {
+      const msg =
+        accountType === 'student'
+          ? 'Please enter your username.'
+          : 'Please enter your email address.';
       setInlineError(msg);
       toast.error(msg);
       return;
@@ -29,7 +42,7 @@ export default function ForgotPasswordPage() {
 
     setIsLoading(true);
     try {
-      const response = await authAPI.forgotPassword(email.trim());
+      const response = await authAPI.forgotPassword(identifier.trim(), accountType);
       setSubmitted(true);
       toast.success(response.message);
     } catch (error: unknown) {
@@ -79,8 +92,11 @@ export default function ForgotPasswordPage() {
               </div>
               <h2 className="font-heading text-2xl font-bold text-card-foreground">Check your email</h2>
               <p className="text-muted-foreground">
-                If an account exists for <span className="font-semibold text-foreground">{email}</span>,
-                we&apos;ve sent password reset instructions. The link expires in 1 hour.
+                If an account exists for{' '}
+                <span className="font-semibold text-foreground">{identifier}</span>, we&apos;ve sent
+                password reset instructions
+                {accountType === 'student' ? ' to your parent/guardian email' : ''}. The link expires
+                in 1 hour.
               </p>
               <Link
                 href="/login"
@@ -92,11 +108,44 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <>
+              <div className="flex rounded-xl bg-white/20 p-1 mb-6 border-2 border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountType('student');
+                    setInlineError('');
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-heading font-bold transition ${
+                    accountType === 'student'
+                      ? 'bg-card text-emerald-700 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Student
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountType('parent_coach');
+                    setInlineError('');
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-heading font-bold transition ${
+                    accountType === 'parent_coach'
+                      ? 'bg-card text-emerald-700 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Parent / Coach
+                </button>
+              </div>
+
               <h2 className="font-heading text-2xl font-bold text-card-foreground mb-2 text-center">
                 Reset password
               </h2>
               <p className="text-center text-muted-foreground text-sm mb-6">
-                Enter your email and we&apos;ll send you a reset link.
+                {accountType === 'student'
+                  ? "Enter your username. We'll email your parent/guardian a reset link."
+                  : "Enter your email and we'll send you a reset link."}
               </p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -110,20 +159,23 @@ export default function ForgotPasswordPage() {
                 )}
 
                 <div>
-                  <label htmlFor="email" className="block text-sm font-heading font-semibold text-foreground mb-2">
-                    Email
+                  <label
+                    htmlFor="identifier"
+                    className="block text-sm font-heading font-semibold text-foreground mb-2"
+                  >
+                    {accountType === 'student' ? 'Username' : 'Email'}
                   </label>
                   <input
-                    id="email"
-                    type="email"
-                    value={email}
+                    id="identifier"
+                    type={accountType === 'student' ? 'text' : 'email'}
+                    value={identifier}
                     onChange={(e) => {
-                      setEmail(e.target.value);
+                      setIdentifier(e.target.value);
                       if (inlineError) setInlineError('');
                     }}
                     disabled={isLoading}
                     className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50"
-                    placeholder="your@email.com"
+                    placeholder={accountType === 'student' ? 'your_username' : 'your@email.com'}
                     required
                   />
                 </div>

@@ -2,9 +2,9 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api, { parentAPI, ChildInfo } from '@/lib/api';
-import { Loader2, Users, Trophy, Star, TrendingUp, Zap, BookOpen, CheckCircle } from 'lucide-react';
+import { Loader2, Users, Trophy, Star, TrendingUp, Zap, BookOpen, CheckCircle, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface ChildAssignment {
@@ -41,35 +41,72 @@ export default function ParentChildrenPage() {
   const [children, setChildren] = useState<ChildInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [childAssignments, setChildAssignments] = useState<Record<number, ChildAssignment[]>>({});
+  const [showAddChild, setShowAddChild] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [childForm, setChildForm] = useState({
+    full_name: '',
+    username: '',
+    password: '',
+  });
+
+  const loadChildren = useCallback(async () => {
+    try {
+      const kids = await parentAPI.getChildren();
+      setChildren(kids);
+
+      const results = await Promise.allSettled(
+        kids.map((child) =>
+          api
+            .get(`/api/parent/children/${child.id}/assignments`)
+            .then((res) => ({ childId: child.id, data: res.data }))
+        )
+      );
+      const map: Record<number, ChildAssignment[]> = {};
+      results.forEach((r) => {
+        if (r.status === 'fulfilled') {
+          map[r.value.childId] = r.value.data;
+        }
+      });
+      setChildAssignments(map);
+    } catch {
+      toast.error('Failed to load children data');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadChildren = async () => {
-      try {
-        const children = await parentAPI.getChildren();
-        setChildren(children);
-
-        const results = await Promise.allSettled(
-          children.map(child =>
-            api.get(`/api/parent/children/${child.id}/assignments`)
-              .then(res => ({ childId: child.id, data: res.data }))
-          )
-        );
-        const map: Record<number, ChildAssignment[]> = {};
-        results.forEach(r => {
-          if (r.status === 'fulfilled') {
-            map[r.value.childId] = r.value.data;
-          }
-        });
-        setChildAssignments(map);
-      } catch {
-        toast.error('Failed to load children data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadChildren();
-  }, []);
+  }, [loadChildren]);
+
+  const handleCreateChild = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!childForm.full_name.trim() || !childForm.username.trim() || !childForm.password) {
+      toast.error('Please fill in name, username, and password.');
+      return;
+    }
+    setCreating(true);
+    try {
+      await parentAPI.createChild({
+        full_name: childForm.full_name.trim(),
+        username: childForm.username.trim(),
+        password: childForm.password,
+      });
+      toast.success(`${childForm.full_name} can log in with their username!`);
+      setChildForm({ full_name: '', username: '', password: '' });
+      setShowAddChild(false);
+      setLoading(true);
+      await loadChildren();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(msg || 'Failed to create child account');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -81,10 +118,89 @@ export default function ParentChildrenPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Your Children</h1>
-        <p className="text-gray-500">Track your child&apos;s chess progress and batch information.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Your Children</h1>
+          <p className="text-gray-500">Track your child&apos;s chess progress and batch information.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddChild(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add child
+        </button>
       </div>
+
+      {showAddChild && (
+        <div className="bg-white rounded-2xl border-2 border-emerald-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-800">Create child account</h2>
+            <button
+              type="button"
+              onClick={() => setShowAddChild(false)}
+              className="p-1 text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            Your child will log in with their <strong>username</strong> and password — not your email.
+          </p>
+          <form onSubmit={handleCreateChild} className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
+              <input
+                type="text"
+                value={childForm.full_name}
+                onChange={(e) => setChildForm({ ...childForm, full_name: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-4 py-2.5"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+              <input
+                type="text"
+                value={childForm.username}
+                onChange={(e) => setChildForm({ ...childForm, username: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-4 py-2.5"
+                placeholder="emma_sharma"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+              <input
+                type="text"
+                value={childForm.password}
+                onChange={(e) => setChildForm({ ...childForm, password: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-4 py-2.5"
+                minLength={4}
+                required
+              />
+            </div>
+            <div className="sm:col-span-2 flex gap-2">
+              <button
+                type="submit"
+                disabled={creating}
+                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {creating ? 'Creating…' : 'Create account'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddChild(false)}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {children.map((child) => {
@@ -220,7 +336,9 @@ export default function ParentChildrenPage() {
         <div className="bg-white rounded-2xl border-2 border-gray-200 p-12 text-center">
           <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">No children linked to your account yet.</p>
-          <p className="text-gray-400 text-sm mt-1">Ask your coach to link your child&apos;s account.</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Add a child above, or ask your coach to create their account with your email as guardian.
+          </p>
         </div>
       )}
     </div>

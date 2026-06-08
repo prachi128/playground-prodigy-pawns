@@ -35,6 +35,7 @@ Base.metadata.create_all(bind=engine)
 
 REQUIRED_SCHEMA_COLUMNS = {
     "users": {
+        "guardian_email",
         "primary_coach_id",
         "star_balance",
         "puzzle_rating",

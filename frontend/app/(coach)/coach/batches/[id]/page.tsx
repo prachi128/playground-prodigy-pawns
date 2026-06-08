@@ -76,6 +76,11 @@ export default function BatchDetailPage() {
   const [allStudents, setAllStudents] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [showBulkCreate, setShowBulkCreate] = useState(false);
+  const [bulkCreating, setBulkCreating] = useState(false);
+  const [bulkDefaultPassword, setBulkDefaultPassword] = useState('chess123');
+  const [bulkCsv, setBulkCsv] = useState('');
+  const [bulkResult, setBulkResult] = useState<import('@/lib/api').BulkStudentCreateResponse | null>(null);
   const [studentPage, setStudentPage] = useState(1);
   const [removeId, setRemoveId] = useState<number | null>(null);
 
@@ -247,6 +252,69 @@ export default function BatchDetailPage() {
           ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
           : undefined;
       toast.error(detail || 'Failed to add student');
+    }
+  };
+
+  const parseBulkCsv = (text: string) => {
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return lines.map((line, index) => {
+      const parts = line.split(',').map((p) => p.trim());
+      if (parts.length < 3) {
+        throw new Error(`Line ${index + 1}: need first_name, last_name, username`);
+      }
+      const [first_name, last_name, username, guardian_email] = parts;
+      return {
+        first_name,
+        last_name,
+        username,
+        guardian_email: guardian_email || undefined,
+      };
+    });
+  };
+
+  const handleBulkCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkDefaultPassword || bulkDefaultPassword.length < 4) {
+      toast.error('Default password must be at least 4 characters');
+      return;
+    }
+    let rows;
+    try {
+      rows = parseBulkCsv(bulkCsv);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Invalid CSV format');
+      return;
+    }
+    if (rows.length === 0) {
+      toast.error('Add at least one student row');
+      return;
+    }
+    setBulkCreating(true);
+    try {
+      const result = await batchAPI.bulkCreateStudents(batchId, {
+        students: rows,
+        default_password: bulkDefaultPassword,
+      });
+      setBulkResult(result);
+      const updated = await batchAPI.listStudents(batchId);
+      setStudents(updated);
+      const b = await batchAPI.get(batchId);
+      setBatch(b);
+      toast.success(`Created ${result.created.length} student account(s)`);
+      if (result.warnings.length > 0) {
+        toast.error(`${result.warnings.length} warning(s) — check guardian emails`);
+      }
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Bulk create failed');
+    } finally {
+      setBulkCreating(false);
     }
   };
 
@@ -543,15 +611,89 @@ export default function BatchDetailPage() {
 
       {activeTab === 'students' && (
         <div>
-          <div className="mb-4 flex justify-end">
+          <div className="mb-4 flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              onClick={() => setShowAddStudent((s) => !s)}
+              onClick={() => {
+                setShowBulkCreate((s) => !s);
+                setShowAddStudent(false);
+              }}
+              className="inline-flex items-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/60"
+            >
+              <Plus className="h-4 w-4" /> Bulk create
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddStudent((s) => !s);
+                setShowBulkCreate(false);
+              }}
               className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
             >
-              <Plus className="h-4 w-4" /> Add student
+              <Plus className="h-4 w-4" /> Add existing
             </button>
           </div>
+
+          {showBulkCreate && (
+            <div className={`${panel} mb-4 p-4 space-y-4`}>
+              <div>
+                <h3 className="font-semibold text-foreground">Bulk create student accounts</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  One student per line: <code className="text-xs">first_name, last_name, username, guardian_email</code>.
+                  Guardian email is optional but recommended for parent auto-linking.
+                </p>
+              </div>
+              <form onSubmit={handleBulkCreate} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    Default password for all students *
+                  </label>
+                  <input
+                    type="text"
+                    value={bulkDefaultPassword}
+                    onChange={(e) => setBulkDefaultPassword(e.target.value)}
+                    className="w-full max-w-xs rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    minLength={4}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Students (CSV lines)</label>
+                  <textarea
+                    value={bulkCsv}
+                    onChange={(e) => setBulkCsv(e.target.value)}
+                    rows={6}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                    placeholder={'Emma, Sharma, emma_sharma, mom@gmail.com\nArjun, Sharma, arjun_sharma, mom@gmail.com'}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={bulkCreating}
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {bulkCreating ? 'Creating…' : 'Create accounts & enroll'}
+                </button>
+              </form>
+              {bulkResult && bulkResult.created.length > 0 && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-sm font-semibold text-foreground mb-2">Login cards (share with families)</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto text-sm">
+                    {bulkResult.created.map((row) => (
+                      <div key={row.student_id} className="rounded-md bg-card border border-border p-2">
+                        <p className="font-medium">{row.full_name}</p>
+                        <p>Username: <span className="font-mono">{row.username}</span></p>
+                        <p>Password: <span className="font-mono">{row.password}</span></p>
+                        {row.guardian_email && (
+                          <p className="text-muted-foreground text-xs">Parent: {row.guardian_email}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {showAddStudent && (
             <div className={`${panel} mb-4 p-4`}>

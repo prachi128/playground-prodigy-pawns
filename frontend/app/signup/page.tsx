@@ -42,6 +42,7 @@ export default function SignupPage() {
     username: '',
     full_name: '',
     password: '',
+    guardian_email: '',
     age: '',
     gender: '' as '' | 'girl' | 'boy',
     avatar_url: '/avatars/kid-1.png',
@@ -70,8 +71,15 @@ export default function SignupPage() {
     e.preventDefault();
     setInlineError('');
 
-    if (!formData.email || !formData.username || !formData.full_name || !formData.password) {
+    if (!formData.username || !formData.full_name || !formData.password) {
       const msg = 'Please fill in all required fields.';
+      setInlineError(msg);
+      toast.error(msg);
+      return;
+    }
+
+    if (mode === 'parent' && !formData.email) {
+      const msg = 'Please enter your email address.';
       setInlineError(msg);
       toast.error(msg);
       return;
@@ -83,31 +91,26 @@ export default function SignupPage() {
       toast.error(msg);
       return;
     }
-
-    if (mode === 'parent') {
-      const validEmails = childEmails.filter(e => e.trim());
-      if (validEmails.length === 0) {
-        const msg = "Please enter at least one child's email.";
-        setInlineError(msg);
-        toast.error(msg);
-        return;
-      }
-    }
     setIsLoading(true);
 
     try {
       let response;
       if (mode === 'parent') {
+        const legacyChildEmails = childEmails.filter((e) => e.trim());
         response = await authAPI.signupParent({
           email: formData.email,
           username: formData.username,
           full_name: formData.full_name,
           password: formData.password,
-          child_emails: childEmails.filter(e => e.trim()),
+          child_emails: legacyChildEmails.length > 0 ? legacyChildEmails : undefined,
         });
       } else {
         response = await authAPI.signup({
-          ...formData,
+          email: formData.email.trim() || undefined,
+          username: formData.username,
+          full_name: formData.full_name,
+          password: formData.password,
+          guardian_email: formData.guardian_email.trim() || undefined,
           age: formData.age ? parseInt(formData.age) : undefined,
           gender: formData.gender || undefined,
           avatar_url: formData.avatar_url || undefined,
@@ -240,10 +243,10 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Email */}
+            {/* Email (parent required; student optional) */}
             <div>
               <label htmlFor="email" className="block text-sm font-heading font-semibold text-foreground mb-2">
-                Email *
+                {mode === 'parent' ? 'Your Email *' : 'Your Email (Optional)'}
               </label>
               <input
                 id="email"
@@ -255,9 +258,37 @@ export default function SignupPage() {
                 }}
                 className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="your@email.com"
-                required
+                required={mode === 'parent'}
               />
+              {mode === 'student' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Students log in with username. Email is optional.
+                </p>
+              )}
             </div>
+
+            {/* Guardian email (student only) */}
+            {mode === 'student' && (
+              <div>
+                <label htmlFor="guardian_email" className="block text-sm font-heading font-semibold text-foreground mb-2">
+                  Parent / Guardian Email
+                </label>
+                <input
+                  id="guardian_email"
+                  type="email"
+                  value={formData.guardian_email}
+                  onChange={(e) => {
+                    setFormData({ ...formData, guardian_email: e.target.value });
+                    if (inlineError) setInlineError('');
+                  }}
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="parent@email.com"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Links your account when your parent signs up with the same email.
+                </p>
+              </div>
+            )}
 
             {/* Age (Student only) */}
             {mode === 'student' && (
@@ -357,14 +388,14 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* Child Emails (Parent only) */}
+            {/* Child Emails (Parent only — optional legacy link) */}
             {mode === 'parent' && (
               <div>
                 <label className="block text-sm font-heading font-semibold text-foreground mb-2">
-                  Child&apos;s Account Email(s) *
+                  Child&apos;s Account Email(s) (Optional)
                 </label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Enter the email address(es) used for your child&apos;s student account
+                  We automatically link children whose guardian email matches yours. Only add emails here if your child has an older account with its own email.
                 </p>
                 {childEmails.map((email, index) => (
                   <div key={index} className="flex gap-2 mb-2">
@@ -376,8 +407,7 @@ export default function SignupPage() {
                         if (inlineError) setInlineError('');
                       }}
                       className="flex-1 px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      placeholder="child@email.com"
-                      required
+                      placeholder="child@email.com (optional)"
                     />
                     {childEmails.length > 1 && (
                       <button
