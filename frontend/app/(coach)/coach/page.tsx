@@ -99,7 +99,7 @@ export default function CoachDashboard() {
           statsLoading ? 'pointer-events-none select-none blur-[2px] transition-[filter] duration-300' : ''
         }
       >
-        <div className="mb-4 border-b border-border/80 pb-4">
+        {/* <div className="mb-4 border-b border-border/80 pb-4">
           <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Overview
           </h1>
@@ -107,7 +107,7 @@ export default function CoachDashboard() {
             Manage your puzzle library, cohorts, and assignments—aligned with the same experience your
             students see, tuned for instruction and reporting.
           </p>
-        </div>
+        </div> */}
 
         <div className="mb-8 grid gap-4 md:grid-cols-3">
           <Link href="/coach/puzzles" className={cardBase}>

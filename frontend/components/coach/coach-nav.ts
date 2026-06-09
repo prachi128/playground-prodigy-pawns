@@ -13,9 +13,9 @@ export interface CoachNavItem {
 }
 
 export const coachNav: CoachNavItem[] = [
+  { label: "Dashboard", href: "/coach", icon: LayoutDashboard, section: "coach" },
   { label: "Coach", href: "/coach/teaching", icon: Presentation, section: "teaching" },
   { label: "Play", href: "/coach/play", icon: Swords, section: "teaching" },
-  { label: "Dashboard", href: "/coach", icon: LayoutDashboard, section: "coach" },
   { label: "Students", href: "/coach/students", icon: Users, section: "coach" },
   { label: "Leaderboard", href: "/coach/leaderboard", icon: Trophy, section: "coach" },
   { label: "Batches", href: "/coach/batches", icon: Layers, section: "coach" },

@@ -48,7 +48,7 @@ export default function LoginPage() {
       }, 100);
       const redirectPath =
         response.user.role === 'coach' || response.user.role === 'admin'
-          ? '/coach/teaching'
+          ? '/coach'
           : response.user.role === 'parent'
             ? '/parent'
             : '/dashboard';
