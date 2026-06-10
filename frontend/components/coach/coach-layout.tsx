@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useCoachTheme } from "@/contexts/coach-theme-context";
 import { cn } from "@/lib/utils";
 import { CoachSidebar } from "./coach-sidebar";
@@ -12,6 +13,7 @@ interface CoachLayoutProps {
 }
 
 export function CoachLayout({ children }: CoachLayoutProps) {
+  const pathname = usePathname();
   const { theme } = useCoachTheme();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -57,7 +59,10 @@ export function CoachLayout({ children }: CoachLayoutProps) {
         )}
       >
         <div className="coach-main min-h-0 flex-1 overflow-y-auto bg-background">
-          <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:px-8">
+          <div
+            key={pathname}
+            className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 lg:px-8"
+          >
             {children}
           </div>
         </div>

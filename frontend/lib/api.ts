@@ -998,6 +998,50 @@ export interface AdminAuditLogRow {
   created_at: string;
 }
 
+export interface CoachActivityRow {
+  id: number;
+  username: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+  last_login: string | null;
+  days_since_login: number | null;
+  total_batches: number;
+  active_batches: number;
+  total_students: number;
+  active_students: number;
+  primary_students: number;
+  total_assignments: number;
+  active_assignments: number;
+  assignments_this_week: number;
+  sessions_total: number;
+  sessions_this_week: number;
+  attendance_marked_total: number;
+  attendance_marked_this_week: number;
+  announcements_total: number;
+  batch_names: string[];
+}
+
+export interface CoachActivityBatchRow {
+  id: number;
+  name: string;
+  is_active: boolean;
+  student_count: number;
+  schedule?: string | null;
+}
+
+export interface CoachRecentActivityRow {
+  activity_type: string;
+  label: string;
+  occurred_at: string;
+}
+
+export interface CoachDetailedActivity extends CoachActivityRow {
+  batches: CoachActivityBatchRow[];
+  recent_activity: CoachRecentActivityRow[];
+}
+
 export interface AdminOperationalMetrics {
   active_coaches: number;
   unassigned_students: number;
@@ -1155,6 +1199,14 @@ export const adminAPI = {
   },
   getOperationalMetrics: async (): Promise<AdminOperationalMetrics> => {
     const response = await api.get('/api/admin/operational-metrics');
+    return response.data;
+  },
+  listCoachActivity: async (): Promise<CoachActivityRow[]> => {
+    const response = await api.get('/api/admin/coaches/activity');
+    return response.data;
+  },
+  getCoachActivity: async (coachRef: string): Promise<CoachDetailedActivity> => {
+    const response = await api.get(`/api/admin/coaches/${encodeURIComponent(coachRef)}/activity`);
     return response.data;
   },
 };

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, LogOut, Settings, Shield, X } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { coachNav, COACH_NAV_SECTION_LABELS, type CoachNavSection } from "./coach-nav";
@@ -23,17 +23,25 @@ export function CoachSidebar({
   onToggleCollapsed,
 }: CoachSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuthStore();
   const [adminOpen, setAdminOpen] = useState(false);
   const isAdmin = user?.role === "admin";
-  const mainNavItems = coachNav.filter((item) => item.section !== "admin");
+  const mainNavItems = coachNav.filter(
+    (item) => item.section !== "admin" && (!item.adminOnly || isAdmin),
+  );
   const adminNavItems = isAdmin
     ? coachNav.filter((item) => item.section === "admin")
     : [];
 
+  const isNavActive = (href: string) => {
+    if (!pathname) return false;
+    if (href === "/coach") return pathname === "/coach";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
   const linkClass = (href: string, isCollapsedDesktop: boolean) => {
-    const isActive =
-      pathname === href || (href !== "/coach" && pathname?.startsWith(href));
+    const isActive = isNavActive(href);
     return `group relative flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors duration-150 ${
       isCollapsedDesktop ? "lg:justify-center lg:px-2" : ""
     } ${
@@ -43,18 +51,35 @@ export function CoachSidebar({
     }`;
   };
 
+  const navigateTo = (href: string) => {
+    onCloseMobile();
+    if (isNavActive(href) && pathname === href) return;
+    router.push(href);
+  };
+
   const renderNavLink = (item: (typeof coachNav)[number]) => {
     const Icon = item.icon;
-    const isActive =
-      pathname === item.href ||
-      (item.href !== "/coach" && pathname?.startsWith(item.href));
+    const isActive = isNavActive(item.href);
 
     return (
       <Link
         key={item.href}
         href={item.href}
         className={linkClass(item.href, collapsed)}
-        onClick={onCloseMobile}
+        onClick={(event) => {
+          if (
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            event.button !== 0
+          ) {
+            onCloseMobile();
+            return;
+          }
+          event.preventDefault();
+          navigateTo(item.href);
+        }}
         title={collapsed ? item.label : undefined}
         aria-current={isActive ? "page" : undefined}
       >

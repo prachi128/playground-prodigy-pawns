@@ -19,6 +19,8 @@ from models import (
     Notification,
     Attendance,
     ClassSession,
+    Assignment,
+    Announcement,
 )
 from auth import get_current_user
 from database import get_db
@@ -195,6 +197,71 @@ class CoachRosterRow(BaseModel):
     active_students: int
     inactive_students: int
     batches: List[CoachRosterBatchRow]
+
+
+class CoachActivityRow(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    days_since_login: Optional[int] = None
+    total_batches: int = 0
+    active_batches: int = 0
+    total_students: int = 0
+    active_students: int = 0
+    primary_students: int = 0
+    total_assignments: int = 0
+    active_assignments: int = 0
+    assignments_this_week: int = 0
+    sessions_total: int = 0
+    sessions_this_week: int = 0
+    attendance_marked_total: int = 0
+    attendance_marked_this_week: int = 0
+    announcements_total: int = 0
+    batch_names: List[str] = Field(default_factory=list)
+
+
+class CoachActivityBatchRow(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    student_count: int
+    schedule: Optional[str] = None
+
+
+class CoachRecentActivityRow(BaseModel):
+    activity_type: str
+    label: str
+    occurred_at: datetime
+
+
+class CoachDetailedActivity(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    days_since_login: Optional[int] = None
+    total_batches: int = 0
+    active_batches: int = 0
+    total_students: int = 0
+    active_students: int = 0
+    primary_students: int = 0
+    total_assignments: int = 0
+    active_assignments: int = 0
+    assignments_this_week: int = 0
+    sessions_total: int = 0
+    sessions_this_week: int = 0
+    attendance_marked_total: int = 0
+    attendance_marked_this_week: int = 0
+    announcements_total: int = 0
+    batches: List[CoachActivityBatchRow] = Field(default_factory=list)
+    recent_activity: List[CoachRecentActivityRow] = Field(default_factory=list)
 
 
 class StudentCoachAssignRequest(BaseModel):
@@ -701,6 +768,291 @@ def get_coach_roster(
         )
 
     return output
+
+
+def resolve_coach_user(coach_ref: str, db: Session) -> User:
+    if coach_ref.isdigit():
+        coach = (
+            db.query(User)
+            .filter(User.id == int(coach_ref), User.role == UserRole.coach)
+            .first()
+        )
+        if coach:
+            return coach
+    coach = (
+        db.query(User)
+        .filter(User.username == coach_ref, User.role == UserRole.coach)
+        .first()
+    )
+    if not coach:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    return coach
+
+
+def _week_start_utc(now: Optional[datetime] = None) -> datetime:
+    now = now or datetime.utcnow()
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _days_since(dt: Optional[datetime], now: Optional[datetime] = None) -> Optional[int]:
+    if dt is None:
+        return None
+    now = now or datetime.utcnow()
+    return max(0, (now.date() - dt.date()).days)
+
+
+def _coach_activity_metrics(
+    db: Session, coach_ids: List[int]
+) -> Tuple[dict, dict, dict, dict, dict, dict, dict, dict, dict]:
+    """Batch-aggregate coach activity counters keyed by coach user id."""
+    if not coach_ids:
+        return {}, {}, {}, {}, {}, {}, {}, {}
+
+    week_start = _week_start_utc()
+
+    batch_map: dict = {}
+    for coach_id, total, active in (
+        db.query(
+            Batch.coach_id,
+            func.count(Batch.id),
+            func.coalesce(func.sum(case((Batch.is_active == True, 1), else_=0)), 0),
+        )
+        .filter(Batch.coach_id.in_(coach_ids))
+        .group_by(Batch.coach_id)
+        .all()
+    ):
+        batch_map[int(coach_id)] = (int(total or 0), int(active or 0))
+
+    batch_names_map: dict = defaultdict(list)
+    for coach_id, name in (
+        db.query(Batch.coach_id, Batch.name)
+        .filter(Batch.coach_id.in_(coach_ids))
+        .order_by(Batch.name.asc())
+        .all()
+    ):
+        batch_names_map[int(coach_id)].append(name)
+
+    students_map: dict = defaultdict(set)
+    active_students_map: dict = defaultdict(set)
+    for coach_id, student_id, is_active in (
+        db.query(Batch.coach_id, User.id, User.is_active)
+        .join(StudentBatch, StudentBatch.batch_id == Batch.id)
+        .join(User, User.id == StudentBatch.student_id)
+        .filter(
+            Batch.coach_id.in_(coach_ids),
+            StudentBatch.is_active == True,
+            User.role == UserRole.student,
+        )
+        .all()
+    ):
+        cid = int(coach_id)
+        sid = int(student_id)
+        students_map[cid].add(sid)
+        if is_active:
+            active_students_map[cid].add(sid)
+
+    primary_map = {
+        int(coach_id): int(count or 0)
+        for coach_id, count in (
+            db.query(User.primary_coach_id, func.count(User.id))
+            .filter(
+                User.primary_coach_id.in_(coach_ids),
+                User.role == UserRole.student,
+            )
+            .group_by(User.primary_coach_id)
+            .all()
+        )
+    }
+
+    assignment_map = {
+        int(coach_id): (
+            int(total or 0),
+            int(active or 0),
+            int(week or 0),
+        )
+        for coach_id, total, active, week in (
+            db.query(
+                Assignment.coach_id,
+                func.count(Assignment.id),
+                func.coalesce(func.sum(case((Assignment.is_active == True, 1), else_=0)), 0),
+                func.coalesce(
+                    func.sum(case((Assignment.created_at >= week_start, 1), else_=0)),
+                    0,
+                ),
+            )
+            .filter(Assignment.coach_id.in_(coach_ids))
+            .group_by(Assignment.coach_id)
+            .all()
+        )
+    }
+
+    session_map = {
+        int(created_by): (int(total or 0), int(week or 0))
+        for created_by, total, week in (
+            db.query(
+                ClassSession.created_by,
+                func.count(ClassSession.id),
+                func.coalesce(
+                    func.sum(case((ClassSession.created_at >= week_start, 1), else_=0)),
+                    0,
+                ),
+            )
+            .filter(ClassSession.created_by.in_(coach_ids))
+            .group_by(ClassSession.created_by)
+            .all()
+        )
+    }
+
+    attendance_map = {
+        int(marked_by): (int(total or 0), int(week or 0))
+        for marked_by, total, week in (
+            db.query(
+                Attendance.marked_by,
+                func.count(Attendance.id),
+                func.coalesce(
+                    func.sum(case((Attendance.marked_at >= week_start, 1), else_=0)),
+                    0,
+                ),
+            )
+            .filter(Attendance.marked_by.in_(coach_ids))
+            .group_by(Attendance.marked_by)
+            .all()
+        )
+    }
+
+    announcement_map = {
+        int(created_by): int(count or 0)
+        for created_by, count in (
+            db.query(Announcement.created_by, func.count(Announcement.id))
+            .filter(Announcement.created_by.in_(coach_ids))
+            .group_by(Announcement.created_by)
+            .all()
+        )
+    }
+
+    return (
+        batch_map,
+        batch_names_map,
+        students_map,
+        active_students_map,
+        primary_map,
+        assignment_map,
+        session_map,
+        attendance_map,
+        announcement_map,
+    )
+
+
+def _activity_row_from_coach(
+    coach: User,
+    batch_map: dict,
+    batch_names_map: dict,
+    students_map: dict,
+    active_students_map: dict,
+    primary_map: dict,
+    assignment_map: dict,
+    session_map: dict,
+    attendance_map: dict,
+    announcement_map: dict,
+) -> CoachActivityRow:
+    cid = coach.id
+    total_batches, active_batches = batch_map.get(cid, (0, 0))
+    assign_total, assign_active, assign_week = assignment_map.get(cid, (0, 0, 0))
+    sessions_total, sessions_week = session_map.get(cid, (0, 0))
+    attendance_total, attendance_week = attendance_map.get(cid, (0, 0))
+    return CoachActivityRow(
+        id=cid,
+        username=coach.username,
+        full_name=coach.full_name or coach.username,
+        email=coach.email,
+        is_active=bool(coach.is_active),
+        created_at=coach.created_at,
+        last_login=coach.last_login,
+        days_since_login=_days_since(coach.last_login),
+        total_batches=total_batches,
+        active_batches=active_batches,
+        total_students=len(students_map.get(cid, set())),
+        active_students=len(active_students_map.get(cid, set())),
+        primary_students=primary_map.get(cid, 0),
+        total_assignments=assign_total,
+        active_assignments=assign_active,
+        assignments_this_week=assign_week,
+        sessions_total=sessions_total,
+        sessions_this_week=sessions_week,
+        attendance_marked_total=attendance_total,
+        attendance_marked_this_week=attendance_week,
+        announcements_total=announcement_map.get(cid, 0),
+        batch_names=batch_names_map.get(cid, []),
+    )
+
+
+def _recent_coach_activity(db: Session, coach_id: int, limit: int = 12) -> List[CoachRecentActivityRow]:
+    rows: List[CoachRecentActivityRow] = []
+
+    for session in (
+        db.query(ClassSession)
+        .filter(ClassSession.created_by == coach_id)
+        .order_by(ClassSession.created_at.desc())
+        .limit(limit)
+        .all()
+    ):
+        topic = session.topic or "Class session"
+        rows.append(
+            CoachRecentActivityRow(
+                activity_type="session",
+                label=topic,
+                occurred_at=session.created_at,
+            )
+        )
+
+    for assignment in (
+        db.query(Assignment)
+        .filter(Assignment.coach_id == coach_id)
+        .order_by(Assignment.created_at.desc())
+        .limit(limit)
+        .all()
+    ):
+        rows.append(
+            CoachRecentActivityRow(
+                activity_type="assignment",
+                label=assignment.title,
+                occurred_at=assignment.created_at,
+            )
+        )
+
+    for attendance in (
+        db.query(Attendance)
+        .filter(Attendance.marked_by == coach_id)
+        .order_by(Attendance.marked_at.desc())
+        .limit(limit)
+        .all()
+    ):
+        rows.append(
+            CoachRecentActivityRow(
+                activity_type="attendance",
+                label=f"Marked attendance ({attendance.status})",
+                occurred_at=attendance.marked_at,
+            )
+        )
+
+    for announcement in (
+        db.query(Announcement)
+        .filter(Announcement.created_by == coach_id)
+        .order_by(Announcement.created_at.desc())
+        .limit(limit)
+        .all()
+    ):
+        rows.append(
+            CoachRecentActivityRow(
+                activity_type="announcement",
+                label=announcement.title,
+                occurred_at=announcement.created_at,
+            )
+        )
+
+    rows.sort(key=lambda r: r.occurred_at, reverse=True)
+    return rows[:limit]
 
 
 # Stats overview must be before /{student_id} so "stats" is not captured as id
@@ -1346,6 +1698,71 @@ def admin_get_coach_roster(
         include_inactive=include_inactive,
         _admin=admin,
         db=db,
+    )
+
+
+@admin_router.get("/coaches/activity", response_model=List[CoachActivityRow])
+def admin_list_coach_activity(
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin overview of all coaches with activity metrics."""
+    coaches = (
+        db.query(User)
+        .filter(User.role == UserRole.coach)
+        .order_by(User.full_name.asc(), User.username.asc())
+        .all()
+    )
+    coach_ids = [c.id for c in coaches]
+    metrics = _coach_activity_metrics(db, coach_ids)
+    return [
+        _activity_row_from_coach(coach, *metrics)
+        for coach in coaches
+    ]
+
+
+@admin_router.get("/coaches/{coach_ref}/activity", response_model=CoachDetailedActivity)
+def admin_get_coach_activity_detail(
+    coach_ref: str,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Detailed coach activity for admin tracking."""
+    coach = resolve_coach_user(coach_ref, db)
+    metrics = _coach_activity_metrics(db, [coach.id])
+    summary = _activity_row_from_coach(coach, *metrics)
+
+    batches = (
+        db.query(Batch)
+        .filter(Batch.coach_id == coach.id)
+        .order_by(Batch.name.asc())
+        .all()
+    )
+    batch_ids = [b.id for b in batches]
+    enrollments_by_batch: dict = defaultdict(list)
+    if batch_ids:
+        for enrollment in (
+            db.query(StudentBatch)
+            .filter(StudentBatch.batch_id.in_(batch_ids), StudentBatch.is_active == True)
+            .all()
+        ):
+            enrollments_by_batch[enrollment.batch_id].append(enrollment)
+
+    batch_rows = [
+        CoachActivityBatchRow(
+            id=b.id,
+            name=b.name,
+            is_active=bool(b.is_active),
+            student_count=len(enrollments_by_batch.get(b.id, [])),
+            schedule=b.schedule,
+        )
+        for b in batches
+    ]
+
+    return CoachDetailedActivity(
+        **summary.model_dump(),
+        batches=batch_rows,
+        recent_activity=_recent_coach_activity(db, coach.id),
     )
 
 
