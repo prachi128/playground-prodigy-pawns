@@ -9,6 +9,7 @@ import { useAuthStore } from '@/lib/store';
 import { ArrowLeft, Loader2, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api, { batchAPI, type Batch } from '@/lib/api';
+import { coachStudentApiRef, coachStudentProfilePath } from '@/lib/coach-student-path';
 
 interface ThemePerformanceRow {
   theme_key: string;
@@ -49,15 +50,7 @@ interface StudentDetails {
   is_active?: boolean;
   theme_performance?: ThemePerformanceRow[];
   weekly_buckets?: WeeklyBucket[];
-  weekly_trend?: string;
 }
-
-const WEEKLY_TREND_LABELS: Record<string, string> = {
-  improving: 'Improving vs prior week',
-  stable: 'Roughly stable',
-  declining: 'Needs extra support',
-  insufficient_data: 'Not enough data yet',
-};
 
 function formatThemeLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -70,7 +63,7 @@ const value = 'text-right font-medium tabular-nums text-foreground';
 export default function StudentReportPage() {
   const router = useRouter();
   const params = useParams();
-  const studentId = parseInt(params.id as string, 10);
+  const studentUsername = decodeURIComponent(String(params.id ?? ''));
   const { isAuthenticated, user } = useAuthStore();
 
   const [student, setStudent] = useState<StudentDetails | null>(null);
@@ -83,7 +76,7 @@ export default function StudentReportPage() {
       router.push('/dashboard');
       return;
     }
-    if (Number.isNaN(studentId)) {
+    if (!studentUsername) {
       router.push('/coach/students');
       return;
     }
@@ -92,11 +85,14 @@ export default function StudentReportPage() {
     (async () => {
       setLoading(true);
       try {
-        const studentPromise = api.get(`/api/coach/students/${studentId}`);
+        const studentPromise = api.get(
+          `/api/coach/students/${coachStudentApiRef(studentUsername)}`,
+        );
         const batchesPromise = batchAPI.list().catch(() => [] as Batch[]);
         const [res, batches] = await Promise.all([studentPromise, batchesPromise]);
         if (cancelled) return;
-        setStudent(res.data);
+        const loaded = res.data as StudentDetails;
+        setStudent(loaded);
 
         let found: string | null = null;
         if (batches.length > 0) {
@@ -109,7 +105,7 @@ export default function StudentReportPage() {
           for (const r of settled) {
             if (
               r.status === 'fulfilled' &&
-              r.value.list.some((row) => row.student_id === studentId)
+              r.value.list.some((row) => row.student_id === loaded.id)
             ) {
               found = r.value.batch.name;
               break;
@@ -130,7 +126,7 @@ export default function StudentReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, user, router, studentId]);
+  }, [isAuthenticated, user, router, studentUsername]);
 
   if (loading || !student) {
     return (
@@ -175,7 +171,7 @@ export default function StudentReportPage() {
       <div>
         <div className="mb-6 flex flex-wrap items-center gap-3 print:hidden">
           <Link
-            href={`/coach/students/${studentId}`}
+            href={coachStudentProfilePath(student.username)}
             className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -295,14 +291,6 @@ export default function StudentReportPage() {
 
         <section className="mb-8 rounded-xl border border-border bg-card p-6 shadow-sm print:break-inside-avoid">
           <h2 className="font-heading text-lg font-bold text-foreground">Recent weeks (puzzles)</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Trend:{' '}
-            <span className="font-semibold text-foreground">
-              {student.weekly_trend
-                ? WEEKLY_TREND_LABELS[student.weekly_trend] ?? student.weekly_trend
-                : '—'}
-            </span>
-          </p>
           {(student.weekly_buckets?.length ?? 0) === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">No weekly breakdown.</p>
           ) : (

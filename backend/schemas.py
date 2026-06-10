@@ -426,12 +426,22 @@ class BatchCreate(BaseModel):
     name: str
     description: Optional[str] = None
     schedule: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = "Asia/Kolkata"
+    default_duration_minutes: Optional[int] = 60
+    default_meeting_link: Optional[str] = None
     monthly_fee: float = 0
 
 class BatchUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     schedule: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = None
+    default_duration_minutes: Optional[int] = None
+    default_meeting_link: Optional[str] = None
     monthly_fee: Optional[float] = None
     is_active: Optional[bool] = None
 
@@ -440,8 +450,13 @@ class BatchResponse(BaseModel):
     name: str
     description: Optional[str]
     schedule: Optional[str]
+    schedule_weekdays: Optional[str] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = "Asia/Kolkata"
+    default_duration_minutes: Optional[int] = 60
+    default_meeting_link: Optional[str] = None
     coach_id: int
-    monthly_fee: float
+    monthly_fee: Optional[float] = None
     is_active: bool
     created_at: datetime
     student_count: Optional[int] = 0
@@ -457,6 +472,11 @@ class ClassSessionCreate(BaseModel):
     topic: Optional[str] = None
     meeting_link: Optional[str] = None
     notes: Optional[str] = None
+    session_kind: str = "regular"
+    student_ids: Optional[List[int]] = None
+
+class OpenRecurringSlotRequest(BaseModel):
+    date: datetime
 
 class ClassSessionResponse(BaseModel):
     id: int
@@ -466,8 +486,10 @@ class ClassSessionResponse(BaseModel):
     topic: Optional[str]
     meeting_link: Optional[str]
     notes: Optional[str]
+    session_kind: str = "regular"
     created_at: datetime
     batch_name: Optional[str] = None
+    expected_join_count: Optional[int] = None
 
     class Config:
         from_attributes = True

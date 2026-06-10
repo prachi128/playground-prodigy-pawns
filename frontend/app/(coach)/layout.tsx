@@ -11,13 +11,14 @@ import { CoachLayout as CoachShell } from '@/components/coach/coach-layout';
 import axios from 'axios';
 import { coachAPI } from '@/lib/api';
 import { CoachStatsContext, type CoachStatsData } from '@/contexts/coach-stats-context';
-import { Inter } from 'next/font/google';
+import { CoachThemeProvider } from '@/contexts/coach-theme-context';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 
-/** Clean geometric sans (bold titles) — matches coach dashboard reference */
-const coachFont = Inter({
+const coachFont = Plus_Jakarta_Sans({
   subsets: ['latin'],
   variable: '--font-coach',
   display: 'swap',
+  weight: ['400', '500', '600'],
 });
 
 export default function CoachLayout({
@@ -72,7 +73,7 @@ export default function CoachLayout({
   if (authLoading) {
     return (
       <div
-        className={`${coachFont.variable} coach-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50/80 via-slate-100 to-slate-200/90 backdrop-blur-md`}
+        className={`${coachFont.variable} coach-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-[hsl(220_14%_96%)]`}
         aria-busy="true"
         aria-label="Loading"
       >
@@ -89,9 +90,11 @@ export default function CoachLayout({
 
   return (
     <CoachStatsContext.Provider value={{ stats: coachStats, statsLoading: coachStatsLoading }}>
-      <div className={`${coachFont.variable} coach-fonts antialiased`}>
-        <CoachShell>{children}</CoachShell>
-      </div>
+      <CoachThemeProvider>
+        <div className={`${coachFont.variable} coach-fonts antialiased`}>
+          <CoachShell>{children}</CoachShell>
+        </div>
+      </CoachThemeProvider>
     </CoachStatsContext.Provider>
   );
 }

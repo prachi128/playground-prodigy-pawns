@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from models import (
     Attendance,
     ClassSession,
+    ClassSessionJoin,
+    SessionStudent,
     StudentBatch,
     Batch,
     User,
@@ -15,6 +17,13 @@ from models import (
 )
 from auth import get_current_user
 from database import get_db
+from attendance_join_service import (
+    ATTENDANCE_SOURCE_MANUAL,
+    is_within_join_window,
+    record_join_and_mark_present,
+    resolve_join_student_id,
+    student_can_join_session,
+)
 
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
@@ -120,15 +129,47 @@ def get_session_attendance(
     )
     attendance_by_student_id = {a.student_id: a for a in attendance_rows}
 
+    join_rows = (
+        db.query(ClassSessionJoin)
+        .filter(
+            ClassSessionJoin.class_session_id == session_id,
+            ClassSessionJoin.student_id.in_(student_ids) if student_ids else False,
+        )
+        .all()
+    )
+    joins_by_student_id = {j.student_id: j for j in join_rows}
+
+    roster_rows = (
+        db.query(SessionStudent)
+        .filter(SessionStudent.class_session_id == session_id)
+        .all()
+    )
+    roster_by_student_id = {r.student_id: r for r in roster_rows}
+    session_kind = (getattr(session, "session_kind", None) or "regular").lower()
+
+    if session_kind == "makeup":
+        roster_student_ids = {r.student_id for r in roster_rows}
+        students = [s for s in students if s.id in roster_student_ids]
+    elif not roster_rows and students:
+        # Legacy sessions created before roster tracking — treat all as expected
+        pass
+
     out = []
     for s in students:
         a = attendance_by_student_id.get(s.id)
+        join_row = joins_by_student_id.get(s.id)
+        roster = roster_by_student_id.get(s.id)
+        default_expected = session_kind != "makeup"
+        att_source = getattr(a, "source", None) if a else None
         out.append(
             {
                 "student_id": s.id,
                 "student_name": s.full_name,
                 "student_username": s.username,
+                "expected_to_join": roster.expected_to_join if roster else default_expected,
                 "status": _status_bucket(getattr(a, "status", None)) if a else "not_marked",
+                "attendance_source": att_source,
+                "joined_at": join_row.joined_at if join_row else None,
                 "marked_at": getattr(a, "marked_at", None) if a else None,
                 "notes": getattr(a, "notes", None) if a else None,
                 "attendance_id": getattr(a, "id", None) if a else None,
@@ -137,6 +178,95 @@ def get_session_attendance(
 
     out.sort(key=lambda r: (r.get("student_name") or "").lower())
     return out
+
+
+class SetExpectedRequest(BaseModel):
+    student_id: int
+    expected_to_join: bool
+
+
+@router.post("/session/{session_id}/expected")
+def set_expected_to_join(
+    session_id: int,
+    data: SetExpectedRequest,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    session = _get_owned_session(db, session_id=session_id, coach_id=coach.id)
+
+    sb = (
+        db.query(StudentBatch)
+        .filter(
+            StudentBatch.batch_id == session.batch_id,
+            StudentBatch.student_id == data.student_id,
+            StudentBatch.is_active == True,
+        )
+        .first()
+    )
+    if not sb:
+        raise HTTPException(status_code=404, detail="Student not in this class")
+
+    roster = (
+        db.query(SessionStudent)
+        .filter(
+            SessionStudent.class_session_id == session_id,
+            SessionStudent.student_id == data.student_id,
+        )
+        .first()
+    )
+    if roster:
+        roster.expected_to_join = bool(data.expected_to_join)
+    else:
+        roster = SessionStudent(
+            class_session_id=session_id,
+            student_id=data.student_id,
+            expected_to_join=bool(data.expected_to_join),
+        )
+        db.add(roster)
+
+    db.commit()
+    return {
+        "student_id": data.student_id,
+        "session_id": session_id,
+        "expected_to_join": roster.expected_to_join,
+    }
+
+
+class JoinClassSessionRequest(BaseModel):
+    student_id: Optional[int] = None
+
+
+@router.post("/session/{session_id}/join")
+def join_class_session(
+    session_id: int,
+    data: Optional[JoinClassSessionRequest] = None,
+    user: User = Depends(require_any),
+    db: Session = Depends(get_db),
+):
+    """Student or parent joins a class in-app; marks present unless coach already set manually."""
+    payload = data or JoinClassSessionRequest()
+    session = db.query(ClassSession).filter(ClassSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Class session not found")
+
+    student_id = resolve_join_student_id(db, user, session, payload.student_id)
+    student_can_join_session(db, student_id, session)
+
+    join_row, attendance = record_join_and_mark_present(db, session, student_id)
+    db.commit()
+    db.refresh(join_row)
+    db.refresh(attendance)
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "student_id": student_id,
+        "joined_at": join_row.joined_at,
+        "attendance_status": attendance.status,
+        "attendance_source": attendance.source,
+        "meeting_link": session.meeting_link,
+        "coach_override": attendance.source == ATTENDANCE_SOURCE_MANUAL,
+    }
 
 
 class MarkAttendanceRequest(BaseModel):
@@ -182,6 +312,7 @@ def mark_attendance(
     if attendance:
         attendance.status = status_norm
         attendance.notes = data.notes
+        attendance.source = ATTENDANCE_SOURCE_MANUAL
         attendance.marked_by = coach.id
         attendance.marked_at = now
     else:
@@ -190,6 +321,7 @@ def mark_attendance(
             student_id=data.student_id,
             status=status_norm,
             notes=data.notes,
+            source=ATTENDANCE_SOURCE_MANUAL,
             marked_by=coach.id,
             marked_at=now,
         )
@@ -203,6 +335,7 @@ def mark_attendance(
         "student_id": attendance.student_id,
         "session_id": attendance.class_session_id,
         "status": attendance.status,
+        "source": attendance.source,
         "marked_at": attendance.marked_at,
         "marked_by": attendance.marked_by,
     }
@@ -258,6 +391,7 @@ def mark_all_attendance(
         row = existing_by_student_id.get(sid)
         if row:
             row.status = st_norm
+            row.source = ATTENDANCE_SOURCE_MANUAL
             row.marked_by = coach.id
             row.marked_at = now
         else:
@@ -265,6 +399,7 @@ def mark_all_attendance(
                 class_session_id=session_id,
                 student_id=sid,
                 status=st_norm,
+                source=ATTENDANCE_SOURCE_MANUAL,
                 marked_by=coach.id,
                 marked_at=now,
             )
@@ -274,6 +409,80 @@ def mark_all_attendance(
 
     db.commit()
     return {"marked": marked, "session_id": session_id}
+
+
+def _batch_ids_for_user(db: Session, user: User) -> List[int]:
+    if user.role in (UserRole.student, "student"):
+        rows = (
+            db.query(StudentBatch.batch_id)
+            .filter(StudentBatch.student_id == user.id, StudentBatch.is_active == True)
+            .all()
+        )
+        return [r[0] for r in rows]
+    if user.role in (UserRole.parent, "parent"):
+        child_ids = [
+            r[0]
+            for r in db.query(ParentStudent.student_id)
+            .filter(ParentStudent.parent_id == user.id)
+            .all()
+        ]
+        if not child_ids:
+            return []
+        rows = (
+            db.query(StudentBatch.batch_id)
+            .filter(StudentBatch.student_id.in_(child_ids), StudentBatch.is_active == True)
+            .distinct()
+            .all()
+        )
+        return [r[0] for r in rows]
+    return []
+
+
+@router.get("/upcoming-sessions")
+def list_upcoming_sessions(
+    user: User = Depends(require_any),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+):
+    """Upcoming class sessions for the logged-in student or parent's children."""
+    if user.role not in (UserRole.student, "student", UserRole.parent, "parent"):
+        raise HTTPException(status_code=403, detail="Student or parent access required")
+
+    batch_ids = _batch_ids_for_user(db, user)
+    if not batch_ids:
+        return []
+
+    cap = max(1, min(limit, 20))
+    now = datetime.utcnow()
+    sessions = (
+        db.query(ClassSession)
+        .filter(ClassSession.batch_id.in_(batch_ids), ClassSession.date >= now)
+        .order_by(ClassSession.date.asc())
+        .limit(cap)
+        .all()
+    )
+
+    batch_name_by_id = {
+        b.id: b.name
+        for b in db.query(Batch).filter(Batch.id.in_(batch_ids)).all()
+    }
+
+    out = []
+    for s in sessions:
+        out.append(
+            {
+                "id": s.id,
+                "batch_id": s.batch_id,
+                "batch_name": batch_name_by_id.get(s.batch_id),
+                "date": s.date,
+                "duration_minutes": s.duration_minutes,
+                "topic": s.topic,
+                "meeting_link": s.meeting_link,
+                "session_kind": getattr(s, "session_kind", None) or "regular",
+                "can_join": is_within_join_window(s, now),
+            }
+        )
+    return out
 
 
 @router.get("/student/{student_id}")

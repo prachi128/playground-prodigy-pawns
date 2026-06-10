@@ -13,14 +13,17 @@ import {
   PRESET_AVATAR_PATHS,
   personInitial,
 } from '@/lib/avatar';
-import { Settings, User, LogOut, Loader2, Save, Upload, ImageIcon, X, Trash2 } from 'lucide-react';
+import { Settings, User, LogOut, Loader2, Save, Upload, ImageIcon, X, Trash2, Moon, Sun } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useCoachTheme } from '@/contexts/coach-theme-context';
+import type { CoachTheme } from '@/lib/coach-theme';
 
 const cardClass = 'rounded-xl border border-border bg-card p-6 shadow-sm';
 
 export default function CoachSettingsPage() {
   const router = useRouter();
   const { isAuthenticated, user, logout, updateUser, refreshCurrentUser } = useAuthStore();
+  const { theme, setTheme } = useCoachTheme();
 
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -296,6 +299,36 @@ export default function CoachSettingsPage() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save profile
             </button>
+          </div>
+        </section>
+
+        <section className={cardClass}>
+          <h2 className="mb-2 font-heading text-lg font-bold text-card-foreground">Appearance</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Dark mode uses GitHub-style colors — dark canvas, light text, and elevated panels.
+          </p>
+          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+            {(
+              [
+                { id: 'light' as CoachTheme, label: 'Light', icon: Sun },
+                { id: 'dark' as CoachTheme, label: 'Dark', icon: Moon },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTheme(id)}
+                className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-[13px] font-medium transition-colors ${
+                  theme === id
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                aria-pressed={theme === id}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden />
+                {label}
+              </button>
+            ))}
           </div>
         </section>
 

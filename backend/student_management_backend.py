@@ -17,11 +17,20 @@ from models import (
     StudentBatch,
     PuzzleTheme,
     Notification,
+    Attendance,
+    ClassSession,
 )
 from auth import get_current_user
 from database import get_db
 from datetime import datetime, timedelta
 from audit_service import log_admin_action
+from student_ref_utils import resolve_student_user
+from account_utils import (
+    is_student_placeholder_email,
+    link_student_to_guardian_parent,
+    resolve_student_email,
+    student_placeholder_email,
+)
 
 router = APIRouter(prefix="/api/coach/students", tags=["students"])
 admin_router = APIRouter(prefix="/api/admin", tags=["admin-students"])
@@ -33,10 +42,18 @@ class StudentStats(BaseModel):
     username: str
     full_name: str
     email: str
+    age: Optional[int] = None
     xp: int
     total_xp: int  # alias for frontend compatibility
     level: int
     rating: int
+    internal_rating: int = 0
+    online_rating: Optional[int] = None
+    fide_rating: Optional[int] = None
+    batch_names: List[str] = Field(default_factory=list)
+    skill_level: str = "—"
+    attendance_pct: Optional[float] = None
+    last_class_attended: Optional[datetime] = None
     created_at: datetime
     last_active: Optional[datetime] = None
     days_since_active: int
@@ -61,10 +78,30 @@ class DeactivatedNoticeStudent(BaseModel):
     email: str
 
 
+class CoachStudentUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    age: Optional[int] = Field(None, ge=4, le=99)
+    guardian_email: Optional[str] = None
+    phone: Optional[str] = Field(None, max_length=30)
+    whatsapp: Optional[str] = Field(None, max_length=30)
+    student_email: Optional[str] = None
+
+
 class StudentDetailedStats(BaseModel):
     id: int
     username: str
+    full_name: str
     email: str
+    guardian_email: Optional[str] = None
+    student_email: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    age: Optional[int] = None
+    rating: int = 0
+    skill_level: str = "—"
+    batch_names: List[str] = Field(default_factory=list)
+    attendance_pct: Optional[float] = None
+    last_class_attended: Optional[datetime] = None
     xp: int
     created_at: datetime
     last_active: Optional[datetime] = None
@@ -182,6 +219,21 @@ def _is_admin(user: User) -> bool:
     return user.role in (UserRole.admin, "admin")
 
 
+def _student_personal_email(student: User) -> Optional[str]:
+    if student.email and not is_student_placeholder_email(student.email):
+        return student.email.strip()
+    return None
+
+
+def _normalize_optional_contact(value: Optional[str], *, max_len: int = 30) -> Optional[str]:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    return trimmed[:max_len]
+
+
 def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
     """
     Distinct student ids with an active enrollment in any batch owned by this coach.
@@ -200,6 +252,146 @@ def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
     return {int(r[0]) for r in rows}
 
 
+def _skill_level_label(internal_rating: int) -> str:
+    """Coach-facing band from the student's in-app rating (not puzzle rating)."""
+    ref = internal_rating or 0
+    if ref <= 0:
+        return "Unrated"
+    if ref < 600:
+        return "Beginner"
+    if ref < 1000:
+        return "Intermediate"
+    if ref < 1400:
+        return "Advanced"
+    return "Expert"
+
+
+def _attendance_status_bucket(value: Optional[str]) -> str:
+    v = (value or "").strip().lower()
+    if v in ("present", "absent"):
+        return v
+    return "not_marked"
+
+
+def _bulk_student_batch_names(
+    db: Session,
+    student_ids: List[int],
+    coach: User,
+) -> dict[int, List[str]]:
+    if not student_ids:
+        return {}
+    q = (
+        db.query(StudentBatch.student_id, Batch.name)
+        .join(Batch, Batch.id == StudentBatch.batch_id)
+        .filter(
+            StudentBatch.student_id.in_(student_ids),
+            StudentBatch.is_active == True,
+            Batch.is_active == True,
+        )
+    )
+    if not _is_admin(coach):
+        q = q.filter(Batch.coach_id == coach.id)
+    rows = q.order_by(Batch.name.asc()).all()
+    out: dict[int, List[str]] = defaultdict(list)
+    for student_id, batch_name in rows:
+        if batch_name and batch_name not in out[student_id]:
+            out[student_id].append(batch_name)
+    return out
+
+
+def _bulk_student_attendance(
+    db: Session,
+    student_ids: List[int],
+    coach: User,
+) -> dict[int, dict]:
+    """
+    Per-student attendance % and last present class date across coach-visible batches.
+    Denominator = class sessions for enrolled batches (coach scope).
+    """
+    if not student_ids:
+        return {}
+
+    enroll_q = (
+        db.query(StudentBatch.student_id, StudentBatch.batch_id)
+        .join(Batch, Batch.id == StudentBatch.batch_id)
+        .filter(
+            StudentBatch.student_id.in_(student_ids),
+            StudentBatch.is_active == True,
+            Batch.is_active == True,
+        )
+    )
+    if not _is_admin(coach):
+        enroll_q = enroll_q.filter(Batch.coach_id == coach.id)
+    enrollments = enroll_q.all()
+    if not enrollments:
+        return {sid: {"attendance_pct": None, "last_class_attended": None} for sid in student_ids}
+
+    batch_ids = list({batch_id for _, batch_id in enrollments})
+    batches_by_student: dict[int, Set[int]] = defaultdict(set)
+    for student_id, batch_id in enrollments:
+        batches_by_student[student_id].add(batch_id)
+
+    sessions = (
+        db.query(ClassSession.id, ClassSession.batch_id, ClassSession.date)
+        .filter(ClassSession.batch_id.in_(batch_ids))
+        .all()
+    )
+    sessions_by_batch: dict[int, list] = defaultdict(list)
+    for session_id, batch_id, session_date in sessions:
+        sessions_by_batch[batch_id].append((session_id, session_date))
+
+    session_ids = [s[0] for s in sessions]
+    attendance_rows = (
+        db.query(
+            Attendance.student_id,
+            Attendance.class_session_id,
+            Attendance.status,
+            Attendance.marked_at,
+        )
+        .filter(
+            Attendance.student_id.in_(student_ids),
+            Attendance.class_session_id.in_(session_ids) if session_ids else False,
+        )
+        .all()
+        if session_ids
+        else []
+    )
+    attendance_by_student_session: dict[tuple[int, int], tuple[str, Optional[datetime]]] = {}
+    for student_id, session_id, status, marked_at in attendance_rows:
+        attendance_by_student_session[(student_id, session_id)] = (status, marked_at)
+
+    out: dict[int, dict] = {}
+    for student_id in student_ids:
+        student_batch_ids = batches_by_student.get(student_id, set())
+        relevant_sessions: List[Tuple[int, datetime]] = []
+        for batch_id in student_batch_ids:
+            relevant_sessions.extend(sessions_by_batch.get(batch_id, []))
+        total_sessions = len(relevant_sessions)
+        if total_sessions == 0:
+            out[student_id] = {"attendance_pct": None, "last_class_attended": None}
+            continue
+
+        present_count = 0
+        last_present_date: Optional[datetime] = None
+        for session_id, session_date in relevant_sessions:
+            row = attendance_by_student_session.get((student_id, session_id))
+            if not row:
+                continue
+            status, marked_at = row
+            if _attendance_status_bucket(status) == "present":
+                present_count += 1
+                candidate = session_date or marked_at
+                if candidate and (last_present_date is None or candidate > last_present_date):
+                    last_present_date = candidate
+
+        pct = round(present_count / total_sessions * 100.0, 1) if total_sessions > 0 else None
+        out[student_id] = {
+            "attendance_pct": pct,
+            "last_class_attended": last_present_date,
+        }
+    return out
+
+
 def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool:
     if _is_admin(coach):
         return True
@@ -213,26 +405,6 @@ def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool
         .first()
     )
     return bool(row)
-
-
-def _compute_student_priority_tags(
-    total_xp: int,
-    attempted: int,
-    solved: int,
-    days_since_active: int,
-) -> List[str]:
-    tags: List[str] = []
-    if days_since_active > 7:
-        tags.append("inactive_week")
-    if attempted >= 5:
-        rate = (solved / attempted * 100) if attempted else 0.0
-        if rate < 50:
-            tags.append("low_accuracy")
-    if attempted == 0 and days_since_active > 3:
-        tags.append("no_puzzles_yet")
-    if total_xp < 50:
-        tags.append("low_xp")
-    return tags
 
 
 def _student_theme_performance_rows(db: Session, student_id: int) -> List[ThemePerformanceRow]:
@@ -564,59 +736,11 @@ def get_class_overview(
     sorted_by_xp = sorted(students, key=lambda s: s.total_xp, reverse=True)
     most_active = [{"id": s.id, "username": s.username, "xp": s.total_xp} for s in sorted_by_xp[:5]]
 
-    ids = [s.id for s in students]
-    attempt_map: dict[int, tuple[int, int]] = {}
-    last_map: dict[int, datetime] = {}
-    if ids:
-        att_rows = (
-            db.query(
-                PuzzleAttempt.user_id,
-                func.count(PuzzleAttempt.id),
-                func.sum(case((PuzzleAttempt.is_solved == True, 1), else_=0)),
-            )
-            .filter(PuzzleAttempt.user_id.in_(ids))
-            .group_by(PuzzleAttempt.user_id)
-            .all()
-        )
-        for uid, cnt, sol in att_rows:
-            attempt_map[int(uid)] = (int(cnt or 0), int(sol or 0))
-        last_rows = (
-            db.query(PuzzleAttempt.user_id, func.max(PuzzleAttempt.attempted_at))
-            .filter(PuzzleAttempt.user_id.in_(ids))
-            .group_by(PuzzleAttempt.user_id)
-            .all()
-        )
-        for uid, mx in last_rows:
-            if mx is not None:
-                last_map[int(uid)] = mx
-
-    now = datetime.utcnow()
-    needs_attention: list[dict] = []
-    for s in students:
-        attempted, solved = attempt_map.get(s.id, (0, 0))
-        success_rate = (solved / attempted * 100) if attempted else 0.0
-        last_attempt = last_map.get(s.id) or s.last_login or s.created_at
-        if last_attempt is None:
-            days_since = 999
-        else:
-            days_since = (now - last_attempt).days
-        xp_val = s.total_xp or 0
-        tags = _compute_student_priority_tags(xp_val, attempted, solved, days_since)
-        if tags:
-            needs_attention.append(
-                {
-                    "id": s.id,
-                    "username": s.username,
-                    "xp": xp_val,
-                    "tags": tags,
-                }
-            )
-
     return {
         "total_students": len(students),
         "average_xp": round(average_xp, 1),
         "most_active": most_active,
-        "needs_attention": needs_attention,
+        "needs_attention": [],
     }
 
 
@@ -661,14 +785,12 @@ def get_all_students(
     db: Session = Depends(get_db),
 ):
     """
-    Students in this coach's batches with basic stats.
-    Coaches only see active accounts; admins see all students (including inactive).
+    Students in this coach's batches with basic stats (active and deactivated).
+    Admins may filter by coach assignment; coaches see their roster including inactive accounts.
     """
     q = db.query(User).filter(User.role == UserRole.student)
     is_admin_user = _is_admin(coach)
-    if not is_admin_user:
-        q = q.filter(User.is_active == True)
-    else:
+    if is_admin_user:
         if unassigned_only:
             q = q.filter(User.primary_coach_id.is_(None))
         elif coach_id is not None:
@@ -688,6 +810,10 @@ def get_all_students(
             return []
         q = q.filter(User.id.in_(roster))
     students = q.all()
+    student_ids = [s.id for s in students]
+    batch_names_by_student = _bulk_student_batch_names(db, student_ids, coach)
+    attendance_by_student = _bulk_student_attendance(db, student_ids, coach)
+
     student_stats = []
     for student in students:
         # Per-student stats from PuzzleAttempt
@@ -709,8 +835,11 @@ def get_all_students(
             days_since_active = (datetime.utcnow() - last_active).days
 
         xp_val = student.total_xp or 0
-        priority_tags = _compute_student_priority_tags(
-            xp_val, attempted, solved, days_since_active
+        internal_rating = student.rating or 0
+        online_rating = student.puzzle_rating
+        attendance_info = attendance_by_student.get(
+            student.id,
+            {"attendance_pct": None, "last_class_attended": None},
         )
         student_stats.append(
             StudentStats(
@@ -718,10 +847,18 @@ def get_all_students(
                 username=student.username,
                 full_name=student.full_name or student.username,
                 email=student.email,
+                age=student.age,
                 xp=xp_val,
                 total_xp=xp_val,
                 level=student.level or 1,
-                rating=student.rating or 0,
+                rating=internal_rating,
+                internal_rating=internal_rating,
+                online_rating=online_rating,
+                fide_rating=None,
+                batch_names=batch_names_by_student.get(student.id, []),
+                skill_level=_skill_level_label(internal_rating),
+                attendance_pct=attendance_info.get("attendance_pct"),
+                last_class_attended=attendance_info.get("last_class_attended"),
                 created_at=student.created_at,
                 last_active=last_active,
                 days_since_active=days_since_active,
@@ -741,7 +878,7 @@ def get_all_students(
                     else None
                 ),
                 is_unassigned=student.primary_coach_id is None,
-                priority_tags=priority_tags,
+                priority_tags=[],
             )
         )
     return student_stats
@@ -825,19 +962,15 @@ def assign_student_to_coach(
     }
 
 
-@router.get("/{student_id}", response_model=StudentDetailedStats)
+@router.get("/{student_ref}", response_model=StudentDetailedStats)
 def get_student_details(
-    student_id: int,
+    student_ref: str,
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
     """Get detailed stats for a specific student (must be on coach roster unless admin)."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _coach_can_access_student(coach, db, student_id):
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _is_admin(coach) and student.is_active is False:
+    student = resolve_student_user(student_ref, db)
+    if not _coach_can_access_student(coach, db, student.id):
         raise HTTPException(status_code=404, detail="Student not found")
 
     # From PuzzleAttempt
@@ -957,11 +1090,28 @@ def get_student_details(
     now = datetime.utcnow()
     theme_performance = _student_theme_performance_rows(db, student.id)
     weekly_buckets, weekly_trend = _weekly_buckets_and_trend(db, student.id, now)
+    internal_rating = student.rating or 0
+    batch_names = _bulk_student_batch_names(db, [student.id], coach).get(student.id, [])
+    attendance_info = _bulk_student_attendance(db, [student.id], coach).get(
+        student.id,
+        {"attendance_pct": None, "last_class_attended": None},
+    )
 
     return StudentDetailedStats(
         id=student.id,
         username=student.username,
+        full_name=student.full_name or student.username,
         email=student.email,
+        guardian_email=student.guardian_email,
+        student_email=_student_personal_email(student),
+        phone=student.phone,
+        whatsapp=student.whatsapp,
+        age=student.age,
+        rating=internal_rating,
+        skill_level=_skill_level_label(internal_rating),
+        batch_names=batch_names,
+        attendance_pct=attendance_info.get("attendance_pct"),
+        last_class_attended=attendance_info.get("last_class_attended"),
         xp=student.total_xp,
         created_at=student.created_at,
         last_active=last_active,
@@ -986,18 +1136,69 @@ def get_student_details(
     )
 
 
-@router.post("/{student_id}/award-xp")
+@router.patch("/{student_ref}", response_model=StudentDetailedStats)
+def update_student_details(
+    student_ref: str,
+    payload: CoachStudentUpdate,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Update editable student profile and contact fields (coach roster or admin)."""
+    student = resolve_student_user(student_ref, db)
+    if not _coach_can_access_student(coach, db, student.id):
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "full_name" in updates:
+        student.full_name = updates["full_name"].strip()
+
+    if "age" in updates:
+        student.age = updates["age"]
+
+    if "guardian_email" in updates:
+        raw = updates["guardian_email"]
+        student.guardian_email = raw.strip().lower() if raw and raw.strip() else None
+        link_student_to_guardian_parent(student, db)
+
+    if "phone" in updates:
+        student.phone = _normalize_optional_contact(updates["phone"])
+
+    if "whatsapp" in updates:
+        student.whatsapp = _normalize_optional_contact(updates["whatsapp"])
+
+    if "student_email" in updates:
+        raw = updates["student_email"]
+        if raw and raw.strip():
+            resolved = resolve_student_email(raw, student.username)
+            taken = (
+                db.query(User)
+                .filter(User.email == resolved, User.id != student.id)
+                .first()
+            )
+            if taken:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            student.email = resolved
+        else:
+            student.email = student_placeholder_email(student.username)
+
+    db.commit()
+    db.refresh(student)
+    return get_student_details(student_ref, coach, db)
+
+
+@router.post("/{student_ref}/award-xp")
 def award_bonus_xp(
-    student_id: int,
+    student_ref: str,
     xp_amount: int = Query(..., ge=1, le=100, description="XP to award (1-100)"),
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
     """Award bonus XP to a student on this coach's roster (any student if admin)."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _coach_can_access_student(coach, db, student_id):
+    student = resolve_student_user(student_ref, db)
+    if not _coach_can_access_student(coach, db, student.id):
         raise HTTPException(status_code=404, detail="Student not found")
     if student.is_active is False:
         raise HTTPException(
@@ -1015,18 +1216,16 @@ def award_bonus_xp(
     }
 
 
-@router.post("/{student_id}/nudge")
+@router.post("/{student_ref}/nudge")
 def nudge_student(
-    student_id: int,
+    student_ref: str,
     payload: StudentNudgeRequest,
     coach: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
     """Send an in-app reminder notification to a student on the coach roster."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _coach_can_access_student(coach, db, student_id):
+    student = resolve_student_user(student_ref, db)
+    if not _coach_can_access_student(coach, db, student.id):
         raise HTTPException(status_code=404, detail="Student not found")
     if student.is_active is False:
         raise HTTPException(
@@ -1055,16 +1254,14 @@ def nudge_student(
     return {"success": True, "message": "Reminder sent"}
 
 
-@router.put("/{student_id}/deactivate")
+@router.put("/{student_ref}/deactivate")
 def deactivate_student(
-    student_id: int,
+    student_ref: str,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Deactivate a student account (admin only). Does not remove database rows."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+    student = resolve_student_user(student_ref, db)
     if student.is_active is False:
         return {
             "success": True,
@@ -1084,16 +1281,14 @@ def deactivate_student(
     return {"success": True, "message": f"Student {student.username} deactivated"}
 
 
-@router.put("/{student_id}/reactivate")
+@router.put("/{student_ref}/reactivate")
 def reactivate_student(
-    student_id: int,
+    student_ref: str,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Restore a deactivated student account (admin only)."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+    student = resolve_student_user(student_ref, db)
     if student.is_active is True:
         return {
             "success": True,

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import { coachStudentProfilePath } from '@/lib/coach-student-path';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface Row {
@@ -275,7 +276,7 @@ export default function AdminStudentsPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Link
-                          href={`/coach/students/${r.id}`}
+                          href={coachStudentProfilePath(r.username)}
                           className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/60"
                         >
                           Profile

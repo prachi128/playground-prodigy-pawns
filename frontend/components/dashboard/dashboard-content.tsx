@@ -14,6 +14,7 @@ import { StarShopPreview } from "./star-shop"
 import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
 import { LevelCard } from "./level-card"
 import { ActivityFeed } from "./activity-feed"
+import { StudentUpcomingClasses } from "./StudentUpcomingClasses"
 
 // --- Data ---
 
@@ -81,6 +82,8 @@ export function DashboardContent() {
           </div>
         </div>
       </section>
+
+      <StudentUpcomingClasses />
 
       {/* Action Cards - Vibrant gradient backgrounds */}
       <section className="mb-6">

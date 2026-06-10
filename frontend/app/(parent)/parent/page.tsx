@@ -5,8 +5,10 @@
 import { useEffect, useState } from 'react';
 import { parentAPI, ParentDashboard } from '@/lib/api';
 import { usernameInitial } from '@/lib/avatar';
-import { Loader2, Calendar, CreditCard, Megaphone, Users, ExternalLink, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Loader2, Calendar, CreditCard, Megaphone, Users, AlertTriangle, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { JoinClassButton } from '@/components/JoinClassButton';
+import { canJoinClassSession } from '@/lib/class-join';
 
 export default function ParentDashboardPage() {
   const [data, setData] = useState<ParentDashboard | null>(null);
@@ -147,16 +149,20 @@ export default function ParentDashboardPage() {
                   {cls.batch_name && <span> &middot; {cls.batch_name}</span>}
                 </p>
               </div>
-              {cls.meeting_link && (
-                <a
-                  href={cls.meeting_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 bg-primary-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary-600 transition"
-                >
-                  Join <ExternalLink className="w-4 h-4" />
-                </a>
-              )}
+              {cls.meeting_link || canJoinClassSession(cls.date, cls.duration_minutes ?? 60) ? (
+                <JoinClassButton
+                  sessionId={cls.id}
+                  batchId={cls.batch_id}
+                  meetingLink={cls.meeting_link}
+                  canJoin={canJoinClassSession(cls.date, cls.duration_minutes ?? 60)}
+                  childrenOptions={data.children.map((c) => ({
+                    id: c.id,
+                    name: c.full_name,
+                    batchId: c.batch_id,
+                  }))}
+                  size="sm"
+                />
+              ) : null}
             </div>
           ))}
           {data.upcoming_classes.length === 0 && (

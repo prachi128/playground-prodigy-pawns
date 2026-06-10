@@ -78,6 +78,8 @@ class User(Base):
     role = Column(CaseInsensitiveEnum(UserRole), default=UserRole.student)
     primary_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     guardian_email = Column(String, nullable=True, index=True)
+    phone = Column(String(30), nullable=True)
+    whatsapp = Column(String(30), nullable=True)
     
     # Student specific fields
     age = Column(Integer)
@@ -390,7 +392,12 @@ class Batch(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
-    schedule = Column(String)  # e.g., "Mon/Wed/Fri 4-5PM"
+    schedule = Column(String)  # human-readable label, e.g. "Mon / Wed 5:00 PM"
+    schedule_weekdays = Column(String)  # comma-separated JS DOW: 0=Sun … 6=Sat
+    schedule_time = Column(String)  # HH:MM (24h) in schedule_timezone
+    schedule_timezone = Column(String, default="Asia/Kolkata")
+    default_duration_minutes = Column(Integer, default=60)
+    default_meeting_link = Column(String)
     coach_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     monthly_fee = Column(Numeric(10, 2), default=0)
     is_active = Column(Boolean, default=True)
@@ -431,12 +438,42 @@ class ClassSession(Base):
     topic = Column(String)
     meeting_link = Column(String)
     notes = Column(Text)
+    session_kind = Column(String, default="regular")  # regular | makeup
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     batch = relationship("Batch", back_populates="class_sessions")
     creator = relationship("User", foreign_keys=[created_by])
+    session_students = relationship("SessionStudent", back_populates="class_session", cascade="all, delete-orphan")
+    session_joins = relationship("ClassSessionJoin", back_populates="class_session", cascade="all, delete-orphan")
+
+
+class ClassSessionJoin(Base):
+    """Records when a student joined a class session via the app."""
+    __tablename__ = "class_session_joins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    join_source = Column(String(20), default="in_app", nullable=False)
+
+    class_session = relationship("ClassSession", back_populates="session_joins")
+    student = relationship("User", foreign_keys=[student_id])
+
+
+class SessionStudent(Base):
+    """Per-session roster: which students are expected to join."""
+    __tablename__ = "session_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    expected_to_join = Column(Boolean, default=True, nullable=False)
+
+    class_session = relationship("ClassSession", back_populates="session_students")
+    student = relationship("User", foreign_keys=[student_id])
 
 
 # Announcement Model
@@ -722,6 +759,7 @@ class Attendance(Base):
                               default=datetime.utcnow, 
                               nullable=False)
     notes            = Column(Text, nullable=True)
+    source           = Column(String(20), nullable=True)  # auto_join | coach_manual
 
     # Relationships
     class_session = relationship("ClassSession", 

@@ -9,14 +9,24 @@ import os
 import secrets
 import json
 
-from models import Batch, StudentBatch, ClassSession, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
+from models import Batch, StudentBatch, ClassSession, SessionStudent, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
+from batch_schedule_service import (
+    apply_schedule_fields_to_batch,
+    batch_to_response,
+    active_batch_student_ids,
+    seed_session_roster,
+    session_to_response,
+    find_session_near_datetime,
+    is_admin_user,
+)
+from schedule_utils import combine_date_and_schedule_time
 from auth import get_current_user, get_password_hash
 from database import get_db
 from account_utils import create_student_user
 from audit_service import log_admin_action
 from schemas import (
     BatchCreate, BatchUpdate, BatchResponse,
-    ClassSessionCreate, ClassSessionResponse,
+    ClassSessionCreate, ClassSessionResponse, OpenRecurringSlotRequest,
     AnnouncementCreate, AnnouncementResponse,
     StudentBatchAdd, StudentBatchResponse,
     PaymentResponse,
@@ -68,22 +78,21 @@ def _notify_batch_students(
     title: str,
     message: str,
     link_url: Optional[str] = "/dashboard",
+    student_ids: Optional[List[int]] = None,
 ) -> int:
-    student_ids = [
-        sid
-        for (sid,) in (
-            db.query(StudentBatch.student_id)
-            .join(User, User.id == StudentBatch.student_id)
-            .filter(
-                StudentBatch.batch_id == batch_id,
-                StudentBatch.is_active == True,
-                User.role == UserRole.student,
-                User.is_active == True,
-            )
-            .distinct()
-            .all()
+    query = (
+        db.query(StudentBatch.student_id)
+        .join(User, User.id == StudentBatch.student_id)
+        .filter(
+            StudentBatch.batch_id == batch_id,
+            StudentBatch.is_active == True,
+            User.role == UserRole.student,
+            User.is_active == True,
         )
-    ]
+    )
+    if student_ids is not None:
+        query = query.filter(StudentBatch.student_id.in_(student_ids))
+    student_ids = [sid for (sid,) in query.distinct().all()]
     for student_id in student_ids:
         db.add(
             Notification(
@@ -101,22 +110,30 @@ def _notify_batch_students(
 
 @router.post("", response_model=BatchResponse)
 def create_batch(data: BatchCreate, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
+    fee = data.monthly_fee if is_admin_user(coach) else 0
     batch = Batch(
         name=data.name,
         description=data.description,
         schedule=data.schedule,
         coach_id=coach.id,
-        monthly_fee=data.monthly_fee,
+        monthly_fee=fee,
+        default_duration_minutes=data.default_duration_minutes or 60,
+        default_meeting_link=data.default_meeting_link,
+        schedule_timezone=data.schedule_timezone or "Asia/Kolkata",
+    )
+    apply_schedule_fields_to_batch(
+        batch,
+        schedule_weekdays=data.schedule_weekdays,
+        schedule_time=data.schedule_time,
+        schedule_timezone=data.schedule_timezone,
+        default_duration_minutes=data.default_duration_minutes,
+        default_meeting_link=data.default_meeting_link,
+        schedule_text=data.schedule,
     )
     db.add(batch)
     db.commit()
     db.refresh(batch)
-    return BatchResponse(
-        id=batch.id, name=batch.name, description=batch.description,
-        schedule=batch.schedule, coach_id=batch.coach_id,
-        monthly_fee=batch.monthly_fee, is_active=batch.is_active,
-        created_at=batch.created_at, student_count=0,
-    )
+    return batch_to_response(batch, 0, coach)
 
 
 @router.get("", response_model=List[BatchResponse])
@@ -127,12 +144,7 @@ def list_batches(coach: User = Depends(require_coach), db: Session = Depends(get
         count = db.query(StudentBatch).filter(
             StudentBatch.batch_id == b.id, StudentBatch.is_active == True
         ).count()
-        result.append(BatchResponse(
-            id=b.id, name=b.name, description=b.description,
-            schedule=b.schedule, coach_id=b.coach_id,
-            monthly_fee=b.monthly_fee, is_active=b.is_active,
-            created_at=b.created_at, student_count=count,
-        ))
+        result.append(batch_to_response(b, count, coach))
     return result
 
 
@@ -144,12 +156,7 @@ def get_batch(batch_id: int, coach: User = Depends(require_coach), db: Session =
     count = db.query(StudentBatch).filter(
         StudentBatch.batch_id == batch.id, StudentBatch.is_active == True
     ).count()
-    return BatchResponse(
-        id=batch.id, name=batch.name, description=batch.description,
-        schedule=batch.schedule, coach_id=batch.coach_id,
-        monthly_fee=batch.monthly_fee, is_active=batch.is_active,
-        created_at=batch.created_at, student_count=count,
-    )
+    return batch_to_response(batch, count, coach)
 
 
 @router.put("/{batch_id}", response_model=BatchResponse)
@@ -157,19 +164,32 @@ def update_batch(batch_id: int, data: BatchUpdate, coach: User = Depends(require
     batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    schedule_weekdays = payload.pop("schedule_weekdays", None)
+    schedule_time = payload.pop("schedule_time", None)
+    schedule_timezone = payload.pop("schedule_timezone", None)
+    default_duration_minutes = payload.pop("default_duration_minutes", None)
+    default_meeting_link = payload.pop("default_meeting_link", None)
+    schedule_text = payload.pop("schedule", None)
+    if not is_admin_user(coach):
+        payload.pop("monthly_fee", None)
+    for field, value in payload.items():
         setattr(batch, field, value)
+    apply_schedule_fields_to_batch(
+        batch,
+        schedule_weekdays=schedule_weekdays,
+        schedule_time=schedule_time,
+        schedule_timezone=schedule_timezone,
+        default_duration_minutes=default_duration_minutes,
+        default_meeting_link=default_meeting_link,
+        schedule_text=schedule_text,
+    )
     db.commit()
     db.refresh(batch)
     count = db.query(StudentBatch).filter(
         StudentBatch.batch_id == batch.id, StudentBatch.is_active == True
     ).count()
-    return BatchResponse(
-        id=batch.id, name=batch.name, description=batch.description,
-        schedule=batch.schedule, coach_id=batch.coach_id,
-        monthly_fee=batch.monthly_fee, is_active=batch.is_active,
-        created_at=batch.created_at, student_count=count,
-    )
+    return batch_to_response(batch, count, coach)
 
 
 # ==================== STUDENT MANAGEMENT ====================
@@ -322,33 +342,91 @@ def create_class_session(batch_id: int, data: ClassSessionCreate, coach: User = 
     batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+
+    kind = (data.session_kind or "regular").strip().lower()
+    if kind not in ("regular", "makeup"):
+        raise HTTPException(status_code=400, detail="session_kind must be 'regular' or 'makeup'")
+
+    roster_ids = list(data.student_ids or [])
+    if kind == "makeup":
+        if not roster_ids:
+            raise HTTPException(status_code=400, detail="Make-up sessions require at least one student")
+        batch_ids_set = set(active_batch_student_ids(db, batch_id))
+        invalid = [sid for sid in roster_ids if sid not in batch_ids_set]
+        if invalid:
+            raise HTTPException(status_code=400, detail="All students must belong to this class")
+
+    duration = data.duration_minutes or batch.default_duration_minutes or 60
+    meeting_link = data.meeting_link or batch.default_meeting_link
+    topic = data.topic or ("Make-up session" if kind == "makeup" else "Class session")
+
     session = ClassSession(
         batch_id=batch_id,
         date=data.date,
-        duration_minutes=data.duration_minutes,
-        topic=data.topic,
-        meeting_link=data.meeting_link,
+        duration_minutes=duration,
+        topic=topic,
+        meeting_link=meeting_link,
         notes=data.notes,
+        session_kind=kind,
         created_by=coach.id,
     )
     db.add(session)
+    db.flush()
+
+    if kind == "makeup":
+        seed_session_roster(db, session, batch_id, roster_ids, default_expected=True)
+        notify_ids = roster_ids
+    else:
+        seed_session_roster(db, session, batch_id, roster_ids or None, default_expected=True)
+        notify_ids = None
+
     coach_name = coach.full_name or coach.username or "Your coach"
-    class_topic = (data.topic or "New class session").strip()
+    class_topic = (topic or "New class session").strip()
     _notify_batch_students(
         db,
         batch_id,
-        title="New class scheduled",
+        title="Make-up class scheduled" if kind == "makeup" else "New class scheduled",
         message=f"{coach_name} scheduled: {class_topic}.",
         link_url="/dashboard",
+        student_ids=notify_ids,
     )
     db.commit()
     db.refresh(session)
-    return ClassSessionResponse(
-        id=session.id, batch_id=session.batch_id, date=session.date,
-        duration_minutes=session.duration_minutes, topic=session.topic,
-        meeting_link=session.meeting_link, notes=session.notes,
-        created_at=session.created_at, batch_name=batch.name,
+    return session_to_response(session, batch.name, db)
+
+
+@router.post("/{batch_id}/classes/open-slot", response_model=ClassSessionResponse)
+def open_recurring_slot(
+    batch_id: int,
+    data: OpenRecurringSlotRequest,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Create (or return) a regular session for a recurring calendar slot."""
+    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    slot_date = combine_date_and_schedule_time(data.date, batch.schedule_time)
+    existing = find_session_near_datetime(db, batch_id, slot_date)
+    if existing:
+        return session_to_response(existing, batch.name, db)
+
+    session = ClassSession(
+        batch_id=batch_id,
+        date=slot_date,
+        duration_minutes=batch.default_duration_minutes or 60,
+        topic="Class session",
+        meeting_link=batch.default_meeting_link,
+        session_kind="regular",
+        created_by=coach.id,
     )
+    db.add(session)
+    db.flush()
+    seed_session_roster(db, session, batch_id, default_expected=True)
+    db.commit()
+    db.refresh(session)
+    return session_to_response(session, batch.name, db)
 
 
 @router.get("/{batch_id}/classes", response_model=List[ClassSessionResponse])
@@ -359,15 +437,7 @@ def list_class_sessions(batch_id: int, coach: User = Depends(require_coach), db:
     sessions = db.query(ClassSession).filter(
         ClassSession.batch_id == batch_id
     ).order_by(ClassSession.date.desc()).all()
-    return [
-        ClassSessionResponse(
-            id=s.id, batch_id=s.batch_id, date=s.date,
-            duration_minutes=s.duration_minutes, topic=s.topic,
-            meeting_link=s.meeting_link, notes=s.notes,
-            created_at=s.created_at, batch_name=batch.name,
-        )
-        for s in sessions
-    ]
+    return [session_to_response(s, batch.name, db) for s in sessions]
 
 
 # ==================== ANNOUNCEMENTS ====================

@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   batchAPI,
   coachAPI,
@@ -36,19 +36,11 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { CoachBatchSessionsTab } from '@/components/coach/CoachBatchSessionsTab';
+import { useAuthStore } from '@/lib/store';
 
 type Tab = 'students' | 'classes' | 'announcements' | 'payments';
 type CoachStudentStatsLite = { id: number; xp: number; success_rate: number };
-
-interface AttendanceRecord {
-  student_id: number;
-  student_name: string;
-  student_username: string;
-  status: 'present' | 'absent' | 'not_marked';
-  marked_at: string | null;
-  notes: string | null;
-  attendance_id: number | null;
-}
 
 const panel = 'rounded-xl border border-border bg-card shadow-sm';
 const STUDENT_PAGE = 10;
@@ -62,13 +54,26 @@ function formatInr(amount: number): string {
   }).format(amount);
 }
 
+const VALID_TABS: Tab[] = ['students', 'classes', 'announcements', 'payments'];
+
 export default function BatchDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const batchId = Number(params.id);
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+
+  const tabFromUrl = searchParams.get('tab');
+  const sessionFromUrl = searchParams.get('session');
+  const initialSessionId = sessionFromUrl ? parseInt(sessionFromUrl, 10) : null;
+  const resolvedTab =
+    tabFromUrl && VALID_TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'students';
+  const initialTab: Tab =
+    resolvedTab === 'payments' && !isAdmin ? 'students' : resolvedTab;
 
   const [batch, setBatch] = useState<Batch | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('students');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
 
   const [students, setStudents] = useState<StudentBatchInfo[]>([]);
@@ -85,19 +90,6 @@ export default function BatchDetailPage() {
   const [removeId, setRemoveId] = useState<number | null>(null);
 
   const [classes, setClasses] = useState<ClassSession[]>([]);
-  const [showAddClass, setShowAddClass] = useState(false);
-  const [classForm, setClassForm] = useState({
-    date: '',
-    duration_minutes: '60',
-    topic: '',
-    meeting_link: '',
-    notes: '',
-  });
-
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [markingStudentId, setMarkingStudentId] = useState<number | null>(null);
 
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [showAddAnn, setShowAddAnn] = useState(false);
@@ -219,7 +211,8 @@ export default function BatchDetailPage() {
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         schedule: editForm.schedule.trim() || undefined,
-        monthly_fee: editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : 0,
+        monthly_fee:
+          isAdmin && editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : undefined,
         is_active: editForm.is_active,
       });
       setBatch(updated);
@@ -332,33 +325,6 @@ export default function BatchDetailPage() {
     }
   };
 
-  const handleAddClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!classForm.date) {
-      toast.error('Date is required');
-      return;
-    }
-    try {
-      const newClass = await batchAPI.createClass(batchId, {
-        date: classForm.date,
-        duration_minutes: parseInt(classForm.duration_minutes, 10) || 60,
-        topic: classForm.topic || undefined,
-        meeting_link: classForm.meeting_link || undefined,
-        notes: classForm.notes || undefined,
-      });
-      setClasses([newClass, ...classes]);
-      setShowAddClass(false);
-      setClassForm({ date: '', duration_minutes: '60', topic: '', meeting_link: '', notes: '' });
-      toast.success('Class session created');
-    } catch (err: unknown) {
-      const detail =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-          : undefined;
-      toast.error(detail || 'Failed to create class');
-    }
-  };
-
   const handleAddAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annForm.title.trim() || !annForm.message.trim()) {
@@ -404,22 +370,6 @@ export default function BatchDetailPage() {
     }
   }, [searchQuery, showAddStudent, searchStudents]);
 
-  const now = new Date();
-  const upcomingClasses = classes.filter((c) => new Date(c.date) >= now);
-  const pastClasses = classes.filter((c) => new Date(c.date) < now);
-
-  const selectedSession = useMemo(
-    () => classes.find((c) => c.id === selectedSessionId) || null,
-    [classes, selectedSessionId],
-  );
-
-  const attendanceCounts = useMemo(() => {
-    const present = attendanceRecords.filter((r) => r.status === 'present').length;
-    const absent = attendanceRecords.filter((r) => r.status === 'absent').length;
-    const notMarked = attendanceRecords.filter((r) => r.status === 'not_marked').length;
-    return { present, absent, notMarked };
-  }, [attendanceRecords]);
-
   const totalStudentPages = Math.max(1, Math.ceil(students.length / STUDENT_PAGE));
   const safeStudentPage = Math.min(studentPage, totalStudentPages);
   const studentSlice = students.slice(
@@ -430,9 +380,6 @@ export default function BatchDetailPage() {
     const batchStudentDetails = allCoachStudents.filter((s) =>
       students.some((bs) => bs.student_id === s.id),
     );
-    console.log('allCoachStudents count:', allCoachStudents.length);
-    console.log('students count:', students.length);
-    console.log('batchStudentDetails count:', batchStudentDetails.length);
     if (batchStudentDetails.length === 0) return null;
 
     const totalXP = batchStudentDetails.reduce((acc, s) => acc + s.xp, 0);
@@ -450,56 +397,6 @@ export default function BatchDetailPage() {
     setStudentPage(1);
   }, [students.length]);
 
-  const loadAttendance = async (sessionId: number) => {
-    setAttendanceLoading(true);
-    try {
-      const res = await api.get(`/api/attendance/session/${sessionId}`);
-      setAttendanceRecords(res.data);
-      setSelectedSessionId(sessionId);
-    } catch {
-      toast.error('Failed to load attendance');
-    } finally {
-      setAttendanceLoading(false);
-    }
-  };
-
-  const markAttendance = async (studentId: number, status: 'present' | 'absent') => {
-    if (!selectedSessionId) return;
-    setMarkingStudentId(studentId);
-    try {
-      await api.post(`/api/attendance/session/${selectedSessionId}/mark`, {
-        student_id: studentId,
-        status,
-      });
-      setAttendanceRecords((prev) =>
-        prev.map((r) =>
-          r.student_id === studentId ? { ...r, status, marked_at: new Date().toISOString() } : r,
-        ),
-      );
-    } catch {
-      toast.error('Failed to mark attendance');
-    } finally {
-      setMarkingStudentId(null);
-    }
-  };
-
-  const markAllPresent = async () => {
-    if (!selectedSessionId) return;
-    try {
-      await api.post(`/api/attendance/session/${selectedSessionId}/mark-all`, { default_status: 'present' });
-      setAttendanceRecords((prev) =>
-        prev.map((r) => ({
-          ...r,
-          status: 'present',
-          marked_at: new Date().toISOString(),
-        })),
-      );
-      toast.success('All students marked present');
-    } catch {
-      toast.error('Failed to mark all present');
-    }
-  };
-
   if (loading || !batch) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center py-16">
@@ -513,14 +410,18 @@ export default function BatchDetailPage() {
 
   const tabs: { key: Tab; label: string; icon: typeof Users; count?: number }[] = [
     { key: 'students', label: 'Students', icon: Users, count: students.length },
-    { key: 'classes', label: 'Classes', icon: Calendar, count: classes.length },
+    { key: 'classes', label: 'Sessions', icon: Calendar, count: classes.length },
     { key: 'announcements', label: 'News', icon: Megaphone, count: announcements.length },
-    {
-      key: 'payments',
-      label: 'Payments',
-      icon: CreditCard,
-      count: paymentStatus?.overdue_count,
-    },
+    ...(isAdmin
+      ? [
+          {
+            key: 'payments' as const,
+            label: 'Payments',
+            icon: CreditCard,
+            count: paymentStatus?.overdue_count,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -533,7 +434,7 @@ export default function BatchDetailPage() {
             className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
           >
             <ArrowLeft className="h-4 w-4" />
-            All batches
+            All classes
           </button>
           <div className="flex flex-wrap items-start gap-3">
             <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
@@ -547,7 +448,7 @@ export default function BatchDetailPage() {
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
             {batch.schedule && <span>{batch.schedule} · </span>}
-            {batch.monthly_fee > 0 && (
+            {isAdmin && batch.monthly_fee > 0 && (
               <span>{formatInr(batch.monthly_fee)}/month · </span>
             )}
             {students.length} students
@@ -560,7 +461,7 @@ export default function BatchDetailPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/60"
           >
             <Pencil className="h-4 w-4" />
-            Edit batch
+            Edit class
           </button>
         </div>
       </div>
@@ -734,7 +635,7 @@ export default function BatchDetailPage() {
               <div key={sb.student_id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <Link
-                    href={`/coach/students/${sb.student_id}`}
+                    href={`/coach/students/${encodeURIComponent(sb.student_username)}`}
                     className="font-semibold text-primary hover:text-primary/90 hover:underline"
                   >
                     {sb.student_name}
@@ -799,202 +700,16 @@ export default function BatchDetailPage() {
         </div>
       )}
 
-      {activeTab === 'classes' && (
-        <div>
-          <div className="mb-4 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowAddClass((s) => !s)}
-              className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" /> New class
-            </button>
-          </div>
-
-          {showAddClass && (
-            <form onSubmit={handleAddClass} className={`${panel} mb-4 p-4`}>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Date & time *</label>
-                  <input
-                    type="datetime-local"
-                    value={classForm.date}
-                    onChange={(e) => setClassForm({ ...classForm, date: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Duration (min)</label>
-                  <input
-                    type="number"
-                    value={classForm.duration_minutes}
-                    onChange={(e) => setClassForm({ ...classForm, duration_minutes: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Topic</label>
-                  <input
-                    type="text"
-                    value={classForm.topic}
-                    onChange={(e) => setClassForm({ ...classForm, topic: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Opening principles"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">Meeting link</label>
-                  <input
-                    type="url"
-                    value={classForm.meeting_link}
-                    onChange={(e) => setClassForm({ ...classForm, meeting_link: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="https://…"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-                  Create class
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddClass(false)}
-                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-
-          {upcomingClasses.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-heading mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Upcoming
-              </h3>
-              <div className="space-y-2">
-                {upcomingClasses.map((cls) => (
-                  <ClassRow key={cls.id} cls={cls} onTakeAttendance={() => loadAttendance(cls.id)} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {pastClasses.length > 0 && (
-            <div>
-              <h3 className="font-heading mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Past
-              </h3>
-              <div className="space-y-2">
-                {pastClasses.map((cls) => (
-                  <ClassRow key={cls.id} cls={cls} muted onTakeAttendance={() => loadAttendance(cls.id)} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {classes.length === 0 && (
-            <div className={`${panel} p-10 text-center text-muted-foreground`}>No classes scheduled yet.</div>
-          )}
-
-          {selectedSessionId !== null && (
-            <div className={`${panel} mt-6 p-4`}>
-              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="font-heading text-base font-semibold text-foreground">
-                  Attendance — {selectedSession?.topic || 'Chess class'}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={markAllPresent}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--green-medium))] px-3 py-1.5 text-sm font-semibold text-white hover:opacity-95"
-                  >
-                    Mark all present
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSessionId(null);
-                      setAttendanceRecords([]);
-                    }}
-                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                    aria-label="Close attendance"
-                    title="Close"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {attendanceLoading ? (
-                <div className="flex min-h-[160px] items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {attendanceRecords.map((r) => {
-                    const isMarking = markingStudentId === r.student_id;
-                    const presentActive = r.status === 'present';
-                    const absentActive = r.status === 'absent';
-                    return (
-                      <div
-                        key={r.student_id}
-                        className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground">
-                            {r.student_name}{' '}
-                            <span className="font-normal text-muted-foreground">@{r.student_username}</span>
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex overflow-hidden rounded-lg border border-border">
-                            <button
-                              type="button"
-                              onClick={() => markAttendance(r.student_id, 'present')}
-                              disabled={isMarking}
-                              className={`inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold transition-colors ${
-                                presentActive
-                                  ? 'bg-[hsl(var(--green-medium))] text-white'
-                                  : 'bg-card text-foreground hover:bg-muted/60'
-                              }`}
-                            >
-                              Present
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => markAttendance(r.student_id, 'absent')}
-                              disabled={isMarking}
-                              className={`inline-flex items-center justify-center px-3 py-1.5 text-sm font-semibold transition-colors ${
-                                absentActive ? 'bg-destructive text-white' : 'bg-card text-foreground hover:bg-muted/60'
-                              }`}
-                            >
-                              Absent
-                            </button>
-                          </div>
-                          {isMarking && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {attendanceRecords.length === 0 && (
-                    <div className="rounded-xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-                      No students found for this session.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-4 border-t border-border pt-3 text-sm text-muted-foreground">
-                {attendanceCounts.present} present · {attendanceCounts.absent} absent · {attendanceCounts.notMarked}{' '}
-                not marked
-              </div>
-            </div>
-          )}
-        </div>
+      {activeTab === 'classes' && batch && (
+        <CoachBatchSessionsTab
+          batch={batch}
+          batchId={batchId}
+          students={students}
+          classes={classes}
+          onClassesChange={setClasses}
+          onBatchUpdated={setBatch}
+          initialSessionId={Number.isNaN(initialSessionId ?? NaN) ? null : initialSessionId}
+        />
       )}
 
       {activeTab === 'announcements' && (
@@ -1120,7 +835,7 @@ export default function BatchDetailPage() {
               <div key={s.student_id} className="flex items-center justify-between p-4">
                 <div>
                   <Link
-                    href={`/coach/students/${s.student_id}`}
+                    href={`/coach/students/${encodeURIComponent(s.student_username)}`}
                     className="font-semibold text-primary hover:underline"
                   >
                     {s.student_name}
@@ -1163,7 +878,7 @@ export default function BatchDetailPage() {
       {showEditBatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl">
-            <h2 className="font-heading mb-4 text-xl font-bold">Edit batch</h2>
+            <h2 className="font-heading mb-4 text-xl font-bold">Edit class</h2>
             <form onSubmit={handleSaveBatch} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-semibold">Name *</label>
@@ -1184,18 +899,20 @@ export default function BatchDetailPage() {
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold">Monthly fee (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={editForm.monthly_fee}
-                  onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="1600.00"
-                />
-              </div>
+              {isAdmin && (
+                <div>
+                  <label className="mb-1 block text-sm font-semibold">Monthly fee (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.monthly_fee}
+                    onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="1600.00"
+                  />
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-semibold">Description</label>
                 <textarea
@@ -1234,56 +951,6 @@ export default function BatchDetailPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ClassRow({
-  cls,
-  muted,
-  onTakeAttendance,
-}: {
-  cls: ClassSession;
-  muted?: boolean;
-  onTakeAttendance: () => void;
-}) {
-  return (
-    <div
-      className={`flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between ${muted ? 'opacity-90' : ''}`}
-    >
-      <div>
-        <p className="font-semibold text-foreground">{cls.topic || 'Chess class'}</p>
-        <p className="text-sm text-muted-foreground">
-          {new Date(cls.date).toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          · {cls.duration_minutes} min
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        {cls.meeting_link && (
-          <a
-            href={cls.meeting_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary/90"
-          >
-            Link <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
-        <button
-          type="button"
-          onClick={onTakeAttendance}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/60"
-        >
-          <Users className="h-4 w-4" />
-          Take attendance
-        </button>
-      </div>
     </div>
   );
 }
