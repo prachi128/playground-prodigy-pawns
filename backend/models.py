@@ -548,6 +548,7 @@ class CoachSignupInvite(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String(128), unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     expires_at = Column(DateTime, nullable=False)

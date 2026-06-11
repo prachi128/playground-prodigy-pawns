@@ -5,9 +5,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, date, timedelta
+import logging
 import os
 import secrets
 import json
+
+from email_service import send_coach_invite_email
 
 from models import Batch, StudentBatch, ClassSession, SessionStudent, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
 from batch_schedule_service import (
@@ -558,6 +561,7 @@ class MarkPaidRequest(BaseModel):
 
 
 class CoachInviteCreateRequest(BaseModel):
+    full_name: str
     email: str
     expires_in_days: int = 7
 
@@ -837,6 +841,9 @@ def create_coach_invite(
 ):
     if data.expires_in_days < 1 or data.expires_in_days > 60:
         raise HTTPException(status_code=400, detail="expires_in_days must be between 1 and 60")
+    full_name = data.full_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name is required")
     email = data.email.strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -845,6 +852,7 @@ def create_coach_invite(
     expires_at = datetime.utcnow() + timedelta(days=data.expires_in_days)
     invite = CoachSignupInvite(
         token=token,
+        full_name=full_name,
         email=email,
         created_by=admin.id,
         expires_at=expires_at,
@@ -856,22 +864,42 @@ def create_coach_invite(
         action="coach_invite_create",
         target_type="coach_invite",
         target_id=None,
-        details={"email": email, "expires_in_days": data.expires_in_days},
+        details={"full_name": full_name, "email": email, "expires_in_days": data.expires_in_days},
     )
     db.commit()
     db.refresh(invite)
 
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
     invite_url = f"{frontend_url}/coach-signup/{invite.token}"
+
+    email_sent = False
+    email_error: Optional[str] = None
+    try:
+        send_coach_invite_email(
+            to_email=email,
+            full_name=full_name,
+            invite_url=invite_url,
+            expires_in_days=data.expires_in_days,
+        )
+        email_sent = True
+    except Exception as exc:
+        email_error = str(exc).strip() or "Email could not be sent"
+        logging.getLogger(__name__).exception(
+            "Failed to send coach invite email to %s: %s", email, email_error
+        )
+
     return {
         "id": invite.id,
         "token": invite.token,
         "invite_url": invite_url,
+        "full_name": invite.full_name,
         "email": invite.email,
         "expires_at": invite.expires_at,
         "used_at": invite.used_at,
         "is_active": invite.is_active,
         "created_at": invite.created_at,
+        "email_sent": email_sent,
+        "email_error": email_error,
     }
 
 
@@ -900,6 +928,7 @@ def list_coach_invites(
             "id": i.id,
             "token": i.token,
             "invite_url": f"{frontend_url}/coach-signup/{i.token}",
+            "full_name": i.full_name,
             "email": i.email,
             "expires_at": i.expires_at,
             "used_at": i.used_at,

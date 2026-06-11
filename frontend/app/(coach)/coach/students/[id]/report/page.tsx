@@ -154,7 +154,7 @@ export default function StudentReportPage() {
     <>
       <style>{`
         @media print {
-          [data-coach-shell] aside,
+          [data-coach-shell] [data-coach-sidebar],
           [data-coach-shell] .coach-header-bar {
             display: none !important;
           }

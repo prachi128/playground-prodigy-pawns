@@ -68,11 +68,13 @@ export async function apiLogin(request: APIRequestContext, email: string, passwo
 export async function createCoachInvite(
   request: APIRequestContext,
   email: string,
-  expiresInDays = 7
+  expiresInDays = 7,
+  fullName = "Test Coach"
 ): Promise<{ id: number; token: string; invite_url: string }> {
   await apiLogin(request, accounts.admin.email, accounts.admin.password);
   const response = await request.post(`${BACKEND_URL}/api/admin/coach-invites`, {
     data: {
+      full_name: fullName,
       email,
       expires_in_days: expiresInDays,
     },

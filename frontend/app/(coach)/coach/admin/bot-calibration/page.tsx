@@ -190,7 +190,7 @@ export default function AdminBotCalibrationPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Bot className="h-5 w-5" />
           </span>
-          Admin - Bot calibration
+          Bot calibration
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground sm:text-base">
           Run 50-game directional checks and 80-game confidence checks. This page uses completed in-app bot games and calls the admin calibration endpoints.

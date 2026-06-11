@@ -296,7 +296,9 @@ export const authAPI = {
     return response.data;
   },
 
-  getCoachInvite: async (token: string): Promise<{ email: string; expires_at: string }> => {
+  getCoachInvite: async (
+    token: string,
+  ): Promise<{ email: string; full_name: string; expires_at: string }> => {
     const response = await api.get(`/api/auth/coach-invite/${token}`);
     return response.data;
   },
@@ -976,6 +978,7 @@ export interface CoachInvite {
   id: number;
   token: string;
   invite_url: string;
+  full_name?: string | null;
   email: string | null;
   expires_at: string;
   used_at: string | null;
@@ -985,6 +988,8 @@ export interface CoachInvite {
   expires_in_hours?: number;
   created_at: string;
   used_by?: number | null;
+  email_sent?: boolean;
+  email_error?: string | null;
 }
 
 export interface AdminAuditLogRow {
@@ -1178,7 +1183,11 @@ export const batchAPI = {
 };
 
 export const adminAPI = {
-  createCoachInvite: async (data: { email: string; expires_in_days?: number }): Promise<CoachInvite> => {
+  createCoachInvite: async (data: {
+    full_name: string;
+    email: string;
+    expires_in_days?: number;
+  }): Promise<CoachInvite> => {
     const response = await api.post('/api/admin/coach-invites', data);
     return response.data;
   },

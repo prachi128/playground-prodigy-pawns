@@ -69,7 +69,7 @@ export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) 
   }, [])
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div data-student-shell className="flex min-h-screen bg-background">
       <MemoizedSidebar
         isOpen={sidebarOpen}
         onClose={handleCloseSidebar}

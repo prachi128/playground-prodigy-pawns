@@ -15,6 +15,7 @@ export default function CoachInvitesPage() {
   const [creating, setCreating] = useState(false);
   const [bulkRevoking, setBulkRevoking] = useState(false);
   const [invites, setInvites] = useState<CoachInvite[]>([]);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [days, setDays] = useState('7');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'used' | 'revoked' | 'expired'>('all');
@@ -41,19 +42,37 @@ export default function CoachInvitesPage() {
 
   const createInvite = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fullName.trim()) {
+      toast.error('Full name is required');
+      return;
+    }
     if (!email.trim()) {
-      toast.error('Coach email is required');
+      toast.error('Email is required');
       return;
     }
     setCreating(true);
     try {
       const created = await adminAPI.createCoachInvite({
+        full_name: fullName.trim(),
         email: email.trim(),
         expires_in_days: Math.max(1, Math.min(60, parseInt(days, 10) || 7)),
       });
       setInvites((prev) => [created, ...prev]);
-      await navigator.clipboard.writeText(created.invite_url);
-      toast.success('Invite created and copied');
+      try {
+        await navigator.clipboard.writeText(created.invite_url);
+      } catch {
+        /* clipboard may be unavailable */
+      }
+      if (created.email_sent) {
+        toast.success(`Invite created and email sent to ${created.email}`);
+      } else {
+        toast.error(
+          created.email_error ||
+            'Invite created, but the email could not be sent. Copy the link below and share it manually.',
+          { duration: 8000 },
+        );
+      }
+      setFullName('');
       setEmail('');
       setDays('7');
     } catch (err: unknown) {
@@ -130,15 +149,33 @@ export default function CoachInvitesPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Shield className="h-5 w-5" />
           </span>
-          Admin - coach invites
+          Coach invites
         </h1>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          An invite link is emailed automatically. With Resend, the sender domain must be verified, or use{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">onboarding@resend.dev</code> in dev and
+          invite only your Resend account email.
+        </p>
       </div>
 
       <form onSubmit={createInvite} className="mb-5 rounded-xl border border-border bg-card p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Coach Email Restriction
+              Full name *
+            </span>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Coach full name"
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Email *
             </span>
             <input
               type="email"
@@ -148,13 +185,10 @@ export default function CoachInvitesPage() {
               placeholder="coach@example.com"
               required
             />
-            <span className="mt-1 block text-xs text-muted-foreground">
-              If set, only this email can use the invite.
-            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Invite Validity (Days)
+              Invite validity (days)
             </span>
             <input
               type="number"
@@ -164,15 +198,13 @@ export default function CoachInvitesPage() {
               onChange={(e) => setDays(e.target.value)}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
               placeholder="7"
+              required
             />
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Example: 7 means the invite expires in 7 days.
-            </span>
           </label>
           <button
             type="submit"
             disabled={creating}
-            className="inline-flex items-center justify-center gap-2 self-start rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 self-end rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Create invite
@@ -219,7 +251,8 @@ export default function CoachInvitesPage() {
               <thead className="border-b border-border bg-muted/40">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Invite</th>
-                  <th className="px-4 py-3 text-left font-semibold">Email Restriction</th>
+                  <th className="px-4 py-3 text-left font-semibold">Name</th>
+                  <th className="px-4 py-3 text-left font-semibold">Email</th>
                   <th className="px-4 py-3 text-left font-semibold">Status</th>
                   <th className="px-4 py-3 text-left font-semibold">Expiry</th>
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
@@ -234,7 +267,8 @@ export default function CoachInvitesPage() {
                     <td className="px-4 py-3 font-mono text-xs text-foreground">
                       {i.token.slice(0, 16)}...
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{i.email || '-'}</td>
+                    <td className="px-4 py-3 text-foreground">{i.full_name || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{i.email || '—'}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${

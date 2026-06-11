@@ -32,6 +32,7 @@ import {
   Video,
   ExternalLink,
   CalendarClock,
+  Info,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -63,6 +64,34 @@ function formatClassDateTime(iso: string): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function CalendarLegendTooltip() {
+  return (
+    <div className="group relative shrink-0">
+      <button
+        type="button"
+        className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Calendar legend"
+      >
+        <Info className="h-4 w-4" />
+      </button>
+      <div
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-full top-0 z-10 ml-2 w-64 rounded-lg border border-border bg-card px-3 py-2 text-[12px] leading-snug text-foreground shadow-md group-hover:visible group-focus-within:visible"
+      >
+        <p>
+          <span className="inline-block rounded border border-primary/25 bg-primary/5 px-1.5 py-0.5 font-medium text-primary">
+            Highlighted
+          </span>{' '}
+          = one-off or make-up session
+        </p>
+        <p className="mt-1.5 text-muted-foreground">
+          Plain blocks = your weekly time slot (blocks every week)
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function CoachBatchesPage() {
@@ -280,6 +309,7 @@ export default function CoachBatchesPage() {
         <h2 className="font-heading mb-3 flex items-center gap-2 text-lg font-bold text-foreground">
           <Calendar className="h-5 w-5 text-primary" aria-hidden />
           This week
+          <CalendarLegendTooltip />
         </h2>
 
         {weekHasItems ? (
@@ -355,12 +385,6 @@ export default function CoachBatchesPage() {
           </div>
         )}
 
-        <p className="mt-2 text-xs text-muted-foreground">
-          <span className="inline-block rounded border border-primary/25 bg-primary/5 px-1.5 py-0.5 font-medium text-primary">
-            Highlighted
-          </span>{' '}
-          = one-off or make-up session · Plain blocks = your weekly time slot (blocks every week)
-        </p>
       </section>
 
       {/* Upcoming sessions */}

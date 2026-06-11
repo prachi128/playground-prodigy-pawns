@@ -115,9 +115,9 @@ export function CoachSidebar({
       )}
 
       <aside
-        data-sidebar
+        data-coach-sidebar
         data-collapsed={collapsed ? "true" : "false"}
-        className={`coach-sidebar-panel fixed inset-y-0 left-0 z-50 flex h-screen w-[11.5rem] shrink-0 flex-col overflow-hidden border-r border-sidebar-border text-sidebar-foreground transition-[transform,width] duration-200 ease-out ${
+        className={`coach-sidebar-panel fixed inset-y-0 left-0 z-50 flex h-screen w-[11.5rem] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-[hsl(224_28%_12%)] text-sidebar-foreground transition-[transform,width] duration-200 ease-out ${
           collapsed ? "lg:w-[3.25rem]" : "lg:w-[11.5rem]"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >

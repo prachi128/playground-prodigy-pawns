@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
-/* === v0-dashboard-layout CSS (exact match for dashboard page) === */
+/*
+ * Shared palette + default tokens (auth / marketing pages).
+ * Portal UIs override tokens inside their own shell:
+ *   [data-student-shell]  — student dashboard
+ *   [data-coach-shell]    — coach console
+ *   [data-parent-shell]   — parent portal
+ */
 :root {
   /* PRIMARY - Green */
   --green-dark: 145 65% 25%;
@@ -133,21 +139,7 @@
     cursor: not-allowed;
   }
 }
-/* Sidebar only: use dark border color so borders don’t show as white lines (beats Tailwind utilities) */
-[data-sidebar] *:not(a[aria-current="page"]):not(.sidebar-avatar) {
-  border-color: hsl(var(--sidebar-border)) !important;
-}
-[data-coach-shell] [data-sidebar] a[aria-current="page"] {
-  border-left-color: transparent !important;
-}
-
-[data-coach-shell] [data-sidebar] .sidebar-avatar {
-  border-width: 2px !important;
-  border-style: solid !important;
-  border-color: hsl(0 0% 100% / 0.2) !important;
-}
-
-/* v0 fonts: only apply when inside dashboard (--font-fredoka / --font-nunito set by dashboard layout) */
+/* v0 fonts: student auth + portal (--font-fredoka / --font-nunito set by layout) */
 .dashboard-fonts {
   font-family: var(--font-nunito), system-ui, sans-serif;
 }
@@ -157,11 +149,72 @@
   font-weight: 700;
 }
 
-.content-green {
+/* === Student portal shell — isolated theme + sidebar === */
+[data-student-shell] {
+  --background: var(--gray-very-light);
+  --foreground: var(--gray-dark);
+  --card: 0 0% 100%;
+  --card-foreground: var(--gray-dark);
+  --primary: var(--green-medium);
+  --primary-foreground: 0 0% 100%;
+  --accent: var(--orange-medium);
+  --accent-foreground: 0 0% 100%;
+  --border: var(--gray-light);
+  --input: var(--gray-light);
+  --muted: var(--gray-light);
+  --muted-foreground: var(--gray-medium);
+  --ring: var(--primary);
+  --radius: 1rem;
+  --sidebar-background: var(--green-dark);
+  --sidebar-foreground: 80 60% 96%;
+  --sidebar-primary: var(--orange-medium);
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 145 65% 20%;
+  --sidebar-accent-foreground: 80 60% 96%;
+  --sidebar-border: 145 65% 22%;
+  --sidebar-ring: var(--gold-medium);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+[data-student-shell] .font-heading {
+  font-family: var(--font-fredoka, var(--font-family-heading)), system-ui, sans-serif;
+  font-weight: 700;
+}
+
+[data-student-shell] .student-main,
+[data-student-shell] .content-green {
   background-color: hsl(210, 40%, 98%);
 }
 
-/* Coach app: refined sans — calm weights, no display bold */
+[data-student-shell] [data-student-sidebar] *:not(a[aria-current="page"]) {
+  border-color: hsl(var(--sidebar-border)) !important;
+}
+
+[data-student-shell] [data-student-sidebar] a[aria-current="page"] {
+  border-left-color: rgb(250 204 21) !important; /* yellow-400 */
+}
+
+/* === Coach portal shell === */
 .coach-fonts {
   font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "kern" 1, "liga" 1;
@@ -222,9 +275,15 @@
   background-color: var(--color-background);
 }
 
-/* Panel fill only — overrides root green from bg-sidebar; lines keep their own borders */
-[data-coach-shell] [data-sidebar].coach-sidebar-panel {
-  background-color: hsl(var(--coach-sidebar-bg)) !important;
+/* Coach sidebar — local tokens (never shares student/parent sidebar attributes) */
+[data-coach-shell] [data-coach-sidebar].coach-sidebar-panel {
+  --sidebar-foreground: 210 25% 93%;
+  --sidebar-border: 224 20% 20%;
+  --color-sidebar-foreground: hsl(210 25% 93%);
+  --color-sidebar-border: hsl(224 20% 20%);
+  background-color: hsl(224 28% 12%) !important;
+  color: hsl(210 25% 93%);
+  border-right-color: hsl(224 20% 20%) !important;
 }
 
 /* Tone down loud page titles across coach pages */
@@ -335,9 +394,14 @@
   background-color: hsl(215 28% 7%);
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-sidebar].coach-sidebar-panel {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar].coach-sidebar-panel {
+  --sidebar-foreground: 210 35% 93%;
+  --sidebar-border: 212 12% 21%;
+  --color-sidebar-foreground: hsl(210 35% 93%);
+  --color-sidebar-border: hsl(212 12% 21%);
   background-color: hsl(220 67% 2%) !important;
-  border-color: hsl(212 12% 21%) !important;
+  color: hsl(210 35% 93%);
+  border-right-color: hsl(212 12% 21%) !important;
 }
 
 /* Cards & panels — elevated surface like GitHub repo boxes */
@@ -517,15 +581,15 @@
   color: hsl(212 92% 68%);
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-sidebar] a[aria-current='page'] {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] {
   color: hsl(212 92% 68%) !important;
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-sidebar] a[aria-current='page'] svg {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] svg {
   color: hsl(212 92% 68%) !important;
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-sidebar] .coach-nav-indicator {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] .coach-nav-indicator {
   background-color: hsl(212 92% 58%) !important;
 }
 
@@ -542,8 +606,39 @@
   color: hsl(38 75% 58%) !important;
 }
 
+/* === Parent portal shell — isolated theme (sidebar uses its own inline colors) === */
 [data-parent-shell] {
-  color: hsl(var(--foreground));
+  color-scheme: light;
+  color: hsl(217 9% 22%);
+  --background: 210 40% 98%;
+  --foreground: 217 9% 22%;
+  --card: 0 0% 100%;
+  --card-foreground: 217 9% 22%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --muted: 220 14% 94%;
+  --muted-foreground: 220 9% 46%;
+  --primary: 152 41% 30%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 152 41% 30%;
+  --radius: 0.75rem;
+  --color-background: hsl(210 40% 98%);
+  --color-foreground: hsl(217 9% 22%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(217 9% 22%);
+  --color-border: hsl(220 13% 91%);
+  --color-input: hsl(220 13% 91%);
+  --color-muted: hsl(220 14% 94%);
+  --color-muted-foreground: hsl(220 9% 46%);
+  --color-primary: hsl(152 41% 30%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-ring: hsl(152 41% 30%);
+}
+
+[data-parent-shell] .font-heading {
+  font-family: var(--font-parent, var(--font-coach)), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 [data-parent-shell] .parent-main {
@@ -555,11 +650,22 @@
   );
 }
 
+[data-parent-shell] [data-parent-sidebar] {
+  background-color: #1a4a3a;
+  color: #fff;
+}
+
 [data-coach-shell] .coach-header-bar {
-  background: hsl(var(--sidebar-background));
-  color: hsl(var(--sidebar-foreground));
-  border-bottom-color: hsl(var(--sidebar-border));
+  background: hsl(224 28% 12%);
+  color: hsl(210 25% 93%);
+  border-bottom-color: hsl(224 20% 20%);
   box-shadow: none;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .coach-header-bar {
+  background: hsl(220 67% 2%);
+  color: hsl(210 35% 93%);
+  border-bottom-color: hsl(212 12% 21%);
 }
 
 [data-coach-shell] .coach-header-bar .font-heading {

@@ -303,20 +303,38 @@ def _normalize_optional_contact(value: Optional[str], *, max_len: int = 30) -> O
 
 def _coach_roster_student_ids(coach: User, db: Session) -> Optional[Set[int]]:
     """
-    Distinct student ids with an active enrollment in any batch owned by this coach.
+    Student ids visible to this coach: primary assignment and/or active batch enrollment.
     None = no roster filter (admin only).
     """
     if _is_admin(coach):
         return None
-    rows = (
-        db.query(User.id)
-        .filter(
-            User.role == UserRole.student,
-            User.primary_coach_id == coach.id,
+
+    assigned_ids = {
+        int(r[0])
+        for r in (
+            db.query(User.id)
+            .filter(
+                User.role == UserRole.student,
+                User.primary_coach_id == coach.id,
+            )
+            .all()
         )
-        .all()
-    )
-    return {int(r[0]) for r in rows}
+    }
+    enrolled_ids = {
+        int(r[0])
+        for r in (
+            db.query(StudentBatch.student_id)
+            .join(Batch, Batch.id == StudentBatch.batch_id)
+            .filter(
+                Batch.coach_id == coach.id,
+                StudentBatch.is_active == True,
+                Batch.is_active == True,
+            )
+            .distinct()
+            .all()
+        )
+    }
+    return assigned_ids | enrolled_ids
 
 
 def _skill_level_label(internal_rating: int) -> str:
@@ -462,16 +480,8 @@ def _bulk_student_attendance(
 def _coach_can_access_student(coach: User, db: Session, student_id: int) -> bool:
     if _is_admin(coach):
         return True
-    row = (
-        db.query(User.id)
-        .filter(
-            User.id == student_id,
-            User.role == UserRole.student,
-            User.primary_coach_id == coach.id,
-        )
-        .first()
-    )
-    return bool(row)
+    roster = _coach_roster_student_ids(coach, db)
+    return roster is not None and student_id in roster
 
 
 def _student_theme_performance_rows(db: Session, student_id: int) -> List[ThemePerformanceRow]:
@@ -1265,23 +1275,34 @@ def assign_student_to_coach(
 
     coach_user: Optional[User] = None
     previous_coach_id = student.primary_coach_id
+    removed_enrollment_batch_ids: List[int] = []
     if payload.coach_id is not None:
         coach_user = db.query(User).filter(User.id == payload.coach_id, User.role == UserRole.coach).first()
         if not coach_user:
             raise HTTPException(status_code=404, detail="Coach not found")
         if coach_user.is_active is False:
             raise HTTPException(status_code=400, detail="Cannot assign an inactive coach")
-        if active_enrollment_coach_ids and (
-            len(active_enrollment_coach_ids) > 1
-            or payload.coach_id not in active_enrollment_coach_ids
-        ):
+        if len(active_enrollment_coach_ids) > 1:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Cannot assign this coach while student has active batch enrollments "
-                    "under another coach. Move or remove those enrollments first."
+                    "Student has active enrollments under multiple coaches. "
+                    "Resolve those enrollments before reassigning."
                 ),
             )
+        conflicting = (
+            db.query(StudentBatch)
+            .join(Batch, Batch.id == StudentBatch.batch_id)
+            .filter(
+                StudentBatch.student_id == student_id,
+                StudentBatch.is_active == True,
+                Batch.coach_id != payload.coach_id,
+            )
+            .all()
+        )
+        for enrollment in conflicting:
+            enrollment.is_active = False
+            removed_enrollment_batch_ids.append(int(enrollment.batch_id))
     elif active_enrollment_coach_ids:
         raise HTTPException(
             status_code=400,
@@ -1299,6 +1320,7 @@ def assign_student_to_coach(
             "previous_coach_id": previous_coach_id,
             "new_coach_id": payload.coach_id,
             "student_username": student.username,
+            "removed_enrollment_batch_ids": removed_enrollment_batch_ids,
         },
     )
     db.commit()
