@@ -3,6 +3,7 @@ import unittest
 from account_utils import (
     is_student_placeholder_email,
     password_reset_recipient,
+    public_user_email,
     resolve_student_email,
     student_placeholder_email,
 )
@@ -15,10 +16,14 @@ class AccountUtilsTests(unittest.TestCase):
         self.assertTrue(is_student_placeholder_email(email))
         self.assertIn("emma_sharma", email)
 
-    def test_resolve_student_email_uses_placeholder_when_missing(self):
-        self.assertTrue(
-            is_student_placeholder_email(resolve_student_email(None, "kid1"))
+    def test_resolve_student_email_returns_none_when_missing(self):
+        self.assertIsNone(resolve_student_email(None, "kid1"))
+
+    def test_public_user_email_hides_placeholder(self):
+        self.assertIsNone(
+            public_user_email("kid1@students.prodigypawns.internal")
         )
+        self.assertEqual(public_user_email("kid@example.com"), "kid@example.com")
 
     def test_password_reset_recipient_student_uses_guardian(self):
         user = User(

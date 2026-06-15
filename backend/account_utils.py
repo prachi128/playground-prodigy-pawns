@@ -25,10 +25,17 @@ def student_placeholder_email(username: str) -> str:
     return f"{safe}{STUDENT_PLACEHOLDER_DOMAIN}"
 
 
-def resolve_student_email(email: Optional[str], username: str) -> str:
+def public_user_email(email: Optional[str]) -> Optional[str]:
+    """Return a user-facing email, or None if missing or an internal placeholder."""
+    if not email or is_student_placeholder_email(email):
+        return None
+    return email.strip().lower()
+
+
+def resolve_student_email(email: Optional[str], username: str) -> Optional[str]:
     if email and email.strip():
         return email.strip().lower()
-    return student_placeholder_email(username)
+    return None
 
 
 def password_reset_recipient(user: User) -> Optional[str]:
@@ -115,7 +122,7 @@ def create_student_user(
 ) -> User:
     username = username.strip()
     resolved_email = resolve_student_email(email, username)
-    if db.query(User).filter(User.email == resolved_email).first():
+    if resolved_email and db.query(User).filter(User.email == resolved_email).first():
         raise ValueError("Email already registered")
     if db.query(User).filter(func.lower(User.username) == username.lower()).first():
         raise ValueError("Username already taken")

@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation"
 import { userAPI } from "@/lib/api"
 import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
 import toast from "react-hot-toast"
+import { displayUserEmail } from "@/lib/user-email"
 
 const PRESET_AVATARS = Array.from({ length: 12 }, (_, i) => {
   const n = i + 1
@@ -61,7 +62,7 @@ export function SettingsContent() {
   const [profileData, setProfileData] = useState({
     fullName: user?.full_name ?? "",
     username: user?.username ?? "",
-    email: user?.email ?? "",
+    email: displayUserEmail(user?.email) ?? "",
     avatarUrl: user?.avatar_url ?? "",
   })
 
@@ -70,7 +71,7 @@ export function SettingsContent() {
     setProfileData({
       fullName: user.full_name ?? "",
       username: user.username ?? "",
-      email: user.email ?? "",
+      email: displayUserEmail(user.email) ?? "",
       avatarUrl: user.avatar_url ?? "",
     })
   }, [user, isEditingProfile])
@@ -125,7 +126,7 @@ export function SettingsContent() {
       setProfileData({
         fullName: updatedUser.full_name ?? "",
         username: updatedUser.username ?? "",
-        email: updatedUser.email ?? "",
+        email: displayUserEmail(updatedUser.email) ?? "",
         avatarUrl: updatedUser.avatar_url ?? "",
       })
       setAvatarFile(null)
@@ -298,7 +299,7 @@ export function SettingsContent() {
                   />
                 ) : (
                   <div className="rounded-xl border-2 border-border bg-muted/50 px-4 py-2.5 font-heading text-base font-semibold text-card-foreground">
-                    {user?.email ?? "Not set"}
+                    {displayUserEmail(user?.email) ?? "Not set"}
                   </div>
                 )}
               </div>
@@ -320,7 +321,7 @@ export function SettingsContent() {
                       setProfileData({
                         fullName: user?.full_name ?? "",
                         username: user?.username ?? "",
-                        email: user?.email ?? "",
+                        email: displayUserEmail(user?.email) ?? "",
                         avatarUrl: user?.avatar_url ?? "",
                       })
                     }}

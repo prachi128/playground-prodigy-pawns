@@ -6,6 +6,7 @@ import { AvatarShopCosmetics } from "@/components/dashboard/avatar-shop-cosmetic
 import { resolveShopCosmeticsForPlayer } from "@/lib/shop-cosmetics"
 import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { displayUserEmail } from "@/lib/user-email"
 
 export function ProfileContent() {
   const { user } = useAuthStore()
@@ -13,7 +14,7 @@ export function ProfileContent() {
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-4xl pt-6">
+      <div className="mx-auto w-full max-w-6xl pt-0">
         <div className="text-center py-12">
           <p className="font-heading text-lg text-muted-foreground">No user data available</p>
         </div>
@@ -21,7 +22,7 @@ export function ProfileContent() {
     )
   }
 
-  const displayName = user.full_name?.split(" ")[0] ?? "Player"
+  const displayEmail = displayUserEmail(user.email)
   const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'long', 
@@ -29,25 +30,7 @@ export function ProfileContent() {
   }) : "Unknown"
 
   return (
-    <div className="mx-auto max-w-4xl pt-6">
-      {/* Mascot Speech Bubble */}
-      <section className="mb-5">
-        <div className="flex items-start gap-3">
-          <div className="animate-mascot-bounce shrink-0 text-5xl">{"👤"}</div>
-          <div className="relative flex-1">
-            <div className="absolute -left-2 top-4 h-0 w-0 border-y-[8px] border-r-[10px] border-y-transparent border-r-white" />
-            <div className="rounded-2xl bg-card p-4 shadow-sm">
-              <p className="font-heading text-lg font-bold text-card-foreground">
-                {"Welcome to your profile! 🎉"}
-              </p>
-              <p className="mt-0.5 font-heading text-sm font-semibold text-muted-foreground">
-                {"Check out your stats and achievements here."}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
+    <div className="mx-auto w-full max-w-6xl pt-0">
       {/* Profile Header Card */}
       <section className="mb-6">
         <div className="overflow-hidden rounded-3xl border-2 border-purple-200 bg-card shadow-sm">
@@ -86,10 +69,10 @@ export function ProfileContent() {
                 <p className="font-heading text-lg text-white/90 mb-1">
                   @{user.username}
                 </p>
-                {user.email && (
+                {displayEmail && (
                   <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 text-white/80">
                     <Mail className="h-4 w-4" />
-                    <span className="font-heading text-sm">{user.email}</span>
+                    <span className="font-heading text-sm">{displayEmail}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 text-white/80">

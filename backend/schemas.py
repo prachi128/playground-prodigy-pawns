@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field, field_serializer, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_serializer, field_validator, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime
+
+from account_utils import public_user_email
 
 # User Schemas
 class UserBase(BaseModel):
@@ -31,6 +33,7 @@ class ResetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=6)
 
 class UserResponse(UserBase):
+    email: Optional[EmailStr] = None
     id: int
     role: str
     guardian_email: Optional[str] = None
@@ -49,6 +52,11 @@ class UserResponse(UserBase):
     equipped_board_theme_item_key: Optional[str] = None
     equipped_trail_item_key: Optional[str] = None
     equipped_companion_item_key: Optional[str] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, value):
+        return public_user_email(value)
     
     class Config:
         from_attributes = True

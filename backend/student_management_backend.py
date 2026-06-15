@@ -18,6 +18,7 @@ from models import (
     PuzzleTheme,
     Notification,
 )
+from account_utils import public_user_email
 from auth import get_current_user
 from database import get_db
 from datetime import datetime, timedelta
@@ -32,7 +33,7 @@ class StudentStats(BaseModel):
     id: int
     username: str
     full_name: str
-    email: str
+    email: Optional[str] = None
     xp: int
     total_xp: int  # alias for frontend compatibility
     level: int
@@ -58,13 +59,13 @@ class StudentStats(BaseModel):
 class DeactivatedNoticeStudent(BaseModel):
     id: int
     username: str
-    email: str
+    email: Optional[str] = None
 
 
 class StudentDetailedStats(BaseModel):
     id: int
     username: str
-    email: str
+    email: Optional[str] = None
     xp: int
     created_at: datetime
     last_active: Optional[datetime] = None
@@ -130,7 +131,7 @@ class CoachRosterStudentRow(BaseModel):
     id: int
     username: str
     full_name: str
-    email: str
+    email: Optional[str] = None
     is_active: bool
     payment_status: str
     is_enrollment_active: bool
@@ -493,7 +494,7 @@ def get_coach_roster(
                         id=student.id,
                         username=student.username,
                         full_name=student.full_name or student.username,
-                        email=student.email,
+                        email=public_user_email(student.email),
                         is_active=bool(student.is_active),
                         payment_status=enrollment.payment_status or "pending",
                         is_enrollment_active=bool(enrollment.is_active),
@@ -647,7 +648,9 @@ def get_deactivated_notice(
     return {
         "count": len(rows),
         "students": [
-            DeactivatedNoticeStudent(id=u.id, username=u.username, email=u.email).model_dump()
+            DeactivatedNoticeStudent(
+                id=u.id, username=u.username, email=public_user_email(u.email)
+            ).model_dump()
             for u in rows
         ],
     }
@@ -717,7 +720,7 @@ def get_all_students(
                 id=student.id,
                 username=student.username,
                 full_name=student.full_name or student.username,
-                email=student.email,
+                email=public_user_email(student.email),
                 xp=xp_val,
                 total_xp=xp_val,
                 level=student.level or 1,
@@ -961,7 +964,7 @@ def get_student_details(
     return StudentDetailedStats(
         id=student.id,
         username=student.username,
-        email=student.email,
+        email=public_user_email(student.email),
         xp=student.total_xp,
         created_at=student.created_at,
         last_active=last_active,

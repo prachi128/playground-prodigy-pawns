@@ -78,7 +78,7 @@ api.interceptors.response.use(
 // Types
 export interface User {
   id: number;
-  email: string;
+  email?: string | null;
   username: string;
   full_name: string;
   role: string;
