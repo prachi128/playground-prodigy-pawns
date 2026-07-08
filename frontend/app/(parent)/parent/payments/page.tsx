@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { parentAPI, ChildInfo, PaymentRecord } from '@/lib/api';
 import { usernameInitial } from '@/lib/avatar';
+import { formatInr, isBillableChild, paymentDueLabel } from '@/lib/parent-billing';
 import { Loader2, CreditCard, CheckCircle, AlertTriangle, Clock, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -87,7 +88,12 @@ export default function ParentPaymentsPage() {
 
   const now = new Date();
   const dayOfMonth = now.getDate();
-  const daysUntilDeadline = dayOfMonth <= 10 ? 10 - dayOfMonth : 0;
+  const deadlineDay = 10;
+  const billableChildren = children.filter(isBillableChild);
+  const hasDeadlineThisMonth = billableChildren.some((c) => !c.is_join_month && c.payment_status !== 'paid');
+  const daysUntilDeadline = hasDeadlineThisMonth && dayOfMonth <= deadlineDay ? deadlineDay - dayOfMonth : 0;
+  const isPastDeadline = hasDeadlineThisMonth && dayOfMonth > deadlineDay;
+  const isNearDeadline = hasDeadlineThisMonth && dayOfMonth <= deadlineDay && daysUntilDeadline <= 3;
 
   return (
     <div className="space-y-6">
@@ -96,28 +102,29 @@ export default function ParentPaymentsPage() {
         <p className="text-gray-500">Manage monthly batch payments for your children.</p>
       </div>
 
-      {/* Deadline Banner */}
+      {billableChildren.length > 0 && hasDeadlineThisMonth && (
       <div className={`rounded-xl p-4 flex items-center gap-3 ${
-        dayOfMonth > 10
+        isPastDeadline
           ? 'bg-red-50 border-2 border-red-200'
-          : daysUntilDeadline <= 3
+          : isNearDeadline
           ? 'bg-amber-50 border-2 border-amber-200'
           : 'bg-blue-50 border-2 border-blue-200'
       }`}>
         <Clock className={`w-5 h-5 flex-shrink-0 ${
-          dayOfMonth > 10 ? 'text-red-500' : daysUntilDeadline <= 3 ? 'text-amber-500' : 'text-blue-500'
+          isPastDeadline ? 'text-red-500' : isNearDeadline ? 'text-amber-500' : 'text-blue-500'
         }`} />
         <p className={`text-sm font-medium ${
-          dayOfMonth > 10 ? 'text-red-700' : daysUntilDeadline <= 3 ? 'text-amber-700' : 'text-blue-700'
+          isPastDeadline ? 'text-red-700' : isNearDeadline ? 'text-amber-700' : 'text-blue-700'
         }`}>
-          {dayOfMonth > 10
+          {isPastDeadline
             ? 'Payment deadline has passed for this month. Please pay immediately to avoid disruption.'
             : daysUntilDeadline === 0
             ? 'Today is the payment deadline! Please complete your payment.'
-            : `Payment deadline: 10th of every month (${daysUntilDeadline} days remaining)`
+            : `Payment deadline: ${deadlineDay}th of every month (${daysUntilDeadline} days remaining)`
           }
         </p>
       </div>
+      )}
 
       {/* Current Month Payments */}
       <div>
@@ -126,7 +133,7 @@ export default function ParentPaymentsPage() {
           Current Month
         </h2>
         <div className="space-y-3">
-          {children.map((child) => (
+          {billableChildren.map((child) => (
             <div key={child.id} className="bg-white rounded-xl border-2 border-gray-200 p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -135,9 +142,10 @@ export default function ParentPaymentsPage() {
                   </div>
                   <div>
                     <p className="font-bold text-gray-800">{child.full_name}</p>
-                    <p className="text-sm text-gray-500">
-                      {child.batch_name || 'No batch assigned'}
-                    </p>
+                    <p className="text-sm text-gray-500">{child.batch_name}</p>
+                    {child.monthly_fee != null && child.payment_status !== 'paid' && (
+                      <p className="text-sm font-semibold text-gray-700">{formatInr(child.monthly_fee)} / month</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -145,7 +153,7 @@ export default function ParentPaymentsPage() {
                     <span className="flex items-center gap-1 text-green-600 font-semibold text-sm">
                       <CheckCircle className="w-4 h-4" /> Paid
                     </span>
-                  ) : child.batch_id ? (
+                  ) : (
                     <button
                       onClick={() => handlePay(child)}
                       disabled={payingFor === child.id}
@@ -157,11 +165,12 @@ export default function ParentPaymentsPage() {
                         <>Pay Now <ArrowRight className="w-4 h-4" /></>
                       )}
                     </button>
-                  ) : (
-                    <span className="text-gray-400 text-sm">No batch</span>
                   )}
                 </div>
               </div>
+              {paymentDueLabel(child) && (
+                <p className="mt-2 text-sm text-gray-500">{paymentDueLabel(child)}</p>
+              )}
               {child.payment_status === 'overdue' && (
                 <div className="mt-3 flex items-center gap-2 text-red-600 text-sm">
                   <AlertTriangle className="w-4 h-4" />
@@ -170,9 +179,11 @@ export default function ParentPaymentsPage() {
               )}
             </div>
           ))}
-          {children.length === 0 && (
+          {billableChildren.length === 0 && (
             <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center text-gray-500">
-              No children linked to your account.
+              {children.length === 0
+                ? 'No children linked to your account.'
+                : 'Payments appear here once your child is assigned to a coach and batch.'}
             </div>
           )}
         </div>

@@ -1,15 +1,39 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useAuthStore } from "@/lib/store"
 import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar"
 import { AvatarShopCosmetics } from "@/components/dashboard/avatar-shop-cosmetics"
 import { resolveShopCosmeticsForPlayer } from "@/lib/shop-cosmetics"
-import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History } from "lucide-react"
+import { Trophy, Star, Zap, Target, Calendar, Mail, User, Award, TrendingUp, History, Users, Crown, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { shopAPI, type ShopInventoryResponse } from "@/lib/api"
+import { getInventorySummary } from "@/lib/star-shop-collection"
+
+function isStudentPlaceholderEmail(email?: string | null): boolean {
+  return !!email && email.toLowerCase().endsWith("@students.prodigypawns.internal")
+}
 
 export function ProfileContent() {
   const { user } = useAuthStore()
   const router = useRouter()
+  const [inventory, setInventory] = useState<ShopInventoryResponse | null>(null)
+  const isStudent = user?.role === "student"
+
+  useEffect(() => {
+    if (!isStudent) return
+    let isMounted = true
+
+    void shopAPI.getInventory().then((data) => {
+      if (isMounted) setInventory(data)
+    }).catch(() => {
+      if (isMounted) setInventory(null)
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [isStudent])
 
   if (!user) {
     return (
@@ -22,11 +46,13 @@ export function ProfileContent() {
   }
 
   const displayName = user.full_name?.split(" ")[0] ?? "Player"
-  const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { 
+  const showStudentEmail = user.email && !isStudentPlaceholderEmail(user.email)
+  const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', {
     year: 'numeric', 
     month: 'long', 
     day: 'numeric' 
   }) : "Unknown"
+  const inventorySummary = getInventorySummary(inventory)
 
   return (
     <div className="mx-auto max-w-4xl pt-6">
@@ -86,7 +112,15 @@ export function ProfileContent() {
                 <p className="font-heading text-lg text-white/90 mb-1">
                   @{user.username}
                 </p>
-                {user.email && (
+                {isStudent && user.guardian_email && (
+                  <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 text-white/80">
+                    <Users className="h-4 w-4" />
+                    <span className="font-heading text-sm">
+                      Parent: {user.guardian_email}
+                    </span>
+                  </div>
+                )}
+                {((isStudent && showStudentEmail) || (!isStudent && user.email)) && (
                   <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 text-white/80">
                     <Mail className="h-4 w-4" />
                     <span className="font-heading text-sm">{user.email}</span>
@@ -195,6 +229,75 @@ export function ProfileContent() {
         </div>
       </section>
 
+      {isStudent && (
+        <section className="mb-6">
+          <div className="overflow-hidden rounded-3xl border-2 border-amber-200 bg-card shadow-sm">
+            <div className="bg-gradient-to-r from-amber-400 to-yellow-500 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <Crown className="h-6 w-6 text-white" />
+                <div>
+                  <h3 className="font-heading text-2xl font-bold text-white">Star Shop Collection</h3>
+                  <p className="text-sm font-semibold text-white/85">
+                    {inventorySummary.collectorTitle} · {inventorySummary.ownedCount} items owned
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border-2 border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Collection</p>
+                  <p className="font-heading text-3xl font-bold text-card-foreground">{inventorySummary.ownedCount}</p>
+                  <p className="text-sm text-muted-foreground">Owned items</p>
+                </div>
+                <div className="rounded-2xl border-2 border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Rare+</p>
+                  <p className="font-heading text-3xl font-bold text-card-foreground">{inventorySummary.rarePlusCount}</p>
+                  <p className="text-sm text-muted-foreground">Special finds</p>
+                </div>
+                <div className="rounded-2xl border-2 border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Title</p>
+                  <p className="font-heading text-2xl font-bold text-card-foreground">{inventorySummary.collectorTitle}</p>
+                  <p className="text-sm text-muted-foreground">Current collector rank</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {inventorySummary.categoryCounts.map((category) => (
+                  <div key={category.key} className="rounded-2xl border border-border bg-white px-4 py-3 shadow-sm">
+                    <p className="font-heading font-bold text-card-foreground">{category.label}</p>
+                    <p className="text-sm text-muted-foreground">{category.owned} owned</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/60 p-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <p className="font-heading text-sm font-bold text-card-foreground">Recent additions</p>
+                </div>
+                {inventorySummary.latestItems.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {inventorySummary.latestItems.map((item) => (
+                      <span
+                        key={item.item_key}
+                        className="rounded-full border border-amber-200 bg-white px-3 py-1 text-sm font-semibold text-card-foreground"
+                      >
+                        {item.item_name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Visit the Star Shop to start your collection.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Additional Info */}
       <section className="mb-6">
         <div className="overflow-hidden rounded-3xl border-2 border-indigo-200 bg-card shadow-sm">
@@ -219,6 +322,36 @@ export function ProfileContent() {
                   </div>
                 </div>
               </div>
+
+              {isStudent && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border-2 border-border bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100">
+                      <Users className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="font-heading text-sm font-bold text-muted-foreground">Parent / Guardian Email</p>
+                      <p className="font-heading text-base font-semibold text-card-foreground">
+                        {user.guardian_email || "Not set"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showStudentEmail && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border-2 border-border bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100">
+                      <Mail className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="font-heading text-sm font-bold text-muted-foreground">Email</p>
+                      <p className="font-heading text-base font-semibold text-card-foreground">{user.email}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {user.age && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border-2 border-border bg-white p-4">

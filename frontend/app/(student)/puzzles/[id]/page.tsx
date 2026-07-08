@@ -15,7 +15,7 @@ import {
 } from '@/lib/utils';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { RotateCcw, Check, X, Trophy, ArrowLeft, RefreshCw, Settings } from 'lucide-react';
+import { RotateCcw, Check, X, Trophy, ArrowLeft, RefreshCw, Settings, Flame } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import HintSystem from '@/components/HintSystem';
@@ -30,6 +30,11 @@ function PuzzleSolvePageContent() {
   const selectedDifficulty = searchParams.get('difficulty') ?? '';
   const selectedTheme = searchParams.get('theme') ?? '';
   const mode = searchParams.get('mode') ?? '';
+  const currentStreak = Number.parseInt(searchParams.get('streak') ?? '0', 10) || 0;
+  const bestStreak = Number.parseInt(searchParams.get('best') ?? '0', 10) || 0;
+  const isStreakMode = mode === 'streak';
+  const nextStreak = currentStreak + 1;
+  const streakBestAfterSolve = Math.max(bestStreak, nextStreak);
   const assignmentIdForApi = (() => {
     if (assignmentIdRaw == null || assignmentIdRaw === '') return null;
     const n = parseInt(assignmentIdRaw, 10);
@@ -140,8 +145,15 @@ function PuzzleSolvePageContent() {
 
       if (!expectedMove || attemptedMove !== expectedMove) {
         setMoveFeedback('wrong');
+        if (isStreakMode) {
+          setIsCorrect(false);
+        }
         void submitIncorrectAttempt([...movesMade, attemptedMove]);
-        toast.error('Oops! Not the puzzle move. Try again!');
+        toast.error(
+          isStreakMode
+            ? `Streak over at ${currentStreak}. Start a new run!`
+            : 'Oops! Not the puzzle move. Try again!'
+        );
         return false;
       }
 
@@ -245,7 +257,7 @@ function PuzzleSolvePageContent() {
     if (!puzzle) return;
 
     try {
-      if (mode === 'random') {
+      if (mode === 'random' || mode === 'streak') {
         const list = await puzzleAPI.getAll(
           selectedDifficulty || undefined,
           'healthyMix',
@@ -254,15 +266,19 @@ function PuzzleSolvePageContent() {
           { excludeAttempted: true }
         );
         if (list.length === 0) {
-          toast.error('No more unseen random puzzles found right now.');
-          router.push('/puzzles/solve');
+          toast.error(`No more unseen ${isStreakMode ? 'streak' : 'random'} puzzles found right now.`);
+          router.push(isStreakMode ? '/puzzles/streak' : '/puzzles/solve');
           return;
         }
         const nextPuzzle = list[Math.floor(Math.random() * list.length)];
         const params = new URLSearchParams();
         if (assignmentIdForApi != null) params.set('assignment_id', String(assignmentIdForApi));
         if (selectedDifficulty) params.set('difficulty', selectedDifficulty);
-        params.set('mode', 'random');
+        params.set('mode', isStreakMode ? 'streak' : 'random');
+        if (isStreakMode) {
+          params.set('streak', String(nextStreak));
+          params.set('best', String(streakBestAfterSolve));
+        }
         router.push(`/puzzles/${nextPuzzle.id}?${params.toString()}`);
         return;
       }
@@ -281,7 +297,13 @@ function PuzzleSolvePageContent() {
       router.push(`/puzzles/${nextPuzzle.id}?${params.toString()}`);
     } catch (error) {
       console.error('Failed to load next puzzle:', error);
-      router.push(mode === 'random' ? '/puzzles/solve' : '/puzzles/themes');
+      router.push(
+        mode === 'random'
+          ? '/puzzles/solve'
+          : mode === 'streak'
+            ? '/puzzles/streak'
+            : '/puzzles/themes'
+      );
     }
   };
 
@@ -411,6 +433,28 @@ function PuzzleSolvePageContent() {
         </div>
 
         <div className="space-y-2">
+          {isStreakMode && (
+            <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-r from-orange-50 via-amber-50 to-yellow-50 p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white">
+                    <Flame className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="font-heading text-sm font-bold text-orange-900">Puzzle Streak</p>
+                    <p className="text-xs font-semibold text-orange-700">Miss once and the run ends.</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-heading text-2xl font-black text-orange-600">{currentStreak}</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700">
+                    Best {Math.max(bestStreak, currentStreak)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <HintSystem
             puzzleId={puzzleId}
             fen={game.fen()}
@@ -435,7 +479,9 @@ function PuzzleSolvePageContent() {
                     </div>
                     <div>
                       <p className="font-heading font-bold text-green-800 text-sm">Correct!</p>
-                      <p className="font-sans text-green-700 text-xs">Well done! 🎉</p>
+                      <p className="font-sans text-green-700 text-xs">
+                        {isStreakMode ? `Streak is now ${nextStreak}. Keep it going!` : 'Well done! 🎉'}
+                      </p>
                     </div>
                   </>
                 ) : (
@@ -444,8 +490,12 @@ function PuzzleSolvePageContent() {
                       <X className="w-4 h-4 text-white" />
                     </div>
                     <div>
-                      <p className="font-heading font-bold text-red-800 text-sm">Not quite!</p>
-                      <p className="font-sans text-red-700 text-xs">Try again</p>
+                      <p className="font-heading font-bold text-red-800 text-sm">
+                        {isStreakMode ? 'Streak ended!' : 'Not quite!'}
+                      </p>
+                      <p className="font-sans text-red-700 text-xs">
+                        {isStreakMode ? `You finished with a streak of ${currentStreak}.` : 'Try again'}
+                      </p>
                     </div>
                   </>
                 )}
@@ -457,7 +507,9 @@ function PuzzleSolvePageContent() {
                     href={
                       assignmentIdForApi != null
                         ? `/assignments/${assignmentIdForApi}`
-                        : '/puzzles/solve'
+                        : isStreakMode
+                          ? '/puzzles/streak'
+                          : '/puzzles/solve'
                     }
                     className="bg-muted hover:bg-muted/80 text-muted-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm text-xs"
                   >
@@ -472,6 +524,25 @@ function PuzzleSolvePageContent() {
                     <Trophy className="w-3 h-3" />
                     Next Puzzle
                   </button>
+                </div>
+              )}
+
+              {isCorrect === false && isStreakMode && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/puzzles"
+                    className="bg-muted hover:bg-muted/80 text-muted-foreground font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 shadow-sm text-xs"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Home
+                  </Link>
+                  <Link
+                    href="/puzzles/streak"
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-heading font-bold py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 text-xs"
+                  >
+                    <Flame className="w-3 h-3" />
+                    New Streak
+                  </Link>
                 </div>
               )}
             </div>
@@ -494,11 +565,15 @@ function PuzzleSolvePageContent() {
                   }`}
                 >
                   {isCorrect
-                    ? 'You did it, superstar! Ready for another puzzle adventure?'
+                    ? isStreakMode
+                      ? `Awesome! Your streak is ${nextStreak}. Ready for the next one?`
+                      : 'You did it, superstar! Ready for another puzzle adventure?'
                     : moveFeedback === 'correct'
                       ? 'Great move! Nice thinking! 🌟'
                       : moveFeedback === 'wrong'
-                        ? 'That one is not the puzzle move. Try a different idea!'
+                        ? isStreakMode
+                          ? 'That miss ends the streak. Start a fresh run and beat your score!'
+                          : 'That one is not the puzzle move. Try a different idea!'
                         : 'Pick a smart move and surprise Coach Fox. You can do it!'}
                 </p>
               </div>
@@ -521,9 +596,13 @@ function PuzzleSolvePageContent() {
               <div className="flex items-start gap-2">
                 <div className="text-2xl animate-bounce">🎉</div>
                 <div>
-                  <p className="font-heading font-bold text-purple-900 text-sm">Hooray! Puzzle Complete!</p>
+                  <p className="font-heading font-bold text-purple-900 text-sm">
+                    {isStreakMode ? `Hooray! Streak ${nextStreak}!` : 'Hooray! Puzzle Complete!'}
+                  </p>
                   <p className="font-sans text-purple-800 text-xs">
-                    Congratulations, champ! You solved it perfectly. Keep shining!
+                    {isStreakMode
+                      ? 'You are on a roll. Keep solving to push your streak higher!'
+                      : 'Congratulations, champ! You solved it perfectly. Keep shining!'}
                   </p>
                   <p className="font-sans text-sm mt-1">🥳 ⭐ 🎊</p>
                 </div>

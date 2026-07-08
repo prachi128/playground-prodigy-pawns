@@ -34,7 +34,6 @@ from models import (
     UserRole,
     GameInvite,
     Notification,
-    ParentStudent,
     CoachSignupInvite,
     Assignment,
     AssignmentPuzzle,
@@ -58,7 +57,7 @@ from auth import (
     COOKIE_REFRESH_TOKEN,
 )
 from email_service import assert_email_configured, send_password_reset_email
-from account_utils import create_student_user, link_parent_to_guardian_students, password_reset_recipient
+from account_utils import create_student_user, ensure_parent_student_link, link_parent_to_guardian_students, password_reset_recipient
 from schemas import (
     UserCreate,
     UserResponse,
@@ -934,8 +933,7 @@ def signup_parent(data: ParentSignup, db: Session = Depends(get_db)):
 
     # Link to children by explicit email and by matching guardian_email
     for child in children:
-        link = ParentStudent(parent_id=parent.id, student_id=child.id)
-        db.add(link)
+        ensure_parent_student_link(parent.id, child.id, db)
     link_parent_to_guardian_students(parent, db)
     db.commit()
 
@@ -1053,6 +1051,8 @@ def login(
         )
     user.last_login = datetime.utcnow()
     sync_user_level_from_rating(user)
+    if user.role in (UserRole.parent, "parent"):
+        link_parent_to_guardian_students(user, db)
     db.commit()
     db.refresh(user)
     access_token = create_access_token(data={"sub": user.id})

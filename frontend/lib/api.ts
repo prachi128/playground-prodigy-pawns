@@ -1,6 +1,7 @@
 // lib/api.ts - API Client for Prodigy Pawns Backend
 
 import axios from 'axios';
+import type { StudentProgressReportData } from '@/components/student/student-progress-types';
 
 // Use localhost (not 127.0.0.1) to match frontend origin for cookie-based auth
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -874,10 +875,19 @@ export interface ChildInfo {
   batch_name?: string;
   batch_id?: number;
   payment_status?: string;
+  monthly_fee?: number;
+  payment_due_day?: number | null;
+  is_join_month?: boolean;
+}
+
+export interface ParentChildProfile extends ChildInfo {
+  guardian_email?: string | null;
+  report: StudentProgressReportData;
 }
 
 export interface ParentDashboard {
   parent_name: string;
+  parent_email?: string;
   children: ChildInfo[];
   upcoming_classes: ClassSession[];
   announcements: AnnouncementItem[];
@@ -892,6 +902,10 @@ export const parentAPI = {
   },
   getChildren: async (): Promise<ChildInfo[]> => {
     const response = await api.get('/api/parent/children');
+    return response.data;
+  },
+  getChildProfile: async (childId: number): Promise<ParentChildProfile> => {
+    const response = await api.get(`/api/parent/children/${childId}/profile`);
     return response.data;
   },
   getClasses: async (): Promise<ClassSession[]> => {

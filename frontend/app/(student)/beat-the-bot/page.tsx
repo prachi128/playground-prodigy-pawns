@@ -609,7 +609,7 @@ export default function BeatTheBotPage() {
                       onClick={() => setColorChoice('white')}
                       aria-label="Play as White"
                       aria-pressed={colorChoice === 'white'}
-                      className={`flex flex-1 items-center justify-center rounded-md py-2 text-xl transition-colors ${
+                      className={`flex flex-1 items-center justify-center rounded-md py-3 text-3xl transition-colors ${
                         colorChoice === 'white'
                           ? 'bg-card text-orange-600 shadow-sm ring-2 ring-orange-400 ring-offset-1 ring-offset-background'
                           : 'text-card-foreground hover:bg-background/80'
@@ -622,7 +622,7 @@ export default function BeatTheBotPage() {
                       onClick={() => setColorChoice('black')}
                       aria-label="Play as Black"
                       aria-pressed={colorChoice === 'black'}
-                      className={`flex flex-1 items-center justify-center rounded-md py-2 text-xl transition-colors ${
+                      className={`flex flex-1 items-center justify-center rounded-md py-3 text-3xl transition-colors ${
                         colorChoice === 'black'
                           ? 'bg-card text-gray-900 shadow-sm ring-2 ring-gray-600 ring-offset-1 ring-offset-background'
                           : 'text-card-foreground hover:bg-background/80'
@@ -635,13 +635,13 @@ export default function BeatTheBotPage() {
                       onClick={() => setColorChoice('random')}
                       aria-label="Random side"
                       aria-pressed={colorChoice === 'random'}
-                      className={`flex flex-1 items-center justify-center rounded-md py-2 transition-colors ${
+                      className={`flex flex-1 items-center justify-center rounded-md py-3 transition-colors ${
                         colorChoice === 'random'
                           ? 'bg-card text-violet-600 shadow-sm ring-2 ring-violet-500 ring-offset-1 ring-offset-background'
                           : 'text-card-foreground hover:bg-background/80'
                       }`}
                     >
-                      <Shuffle className="h-5 w-5" aria-hidden />
+                      <Shuffle className="h-7 w-7" aria-hidden />
                     </button>
                   </div>
 

@@ -529,6 +529,9 @@ class ChildResponse(BaseModel):
     batch_name: Optional[str] = None
     batch_id: Optional[int] = None
     payment_status: Optional[str] = None
+    monthly_fee: Optional[float] = None
+    payment_due_day: Optional[int] = None
+    is_join_month: Optional[bool] = None
 
     class Config:
         from_attributes = True

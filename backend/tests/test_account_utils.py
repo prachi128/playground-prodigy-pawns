@@ -1,12 +1,15 @@
 import unittest
+from unittest.mock import MagicMock
 
 from account_utils import (
     is_student_placeholder_email,
+    link_parent_to_guardian_students,
+    link_student_to_guardian_parent,
     password_reset_recipient,
     resolve_student_email,
     student_placeholder_email,
 )
-from models import User, UserRole
+from models import ParentStudent, User, UserRole
 
 
 class AccountUtilsTests(unittest.TestCase):
@@ -38,6 +41,53 @@ class AccountUtilsTests(unittest.TestCase):
             role=UserRole.parent,
         )
         self.assertEqual(password_reset_recipient(user), "parent@example.com")
+
+    def test_link_parent_to_guardian_students_creates_link(self):
+        db = MagicMock()
+        parent = User(id=10, email="Parent@Example.com", role=UserRole.parent)
+        student = User(
+            id=20,
+            email="kid@students.prodigypawns.internal",
+            username="kid1",
+            role=UserRole.student,
+            guardian_email="parent@example.com",
+        )
+
+        query = MagicMock()
+        db.query.return_value = query
+        query.filter.return_value = query
+        query.first.return_value = None
+        query.all.return_value = [student]
+
+        linked = link_parent_to_guardian_students(parent, db)
+        self.assertEqual(len(linked), 1)
+        self.assertEqual(linked[0].id, 20)
+        db.add.assert_called()
+        added = db.add.call_args[0][0]
+        self.assertIsInstance(added, ParentStudent)
+        self.assertEqual(added.parent_id, 10)
+        self.assertEqual(added.student_id, 20)
+
+    def test_link_student_to_guardian_parent_creates_link(self):
+        db = MagicMock()
+        student = User(
+            id=20,
+            email="kid@students.prodigypawns.internal",
+            username="kid1",
+            role=UserRole.student,
+            guardian_email="parent@example.com",
+        )
+        parent = User(id=10, email="parent@example.com", role=UserRole.parent)
+
+        query = MagicMock()
+        db.query.return_value = query
+        query.filter.return_value = query
+        query.first.side_effect = [parent, None]
+
+        result = link_student_to_guardian_parent(student, db)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.id, 10)
+        db.add.assert_called()
 
 
 if __name__ == "__main__":

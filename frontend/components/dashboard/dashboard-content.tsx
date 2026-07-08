@@ -1,19 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import {
-  Trophy,
-  Target,
-  Swords,
-  ChevronRight,
-  Star,
-  GraduationCap,
-} from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { StarShopPreview } from "./star-shop"
-import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist"
 import { LevelCard } from "./level-card"
-import { ActivityFeed } from "./activity-feed"
 
 // --- Data ---
 
@@ -126,69 +116,6 @@ export function DashboardContent() {
 
       {/* Star Shop Preview */}
       <StarShopPreview />
-
-      {/* Getting Started Checklist */}
-      <section>
-        <OnboardingChecklist />
-      </section>
-
-      {/* Trophies / Achievements */}
-      <section>
-        <div className="overflow-hidden rounded-3xl border-2 border-yellow-200 bg-card shadow-sm">
-          <div className="bg-gradient-to-r from-yellow-400 to-amber-500 px-5 py-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading text-lg font-bold text-white">
-                {"Trophies \uD83C\uDFC6"}
-              </h3>
-              <button className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1 text-xs font-bold text-white transition-colors hover:bg-white/20">
-                View All
-                <ChevronRight className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-          <div className="flex gap-4 overflow-x-auto p-5 scrollbar-hide">
-            {[
-              { title: "First Win!", icon: Trophy, bg: "bg-gradient-to-br from-yellow-100 to-amber-100", color: "text-yellow-600", earned: true, rarity: "Common", rarityColor: "bg-slate-100 text-slate-600" },
-              { title: "Puzzle Pro!", icon: Target, bg: "bg-gradient-to-br from-cyan-100 to-blue-100", color: "text-cyan-600", earned: true, rarity: "Rare", rarityColor: "bg-blue-100 text-blue-600" },
-              { title: "100 Games", icon: Swords, bg: "bg-gradient-to-br from-pink-100 to-rose-100", color: "text-pink-600", earned: false, rarity: "Epic", rarityColor: "bg-purple-100 text-purple-600" },
-              { title: "Star Scholar", icon: Star, bg: "bg-gradient-to-br from-purple-100 to-indigo-100", color: "text-purple-600", earned: false, rarity: "Legendary", rarityColor: "bg-amber-100 text-amber-700" },
-              { title: "Grandmaster", icon: GraduationCap, bg: "bg-gradient-to-br from-emerald-100 to-green-100", color: "text-emerald-600", earned: false, rarity: "Legendary", rarityColor: "bg-amber-100 text-amber-700" },
-            ].map((trophy) => {
-              const Icon = trophy.icon
-              return (
-                <div
-                  key={trophy.title}
-                  className={`flex shrink-0 flex-col items-center gap-2 rounded-3xl border-2 p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-                    trophy.earned
-                      ? `${trophy.bg} border-yellow-300 animate-earned-glow`
-                      : "border-border bg-muted/30 opacity-50 grayscale"
-                  }`}
-                  style={{ minWidth: "120px" }}
-                >
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${trophy.earned ? trophy.bg : "bg-muted"}`}>
-                    <Icon className={`h-7 w-7 ${trophy.earned ? trophy.color : "text-muted-foreground/40"}`} />
-                  </div>
-                  <p className="text-center font-heading text-sm font-bold text-card-foreground">
-                    {trophy.title}
-                  </p>
-                  {/* Rarity badge */}
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${trophy.rarityColor}`}>
-                    {trophy.rarity}
-                  </span>
-                  {trophy.earned && (
-                    <span className="animate-unlock rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-bold text-yellow-700">
-                      {"Earned! \u2B50"}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Activity Feed */}
-      <ActivityFeed />
     </div>
   )
 }

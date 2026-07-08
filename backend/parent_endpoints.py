@@ -11,13 +11,19 @@ from models import (
 )
 from auth import get_current_user, get_password_hash
 from database import get_db
-from account_utils import create_student_user, ensure_parent_student_link
+from account_utils import create_student_user, ensure_parent_student_link, link_parent_to_guardian_students
+from student_management_backend import build_student_detailed_stats
 from schemas import (
     ClassSessionResponse, AnnouncementResponse,
     PaymentCheckoutCreate, PaymentResponse, ChildResponse, ParentChildAssignmentResponse,
     ParentChildCreate, UserResponse,
 )
 from stripe_service import create_checkout_session, verify_webhook
+from parent_payment_utils import (
+    PAYMENT_DEADLINE_DAY,
+    compute_billing_status,
+    is_billable_enrollment,
+)
 
 router = APIRouter(prefix="/api/parent", tags=["parent"])
 
@@ -29,12 +35,16 @@ def require_parent(user_id: int = Depends(get_current_user), db: Session = Depen
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only parents can access this endpoint"
         )
+    # Pick up students who listed this parent's email as guardian_email
+    link_parent_to_guardian_students(user, db)
+    db.commit()
     return user
 
 
 def _get_children_ids(parent_id: int, db: Session) -> List[int]:
     links = db.query(ParentStudent).filter(ParentStudent.parent_id == parent_id).all()
-    return [link.student_id for link in links]
+    # Deduplicate — legacy flows may have created duplicate parent_students rows
+    return list(dict.fromkeys(link.student_id for link in links))
 
 
 def _get_children_batch_ids(children_ids: List[int], db: Session) -> List[int]:
@@ -59,6 +69,70 @@ def _get_level_category(level: int) -> str:
     return "King"
 
 
+def _child_billing_context(
+    student: User,
+    db: Session,
+    now: datetime,
+) -> dict:
+    """Batch + payment fields visible to parents (coach-tagged + active batch only)."""
+    sb = db.query(StudentBatch).filter(
+        StudentBatch.student_id == student.id,
+        StudentBatch.is_active == True,
+    ).first()
+    batch = db.query(Batch).filter(Batch.id == sb.batch_id).first() if sb else None
+
+    if not is_billable_enrollment(student, sb, batch):
+        return {
+            "batch_name": None,
+            "batch_id": None,
+            "payment_status": None,
+            "monthly_fee": None,
+            "payment_due_day": None,
+            "is_join_month": None,
+        }
+
+    current_month = now.strftime("%Y-%m")
+    payment = (
+        db.query(Payment)
+        .filter(
+            Payment.student_id == student.id,
+            Payment.billing_month == current_month,
+            Payment.status == "completed",
+        )
+        .first()
+    )
+    joined_at = sb.joined_at or student.created_at or now
+    status, due_day, join_month = compute_billing_status(
+        has_completed_payment=bool(payment),
+        billing_month=current_month,
+        joined_at=joined_at,
+        now=now,
+    )
+    return {
+        "batch_name": batch.name,
+        "batch_id": batch.id,
+        "payment_status": status,
+        "monthly_fee": float(batch.monthly_fee or 0),
+        "payment_due_day": due_day,
+        "is_join_month": join_month,
+    }
+
+
+def _child_response(student: User, db: Session, now: datetime) -> ChildResponse:
+    billing = _child_billing_context(student, db, now)
+    return ChildResponse(
+        id=student.id,
+        full_name=student.full_name,
+        username=student.username,
+        avatar_url=student.avatar_url,
+        rating=student.rating,
+        level=student.level,
+        level_category=_get_level_category(student.level),
+        total_xp=student.total_xp,
+        **billing,
+    )
+
+
 # ==================== DASHBOARD OVERVIEW ====================
 
 @router.get("/dashboard")
@@ -75,25 +149,7 @@ def get_dashboard(parent: User = Depends(require_parent), db: Session = Depends(
         student = db.query(User).filter(User.id == cid).first()
         if not student:
             continue
-        sb = db.query(StudentBatch).filter(
-            StudentBatch.student_id == cid, StudentBatch.is_active == True
-        ).first()
-        batch = db.query(Batch).filter(Batch.id == sb.batch_id).first() if sb else None
-        payment = db.query(Payment).filter(
-            Payment.student_id == cid,
-            Payment.billing_month == current_month,
-            Payment.status == "completed",
-        ).first() if sb else None
-        is_past_deadline = now.day > 10
-        p_status = "paid" if payment else ("overdue" if is_past_deadline else "pending")
-        children.append(ChildResponse(
-            id=student.id, full_name=student.full_name, username=student.username,
-            avatar_url=student.avatar_url, rating=student.rating, level=student.level,
-            level_category=_get_level_category(student.level), total_xp=student.total_xp,
-            batch_name=batch.name if batch else None,
-            batch_id=batch.id if batch else None,
-            payment_status=p_status,
-        ))
+        children.append(_child_response(student, db, now))
 
     # Upcoming classes (next 5)
     upcoming_classes = []
@@ -130,11 +186,12 @@ def get_dashboard(parent: User = Depends(require_parent), db: Session = Depends(
 
     return {
         "parent_name": parent.full_name,
+        "parent_email": parent.email,
         "children": [c.model_dump() for c in children],
         "upcoming_classes": [c.model_dump() for c in upcoming_classes],
         "announcements": [a.model_dump() for a in announcements],
         "current_month": current_month,
-        "payment_deadline_day": 10,
+        "payment_deadline_day": PAYMENT_DEADLINE_DAY,
     }
 
 
@@ -144,33 +201,50 @@ def get_dashboard(parent: User = Depends(require_parent), db: Session = Depends(
 def get_children(parent: User = Depends(require_parent), db: Session = Depends(get_db)):
     children_ids = _get_children_ids(parent.id, db)
     now = datetime.utcnow()
-    current_month = now.strftime("%Y-%m")
-    is_past_deadline = now.day > 10
 
     result = []
     for cid in children_ids:
         student = db.query(User).filter(User.id == cid).first()
         if not student:
             continue
-        sb = db.query(StudentBatch).filter(
-            StudentBatch.student_id == cid, StudentBatch.is_active == True
-        ).first()
-        batch = db.query(Batch).filter(Batch.id == sb.batch_id).first() if sb else None
-        payment = db.query(Payment).filter(
-            Payment.student_id == cid,
-            Payment.billing_month == current_month,
-            Payment.status == "completed",
-        ).first() if sb else None
-        p_status = "paid" if payment else ("overdue" if is_past_deadline else "pending")
-        result.append(ChildResponse(
-            id=student.id, full_name=student.full_name, username=student.username,
-            avatar_url=student.avatar_url, rating=student.rating, level=student.level,
-            level_category=_get_level_category(student.level), total_xp=student.total_xp,
-            batch_name=batch.name if batch else None,
-            batch_id=batch.id if batch else None,
-            payment_status=p_status,
-        ))
+        result.append(_child_response(student, db, now))
     return result
+
+
+def _get_parent_child(parent_id: int, child_id: int, db: Session) -> User:
+    children_ids = _get_children_ids(parent_id, db)
+    if child_id not in children_ids:
+        raise HTTPException(status_code=403, detail="Not your child")
+    student = db.query(User).filter(User.id == child_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Child not found")
+    return student
+
+
+@router.get("/children/{child_id}/profile")
+def get_child_profile(
+    child_id: int,
+    parent: User = Depends(require_parent),
+    db: Session = Depends(get_db),
+):
+    """Full child profile and progress report for a linked parent."""
+    student = _get_parent_child(parent.id, child_id, db)
+    now = datetime.utcnow()
+    billing = _child_billing_context(student, db, now)
+    report = build_student_detailed_stats(db, student)
+    return {
+        "id": student.id,
+        "full_name": student.full_name,
+        "username": student.username,
+        "avatar_url": student.avatar_url,
+        "rating": student.rating,
+        "level": student.level,
+        "level_category": _get_level_category(student.level),
+        "total_xp": student.total_xp,
+        "guardian_email": student.guardian_email,
+        **billing,
+        "report": report.model_dump(mode="json"),
+    }
 
 
 @router.post("/children", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -191,6 +265,7 @@ def create_child(
             gender=data.gender,
             avatar_url=data.avatar_url or "/avatars/default.png",
         )
+        # create_student_user links to guardian parent when one exists
         ensure_parent_student_link(parent.id, child.id, db)
         db.commit()
         db.refresh(child)
@@ -207,9 +282,7 @@ def get_child_assignments(
     parent: User = Depends(require_parent),
     db: Session = Depends(get_db),
 ):
-    children_ids = _get_children_ids(parent.id, db)
-    if child_id not in children_ids:
-        raise HTTPException(status_code=403, detail="Not your child")
+    _get_parent_child(parent.id, child_id, db)
 
     batch_ids = [
         sb.batch_id
@@ -346,6 +419,11 @@ def create_payment_checkout(
         raise HTTPException(status_code=404, detail="Batch not found")
 
     student = db.query(User).filter(User.id == data.student_id).first()
+    if not is_billable_enrollment(student, sb, batch):
+        raise HTTPException(
+            status_code=400,
+            detail="Payments are available once your child is assigned to a coach and batch",
+        )
 
     # Check for existing completed payment this month
     existing = db.query(Payment).filter(

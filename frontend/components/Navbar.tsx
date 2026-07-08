@@ -45,7 +45,9 @@ export default function Navbar() {
     ? '/'
     : user?.role === 'coach' || user?.role === 'admin'
       ? '/coach'
-      : '/dashboard';
+      : user?.role === 'parent'
+        ? '/parent'
+        : '/dashboard';
 
   return (
     <nav className="bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 shadow-lg sticky top-0 z-50">

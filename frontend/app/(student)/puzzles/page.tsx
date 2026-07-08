@@ -3,7 +3,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Puzzle, Shapes, Zap, ArrowLeft } from 'lucide-react';
+import { Puzzle, Shapes, Zap, Flame, ArrowLeft } from 'lucide-react';
 
 const puzzleOptions = [
   {
@@ -36,6 +36,16 @@ const puzzleOptions = [
     emoji: '🏎️',
     icon: Zap,
   },
+  {
+    title: 'Puzzle Streak',
+    description: 'Keep solving fresh puzzles until your first mistake. Build the longest streak you can.',
+    href: '/puzzles/streak',
+    image: null,
+    gradient: 'from-rose-400 to-orange-500',
+    borderColor: 'border-rose-300',
+    emoji: '🔥',
+    icon: Flame,
+  },
 ];
 
 export default function PuzzlesLandingPage() {
@@ -61,7 +71,7 @@ export default function PuzzlesLandingPage() {
 
       {/* Puzzle options */}
       <section className="mb-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           {puzzleOptions.map((card, idx) => {
             const Icon = card.icon;
             return (
@@ -71,7 +81,7 @@ export default function PuzzlesLandingPage() {
                 className={`animate-bounce-in hover-wiggle group flex flex-col overflow-hidden rounded-3xl border-2 ${card.borderColor} bg-card shadow-md transition-all duration-200 hover:shadow-xl hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                 style={{ animationDelay: `${idx * 120}ms` }}
               >
-                <div className={`relative h-36 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-40 transition-transform duration-300 group-hover:scale-105`}>
+                <div className={`relative h-32 w-full overflow-hidden bg-gradient-to-br ${card.gradient} sm:h-36 transition-transform duration-300 group-hover:scale-105`}>
                   {card.image ? (
                     <img
                       src={card.image}
@@ -83,20 +93,20 @@ export default function PuzzlesLandingPage() {
                   )}
                   <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-45`} />
                   <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-6xl sm:text-7xl drop-shadow-lg">{card.emoji}</span>
+                  <span className="text-5xl sm:text-6xl drop-shadow-lg">{card.emoji}</span>
                   </div>
-                  <div className="absolute right-3 top-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-lg">
-                    <Icon className="h-6 w-6 text-gray-700" />
+                  <div className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-lg">
+                    <Icon className="h-5 w-5 text-gray-700" />
                   </div>
                 </div>
-                <div className="flex flex-1 flex-col p-5">
-                  <h2 className="font-heading text-xl font-bold text-card-foreground">
+                <div className="flex flex-1 flex-col p-4">
+                  <h2 className="font-heading text-lg font-bold text-card-foreground">
                     {card.title}
                   </h2>
-                  <p className="mt-2 font-sans text-sm text-muted-foreground">
+                  <p className="mt-1.5 font-sans text-sm text-muted-foreground">
                     {card.description}
                   </p>
-                  <div className={`mt-4 inline-flex items-center gap-2 self-start rounded-xl bg-gradient-to-r ${card.gradient} px-4 py-2 font-heading text-sm font-bold text-white shadow-sm group-hover:shadow-md transition-shadow`}>
+                  <div className={`mt-3 inline-flex items-center gap-2 self-start rounded-xl bg-gradient-to-r ${card.gradient} px-3.5 py-1.5 font-heading text-sm font-bold text-white shadow-sm group-hover:shadow-md transition-shadow`}>
                     Get started
                     <ArrowLeft className="h-4 w-4 rotate-180" />
                   </div>

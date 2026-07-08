@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import toast from 'react-hot-toast';
-import { Sparkles, X, Plus, User, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, User, Eye, EyeOff } from 'lucide-react';
 import { Fredoka, Nunito } from 'next/font/google';
 
 type SignupMode = 'student' | 'parent';
@@ -47,25 +47,9 @@ export default function SignupPage() {
     gender: '' as '' | 'girl' | 'boy',
     avatar_url: '/avatars/kid-1.png',
   });
-  const [childEmails, setChildEmails] = useState(['']);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [inlineError, setInlineError] = useState('');
-
-  const handleAddChildEmail = () => {
-    setChildEmails([...childEmails, '']);
-  };
-
-  const handleRemoveChildEmail = (index: number) => {
-    if (childEmails.length === 1) return;
-    setChildEmails(childEmails.filter((_, i) => i !== index));
-  };
-
-  const handleChildEmailChange = (index: number, value: string) => {
-    const updated = [...childEmails];
-    updated[index] = value;
-    setChildEmails(updated);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,13 +80,11 @@ export default function SignupPage() {
     try {
       let response;
       if (mode === 'parent') {
-        const legacyChildEmails = childEmails.filter((e) => e.trim());
         response = await authAPI.signupParent({
           email: formData.email,
           username: formData.username,
           full_name: formData.full_name,
           password: formData.password,
-          child_emails: legacyChildEmails.length > 0 ? legacyChildEmails : undefined,
         });
       } else {
         response = await authAPI.signup({
@@ -388,46 +370,12 @@ export default function SignupPage() {
               </div>
             )}
 
-            {/* Child Emails (Parent only — optional legacy link) */}
+            {/* Parent linking info */}
             {mode === 'parent' && (
-              <div>
-                <label className="block text-sm font-heading font-semibold text-foreground mb-2">
-                  Child&apos;s Account Email(s) (Optional)
-                </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  We automatically link children whose guardian email matches yours. Only add emails here if your child has an older account with its own email.
-                </p>
-                {childEmails.map((email, index) => (
-                  <div key={index} className="flex gap-2 mb-2">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        handleChildEmailChange(index, e.target.value);
-                        if (inlineError) setInlineError('');
-                      }}
-                      className="flex-1 px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
-                      placeholder="child@email.com (optional)"
-                    />
-                    {childEmails.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveChildEmail(index)}
-                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={handleAddChildEmail}
-                  className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700 font-medium mt-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add another child
-                </button>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-gray-600">
+                After you sign up, children who use your email as their{' '}
+                <strong>parent / guardian email</strong> will link automatically. You can also
+                create child accounts from your parent dashboard.
               </div>
             )}
 

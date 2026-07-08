@@ -825,22 +825,10 @@ def assign_student_to_coach(
     }
 
 
-@router.get("/{student_id}", response_model=StudentDetailedStats)
-def get_student_details(
-    student_id: int,
-    coach: User = Depends(require_coach),
-    db: Session = Depends(get_db),
-):
-    """Get detailed stats for a specific student (must be on coach roster unless admin)."""
-    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _coach_can_access_student(coach, db, student_id):
-        raise HTTPException(status_code=404, detail="Student not found")
-    if not _is_admin(coach) and student.is_active is False:
-        raise HTTPException(status_code=404, detail="Student not found")
+def build_student_detailed_stats(db: Session, student: User) -> StudentDetailedStats:
+    """Aggregate puzzle/game analytics for a student (coach or parent reports)."""
+    from models import DifficultyLevel
 
-    # From PuzzleAttempt
     attempted = db.query(func.count(PuzzleAttempt.id)).filter(PuzzleAttempt.user_id == student.id).scalar() or 0
     solved = (
         db.query(func.count(PuzzleAttempt.id)).filter(
@@ -857,9 +845,6 @@ def get_student_details(
         days_since_active = 999
     else:
         days_since_active = (datetime.utcnow() - last_active).days
-
-    # Solved by difficulty (from PuzzleAttempt joined with Puzzle)
-    from models import DifficultyLevel
 
     beginner_solved = (
         db.query(func.count(PuzzleAttempt.id))
@@ -984,6 +969,24 @@ def get_student_details(
         weekly_buckets=weekly_buckets,
         weekly_trend=weekly_trend,
     )
+
+
+@router.get("/{student_id}", response_model=StudentDetailedStats)
+def get_student_details(
+    student_id: int,
+    coach: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Get detailed stats for a specific student (must be on coach roster unless admin)."""
+    student = db.query(User).filter(User.id == student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _coach_can_access_student(coach, db, student_id):
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not _is_admin(coach) and student.is_active is False:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return build_student_detailed_stats(db, student)
 
 
 @router.post("/{student_id}/award-xp")

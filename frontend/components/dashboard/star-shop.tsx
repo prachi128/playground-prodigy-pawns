@@ -5,6 +5,7 @@ import { Star, Lock, Crown, ArrowRight, Sparkles } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import { rewardsAPI, shopAPI, type ShopCatalogItem } from "@/lib/api"
+import { getCollectionStats } from "@/lib/star-shop-collection"
 import { useAuthStore } from "@/lib/store"
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -66,6 +67,7 @@ export function StarShopPreview({ mode = "preview" }: { mode?: StarShopMode }) {
   }
 
   const maxConvertibleStars = useMemo(() => Math.floor((user?.total_xp ?? 0) / 250), [user?.total_xp])
+  const collection = useMemo(() => getCollectionStats(items), [items])
 
   const convertOneStar = async () => {
     setConverting(true)
@@ -157,6 +159,59 @@ export function StarShopPreview({ mode = "preview" }: { mode?: StarShopMode }) {
             </div>
           </div>
         </div>
+        <div className="border-b border-yellow-100 bg-amber-50/70 px-5 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="font-heading text-lg font-bold text-card-foreground">
+                {collection.collectorTitle}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {isLoading
+                  ? "Loading collection progress..."
+                  : `Collected ${collection.ownedCount} of ${collection.totalCount} items with ${collection.rarePlusCount} rare+ finds.`}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-center shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Owned</p>
+                <p className="font-heading text-xl font-bold text-card-foreground">
+                  {collection.ownedCount}/{collection.totalCount}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-center shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Equipped</p>
+                <p className="font-heading text-xl font-bold text-card-foreground">{collection.equippedCount}</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-center shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Rare+</p>
+                <p className="font-heading text-xl font-bold text-card-foreground">{collection.rarePlusCount}</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-center shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Progress</p>
+                <p className="font-heading text-xl font-bold text-card-foreground">{collection.progressPercent}%</p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/80">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 transition-all"
+              style={{ width: `${collection.progressPercent}%` }}
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+            {collection.categoryProgress.map((category) => (
+              <div
+                key={category.key}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm shadow-sm"
+              >
+                <p className="font-heading font-bold text-card-foreground">{category.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {category.owned}/{category.total} collected
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className={gridClass}>
           {items.map((item) => {
             const view = itemVisuals[item.item_key] ?? itemVisuals.cool_sunglasses
@@ -207,7 +262,9 @@ export function StarShopPreview({ mode = "preview" }: { mode?: StarShopMode }) {
         </div>
         <div className="space-y-4 px-5 pb-5">
           <p className="text-xs text-muted-foreground">
-            {isLoading ? "Loading shop..." : `XP: ${user?.total_xp ?? 0} | Stars: ${stars} | Owned: ${items.filter((i) => i.owned).length}`}
+            {isLoading
+              ? "Loading shop..."
+              : `XP: ${user?.total_xp ?? 0} | Stars: ${stars} | Owned: ${collection.ownedCount} | Title: ${collection.collectorTitle}`}
           </p>
           {mode === "preview" && (
             <Link

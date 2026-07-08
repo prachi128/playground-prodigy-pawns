@@ -169,7 +169,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
   const totalXP = user?.total_xp ?? 0
 
   // On mobile/tablet overlay: always full width (expanded). On desktop: respect collapsed state.
-  const sidebarWidthClass = `w-60 ${collapsed ? "lg:w-16" : "lg:w-60"}`
+  const sidebarWidthClass = `w-56 ${collapsed ? "lg:w-14" : "lg:w-56"}`
 
   return (
     <>
@@ -209,12 +209,9 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
           <X className="h-5 w-5" />
         </button>
 
-        {/* Logo with mascot knight (v1 layout); when collapsed, expand button below knight */}
+        {/* Logo; when collapsed, expand button only */}
         <div className={`flex flex-col items-center gap-1 px-4 pt-5 pb-2 ${effectiveCollapsed ? "px-2" : ""}`}>
-          <div className={`leading-none ${effectiveCollapsed ? "text-3xl" : "text-[40px]"}`} role="img" aria-label="Chess knight mascot">
-            {"♞"}
-          </div>
-          {effectiveCollapsed && (
+          {effectiveCollapsed ? (
             <button
               onClick={toggleCollapse}
               className="hidden rounded-full bg-white/10 p-1.5 text-sidebar-foreground/60 transition-all duration-150 hover:bg-white/20 hover:text-sidebar-foreground lg:block"
@@ -222,8 +219,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-          )}
-          {!effectiveCollapsed && (
+          ) : (
             <h1 className="font-heading text-2xl font-bold text-sidebar-foreground">
               Prodigy Pawns
             </h1>

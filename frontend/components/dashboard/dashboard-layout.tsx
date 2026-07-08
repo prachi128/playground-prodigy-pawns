@@ -77,7 +77,7 @@ export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) 
         onCollapsedChange={handleCollapsedChange}
       />
 
-      <div className={`flex min-w-0 flex-1 flex-col overflow-x-hidden transition-all duration-300 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"}`}>
+      <div className={`flex min-w-0 flex-1 flex-col overflow-x-hidden transition-all duration-300 ${sidebarCollapsed ? "lg:pl-14" : "lg:pl-56"}`}>
         {!hideHeader && (
           <MemoizedHeader
             onMenuClick={handleMenuClick}

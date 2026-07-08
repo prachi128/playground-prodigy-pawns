@@ -57,6 +57,7 @@ def ensure_parent_student_link(parent_id: int, student_id: int, db: Session) -> 
     if exists:
         return False
     db.add(ParentStudent(parent_id=parent_id, student_id=student_id))
+    db.flush()
     return True
 
 
