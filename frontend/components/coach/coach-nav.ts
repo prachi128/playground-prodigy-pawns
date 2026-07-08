@@ -40,6 +40,7 @@ export const coachNav: CoachNavItem[] = [
   { label: "Students", href: "/coach/students", icon: Users, section: "manage" },
   { label: "Coaches", href: "/coach/coaches", icon: UserCog, section: "manage", adminOnly: true },
   { label: "Assignments", href: "/coach/assignments", icon: BookOpen, section: "manage" },
+  { label: "Lessons", href: "/coach/lessons", icon: BookOpen, section: "manage" },
   { label: "Puzzles", href: "/coach/puzzles", icon: Puzzle, section: "manage" },
   { label: "Coach invites", href: "/coach/admin/coach-invites", icon: UserPlus, section: "admin", adminOnly: true },
   { label: "Coaches", href: "/coach/admin/coaches", icon: UserCog, section: "admin", adminOnly: true },

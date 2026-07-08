@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { parentAPI, ParentDashboard } from '@/lib/api';
 import { usernameInitial } from '@/lib/avatar';
-import { Loader2, Calendar, CreditCard, Megaphone, Users, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Loader2, Calendar, CreditCard, Megaphone, Users, AlertTriangle, CheckCircle, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { JoinClassButton } from '@/components/JoinClassButton';
 import { canJoinClassSession } from '@/lib/class-join';
@@ -199,6 +199,77 @@ export default function ParentDashboardPage() {
               No announcements yet.
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Lesson Progress */}
+      <div>
+        <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-violet-500" />
+          Lesson Progress
+        </h2>
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-5 space-y-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-xl bg-violet-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Lessons Opened</p>
+              <p className="mt-2 text-2xl font-bold text-violet-900">{data.lesson_progress?.total_opened ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-emerald-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Lessons Completed</p>
+              <p className="mt-2 text-2xl font-bold text-emerald-900">{data.lesson_progress?.total_completed ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-amber-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Completion Rate</p>
+              <p className="mt-2 text-2xl font-bold text-amber-900">{data.lesson_progress?.completion_pct ?? 0}%</p>
+            </div>
+          </div>
+
+          {data.lesson_progress?.children?.length ? (
+            <div className="space-y-3">
+              {data.lesson_progress.children.map((child) => (
+                <div key={child.child_id}>
+                  <div className="mb-1 flex items-center justify-between text-sm">
+                    <span className="font-semibold text-gray-800">{child.child_name}</span>
+                    <span className="text-gray-500">
+                      {child.completed_lessons}/{child.opened_lessons} lessons
+                    </span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
+                      style={{ width: `${Math.min(100, child.completion_pct)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No lesson activity yet.</p>
+          )}
+
+          {data.lesson_progress?.graph?.length ? (
+            <div>
+              <p className="mb-3 text-sm font-semibold text-gray-700">Recent completions</p>
+              <div className="flex items-end gap-3">
+                {data.lesson_progress.graph.map((point) => {
+                  const max = Math.max(...data.lesson_progress!.graph.map((item) => item.completions), 1);
+                  const height = Math.max(16, Math.round((point.completions / max) * 96));
+                  return (
+                    <div key={point.label} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="text-xs font-semibold text-gray-500">{point.completions}</div>
+                      <div className="flex h-28 w-full items-end rounded-lg bg-gray-50 px-1.5 pb-1.5">
+                        <div
+                          className="w-full rounded-md bg-gradient-to-t from-violet-500 to-fuchsia-400"
+                          style={{ height }}
+                        />
+                      </div>
+                      <div className="text-xs font-medium text-gray-500">{point.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

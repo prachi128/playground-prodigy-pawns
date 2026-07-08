@@ -885,13 +885,65 @@ export interface ChildInfo {
   payment_status?: string;
 }
 
+export interface ParentLessonChildSummary {
+  child_id: number;
+  child_name: string;
+  opened_lessons: number;
+  completed_lessons: number;
+  completion_pct: number;
+}
+
+export interface ParentLessonGraphPoint {
+  label: string;
+  completions: number;
+}
+
+export interface ParentLessonProgress {
+  total_opened: number;
+  total_completed: number;
+  completion_pct: number;
+  children: ParentLessonChildSummary[];
+  graph: ParentLessonGraphPoint[];
+}
+
 export interface ParentDashboard {
   parent_name: string;
   children: ChildInfo[];
   upcoming_classes: ClassSession[];
   announcements: AnnouncementItem[];
+  lesson_progress?: ParentLessonProgress;
   current_month: string;
   payment_deadline_day: number;
+}
+
+export interface Lesson {
+  id: number;
+  title: string;
+  slug: string;
+  summary?: string | null;
+  content?: string;
+  level: 'beginner' | 'intermediate' | 'advanced' | 'super_advanced' | string;
+  is_published: boolean;
+  sort_order: number;
+  video_url?: string | null;
+  cover_image_url?: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  access_count?: number;
+  completion_count?: number;
+  student_has_access?: boolean;
+  student_completed?: boolean;
+  opened_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface LessonAssignmentStudent {
+  id: number;
+  full_name: string;
+  username: string;
+  level: number;
+  rating: number;
 }
 
 export const parentAPI = {
@@ -1542,6 +1594,81 @@ export const coachAPI = {
     students: { id: number; username: string; email: string }[];
   }> => {
     const response = await api.get('/api/coach/students/deactivated-notice');
+    return response.data;
+  },
+
+  getLessons: async (params?: {
+    include_unpublished?: boolean;
+    level?: string;
+    search?: string;
+  }): Promise<Lesson[]> => {
+    const response = await api.get('/api/coach/lessons', { params });
+    return response.data;
+  },
+
+  getLesson: async (lessonId: number): Promise<Lesson> => {
+    const response = await api.get(`/api/coach/lessons/${lessonId}`);
+    return response.data;
+  },
+
+  createLesson: async (data: {
+    title: string;
+    summary?: string;
+    content: string;
+    video_url?: string;
+    cover_image_url?: string;
+    level: string;
+    is_published: boolean;
+  }): Promise<Lesson> => {
+    const response = await api.post('/api/coach/lessons', data);
+    return response.data;
+  },
+
+  updateLesson: async (
+    lessonId: number,
+    data: Partial<{
+      title: string;
+      summary: string;
+      content: string;
+      video_url: string;
+      cover_image_url: string;
+      level: string;
+      is_published: boolean;
+    }>,
+  ): Promise<Lesson> => {
+    const response = await api.put(`/api/coach/lessons/${lessonId}`, data);
+    return response.data;
+  },
+
+  reorderLessons: async (lessonIds: number[]): Promise<void> => {
+    await api.post('/api/coach/lessons/reorder', { lesson_ids: lessonIds });
+  },
+
+  getLessonStudents: async (): Promise<LessonAssignmentStudent[]> => {
+    const response = await api.get('/api/coach/lesson-students');
+    return response.data;
+  },
+
+  openLessonForStudent: async (lessonId: number, studentId: number): Promise<void> => {
+    await api.post(`/api/coach/lessons/${lessonId}/open-for-student`, { student_id: studentId });
+  },
+};
+
+export const lessonAPI = {
+  getMyLessons: async (): Promise<Lesson[]> => {
+    const response = await api.get('/api/lessons/my-lessons');
+    return response.data;
+  },
+
+  getLesson: async (lessonId: number): Promise<Lesson> => {
+    const response = await api.get(`/api/lessons/${lessonId}`);
+    return response.data;
+  },
+
+  completeLesson: async (
+    lessonId: number,
+  ): Promise<{ success: boolean; already_completed: boolean; completed_at: string }> => {
+    const response = await api.post(`/api/lessons/${lessonId}/complete`);
     return response.data;
   },
 };
