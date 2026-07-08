@@ -56,6 +56,13 @@ class DifficultyLevel(enum.Enum):
     EXPERT = "expert"
 
 
+class LessonLevel(enum.Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    SUPER_ADVANCED = "super_advanced"
+
+
 class PuzzleFormat(enum.Enum):
     """How fen + moves are interpreted for student play."""
     LICHESS = "lichess"  # fen before opponent setup; moves[0] is setup
@@ -78,6 +85,8 @@ class User(Base):
     role = Column(CaseInsensitiveEnum(UserRole), default=UserRole.student)
     primary_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     guardian_email = Column(String, nullable=True, index=True)
+    phone = Column(String(30), nullable=True)
+    whatsapp = Column(String(30), nullable=True)
     
     # Student specific fields
     age = Column(Integer)
@@ -390,7 +399,12 @@ class Batch(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
-    schedule = Column(String)  # e.g., "Mon/Wed/Fri 4-5PM"
+    schedule = Column(String)  # human-readable label, e.g. "Mon / Wed 5:00 PM"
+    schedule_weekdays = Column(String)  # comma-separated JS DOW: 0=Sun … 6=Sat
+    schedule_time = Column(String)  # HH:MM (24h) in schedule_timezone
+    schedule_timezone = Column(String, default="Asia/Kolkata")
+    default_duration_minutes = Column(Integer, default=60)
+    default_meeting_link = Column(String)
     coach_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     monthly_fee = Column(Numeric(10, 2), default=0)
     is_active = Column(Boolean, default=True)
@@ -431,12 +445,42 @@ class ClassSession(Base):
     topic = Column(String)
     meeting_link = Column(String)
     notes = Column(Text)
+    session_kind = Column(String, default="regular")  # regular | makeup
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     batch = relationship("Batch", back_populates="class_sessions")
     creator = relationship("User", foreign_keys=[created_by])
+    session_students = relationship("SessionStudent", back_populates="class_session", cascade="all, delete-orphan")
+    session_joins = relationship("ClassSessionJoin", back_populates="class_session", cascade="all, delete-orphan")
+
+
+class ClassSessionJoin(Base):
+    """Records when a student joined a class session via the app."""
+    __tablename__ = "class_session_joins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    join_source = Column(String(20), default="in_app", nullable=False)
+
+    class_session = relationship("ClassSession", back_populates="session_joins")
+    student = relationship("User", foreign_keys=[student_id])
+
+
+class SessionStudent(Base):
+    """Per-session roster: which students are expected to join."""
+    __tablename__ = "session_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    class_session_id = Column(Integer, ForeignKey("class_sessions.id"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    expected_to_join = Column(Boolean, default=True, nullable=False)
+
+    class_session = relationship("ClassSession", back_populates="session_students")
+    student = relationship("User", foreign_keys=[student_id])
 
 
 # Announcement Model
@@ -511,6 +555,7 @@ class CoachSignupInvite(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String(128), unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     expires_at = Column(DateTime, nullable=False)
@@ -701,6 +746,69 @@ class AssignmentCompletion(Base):
     puzzle     = relationship("Puzzle", foreign_keys=[puzzle_id])
 
 
+class Lesson(Base):
+    __tablename__ = "lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(256), nullable=False)
+    slug = Column(String(280), nullable=False, unique=True, index=True)
+    summary = Column(Text, nullable=True)
+    content = Column(Text, nullable=False)
+    video_url = Column(String(500), nullable=True)
+    cover_image_url = Column(String(500), nullable=True)
+    level = Column(CaseInsensitiveEnum(LessonLevel), nullable=False, default=LessonLevel.BEGINNER)
+    is_published = Column(Boolean, default=False, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    student_access = relationship(
+        "StudentLessonAccess",
+        back_populates="lesson",
+        cascade="all, delete-orphan",
+    )
+    completions = relationship(
+        "StudentLessonCompletion",
+        back_populates="lesson",
+        cascade="all, delete-orphan",
+    )
+
+
+class StudentLessonAccess(Base):
+    __tablename__ = "student_lesson_access"
+    __table_args__ = (
+        UniqueConstraint("student_id", "lesson_id", name="uq_student_lesson_access"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    opened_by_coach_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    opened_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    student = relationship("User", foreign_keys=[student_id])
+    lesson = relationship("Lesson", back_populates="student_access")
+    opened_by = relationship("User", foreign_keys=[opened_by_coach_id])
+
+
+class StudentLessonCompletion(Base):
+    __tablename__ = "student_lesson_completions"
+    __table_args__ = (
+        UniqueConstraint("student_id", "lesson_id", name="uq_student_lesson_completion"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    completed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    student = relationship("User", foreign_keys=[student_id])
+    lesson = relationship("Lesson", back_populates="completions")
+
+
 class Attendance(Base):
     __tablename__ = "attendance"
 
@@ -722,6 +830,7 @@ class Attendance(Base):
                               default=datetime.utcnow, 
                               nullable=False)
     notes            = Column(Text, nullable=True)
+    source           = Column(String(20), nullable=True)  # auto_join | coach_manual
 
     # Relationships
     class_session = relationship("ClassSession", 

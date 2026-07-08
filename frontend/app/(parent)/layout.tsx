@@ -44,7 +44,8 @@ export default function ParentRouteLayout({
   if (authLoading) {
     return (
       <div
-        className={`${parentFont.variable} parent-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50/80 via-slate-100 to-slate-200/90 backdrop-blur-md`}
+        data-parent-shell
+        className={`${parentFont.variable} parent-fonts antialiased fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-[hsl(210_40%_98%)]`}
       >
         <div className="text-center">
           <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-primary" />

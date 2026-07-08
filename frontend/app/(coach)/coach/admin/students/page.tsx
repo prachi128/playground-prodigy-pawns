@@ -13,10 +13,10 @@ import {
   UserCheck,
   UserX,
   ExternalLink,
-  Save,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import { coachStudentProfilePath } from '@/lib/coach-student-path';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface Row {
@@ -47,9 +47,7 @@ export default function AdminStudentsPage() {
   const [coaches, setCoaches] = useState<CoachRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [assignBusy, setAssignBusy] = useState(false);
-  const [assignmentDraft, setAssignmentDraft] = useState<Record<number, string>>({});
-  const [initialAssignment, setInitialAssignment] = useState<Record<number, string>>({});
+  const [assignBusyId, setAssignBusyId] = useState<number | null>(null);
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [confirm, setConfirm] = useState<{
     id: number;
@@ -74,18 +72,10 @@ export default function AdminStudentsPage() {
           : allRows;
       setRows(nextRows);
       setCoaches(Array.isArray(coachesRes.data) ? coachesRes.data : []);
-      const nextInitial: Record<number, string> = {};
-      for (const student of nextRows) {
-        nextInitial[student.id] = student.coach_id ? String(student.coach_id) : '__none__';
-      }
-      setInitialAssignment(nextInitial);
-      setAssignmentDraft({});
     } catch {
       toast.error('Failed to load students');
       setRows([]);
       setCoaches([]);
-      setInitialAssignment({});
-      setAssignmentDraft({});
     } finally {
       setLoading(false);
     }
@@ -99,37 +89,54 @@ export default function AdminStudentsPage() {
     load();
   }, [isAuthenticated, user, router, load]);
 
-  const changedStudentIds = rows
-    .filter((r) => {
-      const current = assignmentDraft[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__');
-      const initial = initialAssignment[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__');
-      return current !== initial;
-    })
-    .map((r) => r.id);
+  const coachSelectValue = (row: Row) => (row.coach_id ? String(row.coach_id) : '__none__');
 
-  const saveCoachAssignments = async () => {
-    if (changedStudentIds.length === 0) return;
-    setAssignBusy(true);
+  const assignCoach = async (studentId: number, rawValue: string, previousCoachId: number | null | undefined) => {
+    const coachId = rawValue === '__none__' || rawValue === '' ? null : Number(rawValue);
+    if (coachId !== null && Number.isNaN(coachId)) {
+      toast.error('Pick a valid coach');
+      return;
+    }
+    if ((previousCoachId ?? null) === coachId) return;
+
+    const coach = coachId !== null ? coaches.find((c) => c.id === coachId) : null;
+    setAssignBusyId(studentId);
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === studentId
+          ? {
+              ...row,
+              coach_id: coachId,
+              coach_username: coach?.username ?? null,
+              coach_full_name: coach?.full_name ?? null,
+              is_unassigned: coachId === null,
+            }
+          : row,
+      ),
+    );
+
     try {
-      for (const studentId of changedStudentIds) {
-        const row = rows.find((r) => r.id === studentId);
-        const rawValue = assignmentDraft[studentId] ?? (row?.coach_id ? String(row.coach_id) : '__none__');
-        const coachId = rawValue === '__none__' || rawValue === '' ? null : Number(rawValue);
-        if (coachId !== null && Number.isNaN(coachId)) {
-          throw new Error('Pick a valid coach');
-        }
-        await api.put(`/api/admin/students/${studentId}/assign-coach`, { coach_id: coachId });
-      }
-      toast.success(`Saved coach assignment${changedStudentIds.length > 1 ? 's' : ''}`);
-      await load();
+      await api.put(`/api/admin/students/${studentId}/assign-coach`, { coach_id: coachId });
+      toast.success('Coach assignment updated');
     } catch (err: unknown) {
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === studentId
+            ? {
+                ...row,
+                coach_id: previousCoachId ?? null,
+                is_unassigned: (previousCoachId ?? null) === null,
+              }
+            : row,
+        ),
+      );
       const detail =
         err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
           : undefined;
       toast.error(detail || 'Failed to update coach assignment');
     } finally {
-      setAssignBusy(false);
+      setAssignBusyId(null);
     }
   };
 
@@ -183,11 +190,11 @@ export default function AdminStudentsPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Shield className="h-5 w-5" />
           </span>
-          Admin — student accounts
+          Student accounts
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
-          View every student in the database. Deactivation blocks sign-in but keeps all data. Coaches only see active
-          students and receive a notice listing deactivated accounts on their roster.
+          View every student in the database. Coach assignment saves immediately when you pick a coach. Deactivation
+          blocks sign-in but keeps all data.
         </p>
         <div className="mt-4 inline-flex rounded-lg border border-border bg-card p-1">
           {(['all', 'assigned', 'unassigned'] as const).map((key) => (
@@ -202,18 +209,6 @@ export default function AdminStudentsPage() {
               {key === 'all' ? 'All' : key === 'assigned' ? 'Assigned' : 'Unassigned'}
             </button>
           ))}
-        </div>
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={() => void saveCoachAssignments()}
-            disabled={assignBusy || changedStudentIds.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {assignBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save coach changes
-            {changedStudentIds.length > 0 ? ` (${changedStudentIds.length})` : ''}
-          </button>
         </div>
       </div>
 
@@ -254,14 +249,13 @@ export default function AdminStudentsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <select
-                        value={assignmentDraft[r.id] ?? (r.coach_id ? String(r.coach_id) : '__none__')}
-                        onChange={(e) =>
-                          setAssignmentDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
-                        }
-                        disabled={assignBusy}
-                        className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
-                      >
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={coachSelectValue(r)}
+                          onChange={(e) => void assignCoach(r.id, e.target.value, r.coach_id)}
+                          disabled={assignBusyId === r.id}
+                          className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs"
+                        >
                         <option value="__none__">Unassigned</option>
                         {coaches
                           .filter((c) => c.is_active !== false)
@@ -270,12 +264,16 @@ export default function AdminStudentsPage() {
                               {c.full_name || c.username}
                             </option>
                           ))}
-                      </select>
+                        </select>
+                        {assignBusyId === r.id ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Link
-                          href={`/coach/students/${r.id}`}
+                          href={coachStudentProfilePath(r.username)}
                           className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/60"
                         >
                           Profile

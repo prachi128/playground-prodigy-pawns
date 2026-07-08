@@ -128,14 +128,14 @@ export default function LeaderboardPage() {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15 sm:h-11 sm:w-11">
               <Trophy className="h-5 w-5 sm:h-6 sm:w-6" />
             </span>
-            Class leaderboard
+            Rankings
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
             {allOnRosterInactive
-              ? 'Only active student accounts appear on the leaderboard.'
+              ? 'Only active student accounts appear in rankings.'
               : isAdmin
-                ? 'Rankings for all students on the platform. Add student accounts to see them here.'
-                : 'Rankings for students enrolled in your batches. Add students to a batch to see them here.'}
+                ? 'XP and puzzle rankings for all students on the platform.'
+                : 'XP and puzzle rankings for students in your classes.'}
           </p>
         </div>
 
@@ -154,7 +154,7 @@ export default function LeaderboardPage() {
               href="/coach/batches"
               className="mt-6 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
             >
-              Manage batches
+              My classes
             </Link>
           )}
           {!isAdmin && allOnRosterInactive && (

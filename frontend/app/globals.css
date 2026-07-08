@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
-/* === v0-dashboard-layout CSS (exact match for dashboard page) === */
+/*
+ * Shared palette + default tokens (auth / marketing pages).
+ * Portal UIs override tokens inside their own shell:
+ *   [data-student-shell]  — student dashboard
+ *   [data-coach-shell]    — coach console
+ *   [data-parent-shell]   — parent portal
+ */
 :root {
   /* PRIMARY - Green */
   --green-dark: 145 65% 25%;
@@ -133,22 +139,7 @@
     cursor: not-allowed;
   }
 }
-/* Sidebar only: use dark border color so borders don’t show as white lines (beats Tailwind utilities) */
-[data-sidebar] *:not(a[aria-current="page"]):not(.sidebar-avatar) {
-  border-color: hsl(var(--sidebar-border)) !important;
-}
-/* Active nav link keeps yellow left border */
-[data-sidebar] a[aria-current="page"] {
-  border-left-color: rgb(250 204 21) !important; /* yellow-400 */
-}
-/* Avatar keeps thick golden border (overrides sidebar * border-color) */
-[data-sidebar] .sidebar-avatar {
-  border-width: 4px !important;
-  border-style: solid !important;
-  border-color: rgb(250 204 21) !important; /* yellow-400 */
-}
-
-/* v0 fonts: only apply when inside dashboard (--font-fredoka / --font-nunito set by dashboard layout) */
+/* v0 fonts: student auth + portal (--font-fredoka / --font-nunito set by layout) */
 .dashboard-fonts {
   font-family: var(--font-nunito), system-ui, sans-serif;
 }
@@ -158,14 +149,78 @@
   font-weight: 700;
 }
 
-.content-green {
+/* === Student portal shell — isolated theme + sidebar === */
+[data-student-shell] {
+  --background: var(--gray-very-light);
+  --foreground: var(--gray-dark);
+  --card: 0 0% 100%;
+  --card-foreground: var(--gray-dark);
+  --primary: var(--green-medium);
+  --primary-foreground: 0 0% 100%;
+  --accent: var(--orange-medium);
+  --accent-foreground: 0 0% 100%;
+  --border: var(--gray-light);
+  --input: var(--gray-light);
+  --muted: var(--gray-light);
+  --muted-foreground: var(--gray-medium);
+  --ring: var(--primary);
+  --radius: 1rem;
+  --sidebar-background: var(--green-dark);
+  --sidebar-foreground: 80 60% 96%;
+  --sidebar-primary: var(--orange-medium);
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 145 65% 20%;
+  --sidebar-accent-foreground: 80 60% 96%;
+  --sidebar-border: 145 65% 22%;
+  --sidebar-ring: var(--gold-medium);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+[data-student-shell] .font-heading {
+  font-family: var(--font-fredoka, var(--font-family-heading)), system-ui, sans-serif;
+  font-weight: 700;
+}
+
+[data-student-shell] .student-main,
+[data-student-shell] .content-green {
   background-color: hsl(210, 40%, 98%);
 }
 
-/* Coach app: Inter — clean bold titles / UI sans (reference: forest header + white type) */
+[data-student-shell] [data-student-sidebar] *:not(a[aria-current="page"]) {
+  border-color: hsl(var(--sidebar-border)) !important;
+}
+
+[data-student-shell] [data-student-sidebar] a[aria-current="page"] {
+  border-left-color: rgb(250 204 21) !important; /* yellow-400 */
+}
+
+/* === Coach portal shell === */
 .coach-fonts {
   font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
   font-feature-settings: "kern" 1, "liga" 1;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 .parent-fonts {
@@ -175,29 +230,415 @@
 
 [data-coach-shell] .font-heading {
   font-family: var(--font-coach), ui-sans-serif, system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
-/* Coach chrome: forest green (~#2D6A4F) — scoped so student sidebar tokens stay unchanged */
+/* Coach shell: light theme — override Tailwind @theme color tokens (they resolve at :root otherwise) */
 [data-coach-shell] {
-  color: hsl(var(--foreground));
-  --sidebar-background: 152 41% 30%;
-  --sidebar-accent: 152 44% 22%;
-  --sidebar-border: 152 40% 26%;
+  color-scheme: light;
+  color: hsl(220 9% 26%);
+  --background: 220 14% 97%;
+  --foreground: 220 9% 26%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 9% 26%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --muted: 220 14% 94%;
+  --muted-foreground: 220 9% 46%;
+  --primary: 215 28% 38%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 215 28% 38%;
+  --radius: 0.5rem;
+  --coach-sidebar-bg: 224 28% 12%;
+  --sidebar-foreground: 210 25% 93%;
+  --sidebar-accent: 224 24% 18%;
+  --sidebar-border: 224 20% 20%;
+  --sidebar-ring: 215 35% 58%;
+  --color-background: hsl(220 14% 97%);
+  --color-foreground: hsl(220 9% 26%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(220 9% 26%);
+  --color-border: hsl(220 13% 91%);
+  --color-input: hsl(220 13% 91%);
+  --color-muted: hsl(220 14% 94%);
+  --color-muted-foreground: hsl(220 9% 46%);
+  --color-primary: hsl(215 28% 38%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-ring: hsl(215 28% 58%);
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
 }
 
 [data-coach-shell] .coach-main {
-  background: linear-gradient(
-    180deg,
-    hsl(210 40% 98%) 0%,
-    hsl(220 16% 96%) 48%,
-    hsl(210 32% 97%) 100%
-  );
+  background-color: var(--color-background);
 }
 
+/* Coach sidebar — local tokens (never shares student/parent sidebar attributes) */
+[data-coach-shell] [data-coach-sidebar].coach-sidebar-panel {
+  --sidebar-foreground: 210 25% 93%;
+  --sidebar-border: 224 20% 20%;
+  --color-sidebar-foreground: hsl(210 25% 93%);
+  --color-sidebar-border: hsl(224 20% 20%);
+  background-color: hsl(224 28% 12%) !important;
+  color: hsl(210 25% 93%);
+  border-right-color: hsl(224 20% 20%) !important;
+}
+
+/* Tone down loud page titles across coach pages */
+[data-coach-shell] h1.font-heading {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+[data-coach-shell] h2.font-heading {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+[data-coach-shell] h3.font-heading {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+[data-coach-shell] .text-2xl.font-heading,
+[data-coach-shell] .text-3xl.font-heading,
+[data-coach-shell] .sm\:text-3xl.font-heading {
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+
+[data-coach-shell] .text-xl.font-heading {
+  font-size: 0.9375rem !important;
+  font-weight: 600 !important;
+}
+
+[data-coach-shell] .text-lg.font-heading {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+}
+
+/* Cards & tables: lighter shadows, finer borders */
+[data-coach-shell] .rounded-xl.border,
+[data-coach-shell] .rounded-lg.border {
+  border-color: hsl(var(--border));
+  box-shadow: 0 1px 2px hsl(220 20% 20% / 0.04);
+}
+
+[data-coach-shell][data-coach-theme='dark'] .shadow-sm {
+  box-shadow: none;
+}
+
+[data-coach-shell] thead.bg-\[hsl\(var\(--sidebar-background\)\)\] {
+  background: hsl(220 14% 96%) !important;
+  color: hsl(220 9% 40%) !important;
+}
+
+[data-coach-shell] thead.bg-\[hsl\(var\(--sidebar-background\)\)\] button {
+  color: inherit;
+}
+
+/*
+ * Coach dark theme — GitHub default dark palette
+ * canvas #0d1117 · elevated #161b22 · muted #21262d · border #30363d
+ * text #e6edf3 · muted text #8b949e · accent #2f81f7
+ */
+[data-coach-shell][data-coach-theme='dark'] {
+  color-scheme: dark;
+  color: hsl(210 35% 93%);
+  background-color: hsl(215 28% 7%);
+  --background: 215 28% 7%;
+  --foreground: 210 35% 93%;
+  --card: 215 21% 11%;
+  --card-foreground: 210 35% 93%;
+  --border: 212 12% 21%;
+  --input: 214 15% 15%;
+  --muted: 214 15% 15%;
+  --muted-foreground: 215 9% 58%;
+  --primary: 212 92% 58%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 214 15% 15%;
+  --accent-foreground: 210 35% 93%;
+  --ring: 212 92% 58%;
+  --coach-sidebar-bg: 220 67% 2%;
+  --sidebar-foreground: 210 35% 93%;
+  --sidebar-accent: 214 15% 15%;
+  --sidebar-border: 212 12% 21%;
+  --sidebar-ring: 212 92% 58%;
+  --color-background: hsl(215 28% 7%);
+  --color-foreground: hsl(210 35% 93%);
+  --color-card: hsl(215 21% 11%);
+  --color-card-foreground: hsl(210 35% 93%);
+  --color-border: hsl(212 12% 21%);
+  --color-input: hsl(214 15% 15%);
+  --color-muted: hsl(214 15% 15%);
+  --color-muted-foreground: hsl(215 9% 58%);
+  --color-primary: hsl(212 92% 58%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-accent: hsl(214 15% 15%);
+  --color-accent-foreground: hsl(210 35% 93%);
+  --color-ring: hsl(212 92% 58%);
+  --color-sidebar-foreground: hsl(210 35% 93%);
+  --color-sidebar-border: hsl(212 12% 21%);
+  --color-sidebar-accent: hsl(214 15% 15%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] .coach-main {
+  background-color: hsl(215 28% 7%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar].coach-sidebar-panel {
+  --sidebar-foreground: 210 35% 93%;
+  --sidebar-border: 212 12% 21%;
+  --color-sidebar-foreground: hsl(210 35% 93%);
+  --color-sidebar-border: hsl(212 12% 21%);
+  background-color: hsl(220 67% 2%) !important;
+  color: hsl(210 35% 93%);
+  border-right-color: hsl(212 12% 21%) !important;
+}
+
+/* Cards & panels — elevated surface like GitHub repo boxes */
+[data-coach-shell][data-coach-theme='dark'] .rounded-xl.border,
+[data-coach-shell][data-coach-theme='dark'] .rounded-lg.border {
+  background-color: hsl(215 21% 11%);
+  border-color: hsl(212 12% 21%);
+  box-shadow: none;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .rounded-xl.border.bg-card,
+[data-coach-shell][data-coach-theme='dark'] .rounded-lg.border.bg-card {
+  background-color: hsl(215 21% 11%);
+}
+
+/* Tables */
+[data-coach-shell][data-coach-theme='dark'] thead.bg-muted\/60,
+[data-coach-shell][data-coach-theme='dark'] thead.bg-muted\/40 {
+  background: hsl(215 21% 11%) !important;
+  color: hsl(215 9% 58%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] thead.bg-\[hsl\(var\(--sidebar-background\)\)\] {
+  background: hsl(215 21% 11%) !important;
+  color: hsl(215 9% 58%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] tr.bg-card,
+[data-coach-shell][data-coach-theme='dark'] tbody tr {
+  background-color: hsl(215 21% 11%);
+  color: hsl(210 35% 93%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] tr.bg-muted\/20,
+[data-coach-shell][data-coach-theme='dark'] tr.hover\:bg-muted\/40:hover {
+  background-color: hsl(214 15% 15%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] tbody tr:hover {
+  background-color: hsl(214 15% 15%);
+}
+
+/* Muted inset blocks (charts, toggles, empty states) */
+[data-coach-shell][data-coach-theme='dark'] .bg-muted\/20,
+[data-coach-shell][data-coach-theme='dark'] .bg-muted\/30 {
+  background-color: hsl(214 15% 15% / 0.65) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .bg-muted\/40,
+[data-coach-shell][data-coach-theme='dark'] .bg-muted\/60,
+[data-coach-shell][data-coach-theme='dark'] .bg-muted {
+  background-color: hsl(214 15% 15%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .hover\:bg-muted\/60:hover,
+[data-coach-shell][data-coach-theme='dark'] .hover\:bg-muted\/50:hover,
+[data-coach-shell][data-coach-theme='dark'] .hover\:bg-muted\/40:hover,
+[data-coach-shell][data-coach-theme='dark'] .hover\:bg-muted:hover {
+  background-color: hsl(214 15% 18%) !important;
+}
+
+/* Form fields */
+[data-coach-shell][data-coach-theme='dark'] input,
+[data-coach-shell][data-coach-theme='dark'] select,
+[data-coach-shell][data-coach-theme='dark'] textarea {
+  background-color: hsl(214 15% 15%);
+  color: hsl(210 35% 93%);
+  border-color: hsl(212 12% 21%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] input::placeholder,
+[data-coach-shell][data-coach-theme='dark'] textarea::placeholder {
+  color: hsl(215 9% 58%);
+}
+
+/* Gradients & tinted banners → flat elevated surfaces */
+[data-coach-shell][data-coach-theme='dark'] .bg-gradient-to-br.from-primary\/5 {
+  background: hsl(215 21% 11%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] [class*='gold-light'],
+[data-coach-shell][data-coach-theme='dark'] [class*='orange-very-light'],
+[data-coach-shell][data-coach-theme='dark'] [class*='green-very-light'] {
+  background-color: hsl(215 21% 11%) !important;
+  border-color: hsl(212 12% 21%) !important;
+  color: hsl(210 35% 93%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] [class*='gold-dark'],
+[data-coach-shell][data-coach-theme='dark'] [class*='orange-dark'] {
+  color: hsl(210 35% 93%) !important;
+}
+
+/* Primary tint chips */
+[data-coach-shell][data-coach-theme='dark'] .bg-primary\/10 {
+  background-color: hsl(212 92% 58% / 0.15) !important;
+}
+
+/* Secondary outline buttons */
+[data-coach-shell][data-coach-theme='dark'] .border.border-border.bg-background {
+  background-color: hsl(214 15% 15%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] .border-dashed {
+  border-color: hsl(212 12% 21%);
+}
+
+/* Coach semantic text accents (GitHub-style in dark) */
+[data-coach-shell] {
+  --coach-text-link: 215 28% 38%;
+  --coach-text-success: 134 55% 35%;
+  --coach-text-warning: 38 84% 42%;
+  --coach-text-danger: 0 86% 49%;
+  --coach-text-accent: 280 85% 45%;
+}
+
+[data-coach-shell][data-coach-theme='dark'] {
+  --coach-text-link: 212 92% 68%;
+  --coach-text-success: 142 55% 58%;
+  --coach-text-warning: 38 75% 58%;
+  --coach-text-danger: 0 72% 65%;
+  --coach-text-accent: 280 65% 72%;
+}
+
+[data-coach-shell] .coach-text-link {
+  color: hsl(var(--coach-text-link));
+}
+
+[data-coach-shell] .coach-text-success {
+  color: hsl(var(--coach-text-success));
+}
+
+[data-coach-shell] .coach-text-warning {
+  color: hsl(var(--coach-text-warning));
+}
+
+[data-coach-shell] .coach-text-danger {
+  color: hsl(var(--coach-text-danger));
+}
+
+[data-coach-shell] .coach-text-accent {
+  color: hsl(var(--coach-text-accent));
+}
+
+/* Dark typography accents */
+[data-coach-shell][data-coach-theme='dark'] h1.font-heading {
+  color: hsl(210 35% 93%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] h2.font-heading,
+[data-coach-shell][data-coach-theme='dark'] h3.font-heading {
+  color: hsl(210 30% 88%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] label.text-muted-foreground,
+[data-coach-shell][data-coach-theme='dark'] .text-xs.font-semibold.text-muted-foreground {
+  color: hsl(215 15% 62%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] a.text-primary,
+[data-coach-shell][data-coach-theme='dark'] .hover\:text-primary:hover {
+  color: hsl(212 92% 68%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] a.font-semibold.text-primary:hover,
+[data-coach-shell][data-coach-theme='dark'] a.coach-text-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[data-coach-shell][data-coach-theme='dark'] thead th {
+  color: hsl(215 12% 55%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] thead button[aria-sort='ascending'],
+[data-coach-shell][data-coach-theme='dark'] thead button[aria-sort='descending'] {
+  color: hsl(212 92% 68%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] {
+  color: hsl(212 92% 68%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] svg {
+  color: hsl(212 92% 68%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] .coach-nav-indicator {
+  background-color: hsl(212 92% 58%) !important;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .font-mono.font-bold.text-primary {
+  color: hsl(142 55% 58%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] .bg-primary\/15.text-primary {
+  color: hsl(212 92% 68%);
+}
+
+[data-coach-shell][data-coach-theme='dark'] .border-amber-500\/35 .font-semibold.text-amber-950,
+[data-coach-shell][data-coach-theme='dark'] .border-amber-500\/35 .dark\:text-amber-100 {
+  color: hsl(38 75% 58%) !important;
+}
+
+/* === Parent portal shell — isolated theme (sidebar uses its own inline colors) === */
 [data-parent-shell] {
-  color: hsl(var(--foreground));
+  color-scheme: light;
+  color: hsl(217 9% 22%);
+  --background: 210 40% 98%;
+  --foreground: 217 9% 22%;
+  --card: 0 0% 100%;
+  --card-foreground: 217 9% 22%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --muted: 220 14% 94%;
+  --muted-foreground: 220 9% 46%;
+  --primary: 152 41% 30%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 152 41% 30%;
+  --radius: 0.75rem;
+  --color-background: hsl(210 40% 98%);
+  --color-foreground: hsl(217 9% 22%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(217 9% 22%);
+  --color-border: hsl(220 13% 91%);
+  --color-input: hsl(220 13% 91%);
+  --color-muted: hsl(220 14% 94%);
+  --color-muted-foreground: hsl(220 9% 46%);
+  --color-primary: hsl(152 41% 30%);
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-ring: hsl(152 41% 30%);
+}
+
+[data-parent-shell] .font-heading {
+  font-family: var(--font-parent, var(--font-coach)), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 [data-parent-shell] .parent-main {
@@ -209,16 +650,27 @@
   );
 }
 
-/* Coach top bar: solid forest green, crisp white type (subtle lift vs background) */
+[data-parent-shell] [data-parent-sidebar] {
+  background-color: #1a4a3a;
+  color: #fff;
+}
+
 [data-coach-shell] .coach-header-bar {
-  background: hsl(var(--sidebar-background));
-  color: hsl(var(--sidebar-foreground));
-  border-bottom-color: hsl(var(--sidebar-border));
-  box-shadow: 0 1px 0 0 hsl(0 0% 100% / 0.06);
+  background: hsl(224 28% 12%);
+  color: hsl(210 25% 93%);
+  border-bottom-color: hsl(224 20% 20%);
+  box-shadow: none;
+}
+
+[data-coach-shell][data-coach-theme='dark'] .coach-header-bar {
+  background: hsl(220 67% 2%);
+  color: hsl(210 35% 93%);
+  border-bottom-color: hsl(212 12% 21%);
 }
 
 [data-coach-shell] .coach-header-bar .font-heading {
-  text-shadow: 0 1px 1px hsl(0 0% 0% / 0.12);
+  font-weight: 600;
+  text-shadow: none;
 }
 
 /* Animations used by dashboard */

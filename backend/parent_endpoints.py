@@ -8,6 +8,7 @@ from datetime import datetime
 from models import (
     User, UserRole, ParentStudent, Batch, StudentBatch,
     ClassSession, Announcement, Payment, PuzzleAttempt, Game,
+    StudentLessonAccess, StudentLessonCompletion,
 )
 from auth import get_current_user, get_password_hash
 from database import get_db
@@ -184,12 +185,92 @@ def get_dashboard(parent: User = Depends(require_parent), db: Session = Depends(
                 coach_name=coach.full_name if coach else None,
             ))
 
+    lesson_open_rows = []
+    lesson_completion_rows = []
+    lesson_progress = {
+        "total_opened": 0,
+        "total_completed": 0,
+        "completion_pct": 0.0,
+        "children": [],
+        "graph": [],
+    }
+    if children_ids:
+        lesson_open_rows = (
+            db.query(StudentLessonAccess.student_id, StudentLessonAccess.opened_at)
+            .filter(
+                StudentLessonAccess.student_id.in_(children_ids),
+                StudentLessonAccess.is_active == True,
+            )
+            .all()
+        )
+        lesson_completion_rows = (
+            db.query(StudentLessonCompletion.student_id, StudentLessonCompletion.completed_at)
+            .filter(StudentLessonCompletion.student_id.in_(children_ids))
+            .all()
+        )
+        opened_by_child = {}
+        completed_by_child = {}
+        for child_id in children_ids:
+            opened_by_child[child_id] = 0
+            completed_by_child[child_id] = 0
+        for row in lesson_open_rows:
+            opened_by_child[row.student_id] = opened_by_child.get(row.student_id, 0) + 1
+        for row in lesson_completion_rows:
+            completed_by_child[row.student_id] = completed_by_child.get(row.student_id, 0) + 1
+
+        child_name_map = {child.id: child.full_name for child in children}
+        lesson_progress["children"] = [
+            {
+                "child_id": child_id,
+                "child_name": child_name_map.get(child_id, "Student"),
+                "opened_lessons": opened_by_child.get(child_id, 0),
+                "completed_lessons": completed_by_child.get(child_id, 0),
+                "completion_pct": round(
+                    (completed_by_child.get(child_id, 0) / opened_by_child.get(child_id, 0)) * 100, 1
+                ) if opened_by_child.get(child_id, 0) else 0.0,
+            }
+            for child_id in children_ids
+        ]
+
+        total_opened = sum(opened_by_child.values())
+        total_completed = sum(completed_by_child.values())
+        lesson_progress["total_opened"] = total_opened
+        lesson_progress["total_completed"] = total_completed
+        lesson_progress["completion_pct"] = round((total_completed / total_opened) * 100, 1) if total_opened else 0.0
+
+        monthly_counts = {}
+        for row in lesson_completion_rows:
+            key = row.completed_at.strftime("%b")
+            monthly_counts[key] = monthly_counts.get(key, 0) + 1
+
+        graph = []
+        for offset in range(5, -1, -1):
+            month_dt = datetime(now.year, now.month, 1)
+            month = month_dt.month - offset
+            year = month_dt.year
+            while month <= 0:
+                month += 12
+                year -= 1
+            while month > 12:
+                month -= 12
+                year += 1
+            label = datetime(year, month, 1).strftime("%b")
+            graph.append({
+                "label": label,
+                "completions": sum(
+                    1 for row in lesson_completion_rows
+                    if row.completed_at.year == year and row.completed_at.month == month
+                ),
+            })
+        lesson_progress["graph"] = graph
+
     return {
         "parent_name": parent.full_name,
         "parent_email": parent.email,
         "children": [c.model_dump() for c in children],
         "upcoming_classes": [c.model_dump() for c in upcoming_classes],
         "announcements": [a.model_dump() for a in announcements],
+        "lesson_progress": lesson_progress,
         "current_month": current_month,
         "payment_deadline_day": PAYMENT_DEADLINE_DAY,
     }

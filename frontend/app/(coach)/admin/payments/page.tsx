@@ -211,7 +211,7 @@ export default function AdminPaymentsPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Shield className="h-5 w-5" />
           </span>
-          Admin — payments
+          Payments
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
           Track monthly batch fees for batches you coach.

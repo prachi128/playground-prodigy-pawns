@@ -8,11 +8,10 @@ test.describe("coach panel", () => {
     const coachPassword = "password123";
 
     const apiContext = await request.newContext();
-    const invite = await createCoachInvite(apiContext, coachEmail);
+    const invite = await createCoachInvite(apiContext, coachEmail, 7, "Coach Test");
 
     await page.goto(`/coach-signup/${invite.token}`);
     await expect(page.getByRole("heading", { name: /coach invite signup/i })).toBeVisible();
-    await page.getByPlaceholder("Your full name").fill("Coach Test");
     await page.getByPlaceholder("coach_username").fill(coachUsername);
     await page.locator('input[type="password"]').fill(coachPassword);
     await page.getByRole("button", { name: /sign up as coach/i }).click();

@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chessboard, ChessboardProvider, SparePiece } from 'react-chessboard';
 import { Chess, type Color, type PieceSymbol, type Square } from 'chess.js';
-import { Copy, RotateCcw, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Copy, LineChart, RotateCcw, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/lib/store';
 import { getShopBoardSquareStyles } from '@/lib/shop-cosmetics';
+import { savePositionForAnalysis } from '@/lib/coach-analysis-transfer';
 
 const START_FEN = new Chess().fen();
 
@@ -82,6 +84,7 @@ function applyTeachingDrop(
 }
 
 export function CoachTeachingBoard() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const [fen, setFen] = useState(START_FEN);
   const fenRef = useRef(fen);
@@ -145,6 +148,11 @@ export function CoachTeachingBoard() {
       () => toast.error('Could not copy'),
     );
   }, [fen]);
+
+  const loadInAnalysis = useCallback(() => {
+    savePositionForAnalysis(fen, 'From Coach board');
+    router.push('/coach/analysis');
+  }, [fen, router]);
 
   const boardOptions = useMemo(
     () => ({
@@ -243,6 +251,18 @@ export function CoachTeachingBoard() {
             <p className="mb-1 text-xs font-semibold text-muted-foreground">Current FEN</p>
             <p className="break-all font-mono text-xs leading-relaxed text-foreground">{fen}</p>
           </div>
+
+          <button
+            type="button"
+            onClick={loadInAnalysis}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[hsl(var(--blue-dark))] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+          >
+            <LineChart className="h-4 w-4" aria-hidden />
+            Load in Analysis
+          </button>
+          <p className="text-center text-xs text-muted-foreground">
+            Opens the current position on the Analysis board with engine lines.
+          </p>
         </div>
       </div>
     </ChessboardProvider>

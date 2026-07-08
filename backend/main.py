@@ -105,6 +105,7 @@ from batch_endpoints import router as batch_router, admin_router
 from assignment_endpoints import router as assignment_router
 from attendance_endpoints import router as attendance_router
 from bot_admin_endpoints import router as bot_admin_router
+from lesson_endpoints import coach_router as coach_lessons_router, student_router as lesson_router
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
@@ -606,6 +607,8 @@ app.include_router(admin_router)
 app.include_router(assignment_router)
 app.include_router(attendance_router)
 app.include_router(bot_admin_router)
+app.include_router(coach_lessons_router)
+app.include_router(lesson_router)
 
 
 @app.get("/api/server-time")
@@ -976,6 +979,8 @@ def signup_coach(data: CoachSignup, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invite token has expired")
     if invite.email and invite.email.lower() != data.email.lower():
         raise HTTPException(status_code=400, detail="Invite token is bound to a different email")
+    if invite.full_name and invite.full_name.strip().lower() != data.full_name.strip().lower():
+        raise HTTPException(status_code=400, detail="Invite token is bound to a different name")
 
     hashed_password = get_password_hash(data.password)
     coach = User(
@@ -1028,9 +1033,12 @@ def get_coach_invite(token: str, db: Session = Depends(get_db)):
     if invite.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invite token has expired")
     if not invite.email:
-        raise HTTPException(status_code=400, detail="Invite is missing email restriction")
+        raise HTTPException(status_code=400, detail="Invite is missing email")
+    if not invite.full_name:
+        raise HTTPException(status_code=400, detail="Invite is missing coach name")
     return {
         "email": invite.email,
+        "full_name": invite.full_name,
         "expires_at": invite.expires_at,
     }
 

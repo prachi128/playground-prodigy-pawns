@@ -17,6 +17,7 @@ export default function CoachInviteSignupPage() {
   const [loadingInvite, setLoadingInvite] = useState(true);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteFullName, setInviteFullName] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [inlineError, setInlineError] = useState('');
@@ -33,7 +34,9 @@ export default function CoachInviteSignupPage() {
         const data = await authAPI.getCoachInvite(token);
         if (cancelled) return;
         setInviteEmail(data.email);
+        setInviteFullName(data.full_name);
         setExpiresAt(data.expires_at);
+        setForm((f) => ({ ...f, full_name: data.full_name }));
       } catch (err: unknown) {
         if (cancelled) return;
         const detail =
@@ -53,7 +56,7 @@ export default function CoachInviteSignupPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setInlineError('');
-    if (!inviteEmail) return;
+    if (!inviteEmail || !inviteFullName) return;
     if (!form.full_name.trim() || !form.username.trim() || !form.password) {
       const msg = 'Please fill in all required fields.';
       setInlineError(msg);
@@ -178,13 +181,8 @@ export default function CoachInviteSignupPage() {
               <input
                 type="text"
                 value={form.full_name}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, full_name: e.target.value }));
-                  if (inlineError) setInlineError('');
-                }}
-                className="w-full rounded-xl border border-input bg-background px-4 py-3 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="Your full name"
-                required
+                disabled
+                className="w-full cursor-not-allowed rounded-xl border border-border bg-muted px-4 py-3 text-muted-foreground"
               />
             </div>
             <div>

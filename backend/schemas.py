@@ -426,12 +426,22 @@ class BatchCreate(BaseModel):
     name: str
     description: Optional[str] = None
     schedule: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = "Asia/Kolkata"
+    default_duration_minutes: Optional[int] = 60
+    default_meeting_link: Optional[str] = None
     monthly_fee: float = 0
 
 class BatchUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     schedule: Optional[str] = None
+    schedule_weekdays: Optional[List[int]] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = None
+    default_duration_minutes: Optional[int] = None
+    default_meeting_link: Optional[str] = None
     monthly_fee: Optional[float] = None
     is_active: Optional[bool] = None
 
@@ -440,8 +450,13 @@ class BatchResponse(BaseModel):
     name: str
     description: Optional[str]
     schedule: Optional[str]
+    schedule_weekdays: Optional[str] = None
+    schedule_time: Optional[str] = None
+    schedule_timezone: Optional[str] = "Asia/Kolkata"
+    default_duration_minutes: Optional[int] = 60
+    default_meeting_link: Optional[str] = None
     coach_id: int
-    monthly_fee: float
+    monthly_fee: Optional[float] = None
     is_active: bool
     created_at: datetime
     student_count: Optional[int] = 0
@@ -457,6 +472,11 @@ class ClassSessionCreate(BaseModel):
     topic: Optional[str] = None
     meeting_link: Optional[str] = None
     notes: Optional[str] = None
+    session_kind: str = "regular"
+    student_ids: Optional[List[int]] = None
+
+class OpenRecurringSlotRequest(BaseModel):
+    date: datetime
 
 class ClassSessionResponse(BaseModel):
     id: int
@@ -466,8 +486,10 @@ class ClassSessionResponse(BaseModel):
     topic: Optional[str]
     meeting_link: Optional[str]
     notes: Optional[str]
+    session_kind: str = "regular"
     created_at: datetime
     batch_name: Optional[str] = None
+    expected_join_count: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -726,3 +748,80 @@ class ParentChildAssignmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LessonCreate(BaseModel):
+    title: str
+    summary: Optional[str] = None
+    content: str
+    video_url: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    level: Literal["beginner", "intermediate", "advanced", "super_advanced"] = "beginner"
+    is_published: bool = False
+
+
+class LessonUpdate(BaseModel):
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    content: Optional[str] = None
+    video_url: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    level: Optional[Literal["beginner", "intermediate", "advanced", "super_advanced"]] = None
+    is_published: Optional[bool] = None
+
+
+class LessonReorderRequest(BaseModel):
+    lesson_ids: List[int]
+
+
+class LessonAccessCreate(BaseModel):
+    student_id: int
+
+
+class LessonListResponse(BaseModel):
+    id: int
+    title: str
+    slug: str
+    summary: Optional[str] = None
+    level: str
+    is_published: bool
+    sort_order: int
+    video_url: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    access_count: int = 0
+    completion_count: int = 0
+    student_has_access: bool = False
+    student_completed: bool = False
+    opened_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LessonDetailResponse(LessonListResponse):
+    content: str
+
+
+class ParentLessonChildSummary(BaseModel):
+    child_id: int
+    child_name: str
+    opened_lessons: int
+    completed_lessons: int
+    completion_pct: float
+
+
+class ParentLessonGraphPoint(BaseModel):
+    label: str
+    completions: int
+
+
+class ParentLessonProgressResponse(BaseModel):
+    total_opened: int
+    total_completed: int
+    completion_pct: float
+    children: List[ParentLessonChildSummary]
+    graph: List[ParentLessonGraphPoint]

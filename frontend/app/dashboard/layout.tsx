@@ -10,7 +10,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>
+    <div data-student-shell className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>
       {children}
     </div>
   )

@@ -75,7 +75,7 @@ export default function AdminAuditLogsPage() {
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Shield className="h-5 w-5" />
           </span>
-          Admin - audit logs
+          Audit logs
         </h1>
       </div>
 

@@ -248,7 +248,7 @@ export default function AssignmentDetailPage() {
                     <div className="mb-2 flex items-center justify-between">
                       <div>
                         <Link
-                          href={`/coach/students/${s.student_id}`}
+                          href={`/coach/students/${encodeURIComponent(s.username)}`}
                           className="text-sm font-bold text-card-foreground transition-colors hover:text-primary"
                         >
                           {s.full_name}

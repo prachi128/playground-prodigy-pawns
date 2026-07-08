@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, LogOut, Settings, Shield, X } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
-import { coachNav } from "./coach-nav";
+import { coachNav, COACH_NAV_SECTION_LABELS, type CoachNavSection } from "./coach-nav";
+
+const MAIN_NAV_SECTIONS: Exclude<CoachNavSection, "admin">[] = ["overview", "teach", "manage"];
 
 interface CoachSidebarProps {
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  /** Desktop (lg+): icon rail when true */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 }
@@ -22,52 +23,77 @@ export function CoachSidebar({
   onToggleCollapsed,
 }: CoachSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuthStore();
   const [adminOpen, setAdminOpen] = useState(false);
   const isAdmin = user?.role === "admin";
-  const mainNavItems = coachNav.filter((item) => item.section !== "admin");
+  const mainNavItems = coachNav.filter(
+    (item) => item.section !== "admin" && (!item.adminOnly || isAdmin),
+  );
   const adminNavItems = isAdmin
     ? coachNav.filter((item) => item.section === "admin")
     : [];
 
+  const isNavActive = (href: string) => {
+    if (!pathname) return false;
+    if (href === "/coach") return pathname === "/coach";
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
   const linkClass = (href: string, isCollapsedDesktop: boolean) => {
-    const isActive =
-      pathname === href || (href !== "/coach" && pathname?.startsWith(href));
-    return `group relative flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150 ${
+    const isActive = isNavActive(href);
+    return `group relative flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors duration-150 ${
       isCollapsedDesktop ? "lg:justify-center lg:px-2" : ""
     } ${
       isActive
-        ? "bg-white/15 font-semibold text-sidebar-foreground shadow-md"
-        : "text-sidebar-foreground/70 hover:bg-white/8 hover:text-sidebar-foreground/90"
+        ? "bg-white/[0.08] font-medium text-sidebar-foreground coach-nav-active"
+        : "font-normal text-sidebar-foreground/65 hover:bg-white/[0.05] hover:text-sidebar-foreground/90"
     }`;
+  };
+
+  const navigateTo = (href: string) => {
+    onCloseMobile();
+    if (isNavActive(href) && pathname === href) return;
+    router.push(href);
   };
 
   const renderNavLink = (item: (typeof coachNav)[number]) => {
     const Icon = item.icon;
-    const isActive =
-      pathname === item.href ||
-      (item.href !== "/coach" && pathname?.startsWith(item.href));
+    const isActive = isNavActive(item.href);
 
     return (
       <Link
         key={item.href}
         href={item.href}
         className={linkClass(item.href, collapsed)}
-        onClick={onCloseMobile}
+        onClick={(event) => {
+          if (
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            event.button !== 0
+          ) {
+            onCloseMobile();
+            return;
+          }
+          event.preventDefault();
+          navigateTo(item.href);
+        }}
         title={collapsed ? item.label : undefined}
         aria-current={isActive ? "page" : undefined}
       >
         {isActive && (
           <span
-            className="absolute left-0 top-0 bottom-0 w-1 rounded-r bg-[#FCD34D]"
+            className="coach-nav-indicator absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-sidebar-foreground/80"
             aria-hidden
           />
         )}
         <Icon
-          className={`h-5 w-5 shrink-0 transition-colors ${
+          className={`h-[18px] w-[18px] shrink-0 transition-colors ${
             isActive
-              ? "text-amber-300"
-              : "text-sidebar-foreground/55 group-hover:text-sidebar-foreground/80"
+              ? "text-sidebar-foreground"
+              : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/75"
           }`}
         />
         <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>
@@ -82,22 +108,22 @@ export function CoachSidebar({
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-foreground/30 backdrop-blur-[2px] lg:hidden"
           aria-label="Close menu"
           onClick={onCloseMobile}
         />
       )}
 
       <aside
-        data-sidebar
+        data-coach-sidebar
         data-collapsed={collapsed ? "true" : "false"}
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-44 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-[transform,width] duration-200 ease-out lg:shadow-none ${
-          collapsed ? "lg:w-16" : "lg:w-44"
+        className={`coach-sidebar-panel fixed inset-y-0 left-0 z-50 flex h-screen w-[11.5rem] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-[hsl(224_28%_12%)] text-sidebar-foreground transition-[transform,width] duration-200 ease-out ${
+          collapsed ? "lg:w-[3.25rem]" : "lg:w-[11.5rem]"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div
-          className={`flex h-16 shrink-0 flex-col justify-center border-b border-white/10 px-4 pt-5 pb-3 lg:h-auto ${
-            collapsed ? "lg:px-2 lg:py-2.5 lg:pt-2.5 lg:pb-2.5" : ""
+          className={`flex shrink-0 flex-col justify-center border-b border-white/[0.06] px-3 py-3.5 ${
+            collapsed ? "lg:px-2 lg:py-3" : ""
           }`}
         >
           <div className="flex items-center justify-between gap-1">
@@ -106,18 +132,19 @@ export function CoachSidebar({
               className={`min-w-0 text-sidebar-foreground no-underline ${collapsed ? "lg:min-w-0 lg:flex-1" : "flex-1"}`}
               onClick={onCloseMobile}
             >
-              <div
-                className={`flex items-center gap-2.5 ${collapsed ? "lg:justify-start" : ""}`}
-              >
+              <div className={`flex items-center gap-2 ${collapsed ? "lg:justify-center" : ""}`}>
                 <span
-                  className="select-none text-2xl leading-none text-amber-300/95"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/[0.08] text-sm text-sidebar-foreground/90"
                   aria-hidden
                 >
                   ♞
                 </span>
                 <div className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
-                  <p className="font-heading text-lg font-bold leading-tight tracking-tight">
+                  <p className="font-heading text-[13px] font-semibold leading-tight tracking-tight text-sidebar-foreground">
                     Torus Chess
+                  </p>
+                  <p className="text-[10px] font-medium tracking-wide text-sidebar-foreground/45">
+                    Coach
                   </p>
                 </div>
               </div>
@@ -127,56 +154,69 @@ export function CoachSidebar({
                 <button
                   type="button"
                   onClick={onToggleCollapsed}
-                  className="hidden rounded-lg p-2 text-sidebar-foreground/75 transition-colors hover:bg-white/10 hover:text-sidebar-foreground lg:inline-flex"
+                  className="hidden rounded-md p-1.5 text-sidebar-foreground/55 transition-colors hover:bg-white/[0.06] hover:text-sidebar-foreground lg:inline-flex"
                   aria-expanded={!collapsed}
                   aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                   {collapsed ? (
-                    <ChevronRight className="h-5 w-5 shrink-0" aria-hidden />
+                    <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
                   ) : (
-                    <ChevronLeft className="h-5 w-5 shrink-0" aria-hidden />
+                    <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
                   )}
                 </button>
               )}
               <button
                 type="button"
-                className="rounded-lg p-2 text-sidebar-foreground/60 transition-colors hover:bg-white/10 hover:text-sidebar-foreground lg:hidden"
+                className="rounded-md p-1.5 text-sidebar-foreground/55 transition-colors hover:bg-white/[0.06] hover:text-sidebar-foreground lg:hidden"
                 aria-label="Close sidebar"
                 onClick={onCloseMobile}
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-2 scrollbar-hide">
-          <div className="mt-1 space-y-1">
-            {mainNavItems.map(renderNavLink)}
-          </div>
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 py-2.5 pb-2 scrollbar-hide">
+          {MAIN_NAV_SECTIONS.map((section, sectionIdx) => {
+            const sectionItems = mainNavItems.filter((item) => item.section === section);
+            if (sectionItems.length === 0) return null;
+            return (
+              <div key={section} className={sectionIdx > 0 ? "mt-2.5" : ""}>
+                {!collapsed && (
+                  <p className="mb-1 px-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/38">
+                    {COACH_NAV_SECTION_LABELS[section]}
+                  </p>
+                )}
+                <div className="space-y-0.5">
+                  {sectionItems.map(renderNavLink)}
+                </div>
+              </div>
+            );
+          })}
 
           {isAdmin && adminNavItems.length > 0 && (
-            <div className="mt-2 border-t border-white/10 pt-2">
+            <div className="mt-2 border-t border-white/[0.06] pt-2">
               <button
                 type="button"
                 onClick={() => setAdminOpen((o) => !o)}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.08em] text-sidebar-foreground/70 transition-colors hover:bg-white/8 hover:text-sidebar-foreground/90 ${
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55 transition-colors hover:bg-white/[0.05] hover:text-sidebar-foreground/80 ${
                   collapsed ? "lg:justify-center lg:px-2" : ""
                 }`}
                 aria-expanded={adminOpen}
                 title={collapsed ? "Admin Only" : undefined}
               >
-                <Shield className="h-4 w-4 shrink-0" />
-                <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Admin Only</span>
+                <Shield className="h-3.5 w-3.5 shrink-0" />
+                <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Admin</span>
                 <ChevronRight
-                  className={`ml-auto h-4 w-4 shrink-0 transition-transform ${
+                  className={`ml-auto h-3.5 w-3.5 shrink-0 transition-transform ${
                     adminOpen ? "rotate-90" : ""
                   } ${collapsed ? "lg:hidden" : ""}`}
                 />
               </button>
 
               {adminOpen && (
-                <div className="mt-1 space-y-1">
+                <div className="mt-0.5 space-y-0.5">
                   {adminNavItems.map(renderNavLink)}
                 </div>
               )}
@@ -184,7 +224,7 @@ export function CoachSidebar({
           )}
         </nav>
 
-        <div className="border-t border-white/10 px-3 py-2">
+        <div className="border-t border-white/[0.06] px-2 py-2">
           <Link
             href="/coach/settings"
             className={linkClass("/coach/settings", collapsed)}
@@ -192,7 +232,7 @@ export function CoachSidebar({
             title={collapsed ? "Settings" : undefined}
             aria-current={pathname === "/coach/settings" ? "page" : undefined}
           >
-            <Settings className="h-5 w-5 shrink-0 text-sidebar-foreground/70" />
+            <Settings className="h-[18px] w-[18px] shrink-0 text-sidebar-foreground/55" />
             <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Settings</span>
           </Link>
           <button
@@ -201,12 +241,12 @@ export function CoachSidebar({
               await logout();
               window.location.href = "/login";
             }}
-            className={`group mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-400 transition-all duration-150 hover:bg-white/8 ${
+            className={`group mt-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-normal text-sidebar-foreground/55 transition-colors hover:bg-white/[0.05] hover:text-red-300/90 ${
               collapsed ? "lg:justify-center lg:px-2" : ""
             }`}
             title={collapsed ? "Log out" : undefined}
           >
-            <LogOut className="h-5 w-5 shrink-0 text-red-400" />
+            <LogOut className="h-[18px] w-[18px] shrink-0" />
             <span className={collapsed ? "truncate lg:sr-only" : "truncate"}>Log out</span>
           </button>
         </div>

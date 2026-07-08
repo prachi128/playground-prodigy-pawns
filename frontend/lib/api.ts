@@ -297,7 +297,9 @@ export const authAPI = {
     return response.data;
   },
 
-  getCoachInvite: async (token: string): Promise<{ email: string; expires_at: string }> => {
+  getCoachInvite: async (
+    token: string,
+  ): Promise<{ email: string; full_name: string; expires_at: string }> => {
     const response = await api.get(`/api/auth/coach-invite/${token}`);
     return response.data;
   },
@@ -818,8 +820,13 @@ export interface Batch {
   name: string;
   description?: string;
   schedule?: string;
+  schedule_weekdays?: string | null;
+  schedule_time?: string | null;
+  schedule_timezone?: string | null;
+  default_duration_minutes?: number;
+  default_meeting_link?: string | null;
   coach_id: number;
-  monthly_fee: number;
+  monthly_fee?: number | null;
   is_active: boolean;
   created_at: string;
   student_count?: number;
@@ -833,6 +840,8 @@ export interface ClassSession {
   topic?: string;
   meeting_link?: string;
   notes?: string;
+  session_kind?: 'regular' | 'makeup' | string;
+  expected_join_count?: number;
   created_at: string;
   batch_name?: string;
 }
@@ -885,14 +894,66 @@ export interface ParentChildProfile extends ChildInfo {
   report: StudentProgressReportData;
 }
 
+export interface ParentLessonChildSummary {
+  child_id: number;
+  child_name: string;
+  opened_lessons: number;
+  completed_lessons: number;
+  completion_pct: number;
+}
+
+export interface ParentLessonGraphPoint {
+  label: string;
+  completions: number;
+}
+
+export interface ParentLessonProgress {
+  total_opened: number;
+  total_completed: number;
+  completion_pct: number;
+  children: ParentLessonChildSummary[];
+  graph: ParentLessonGraphPoint[];
+}
+
 export interface ParentDashboard {
   parent_name: string;
   parent_email?: string;
   children: ChildInfo[];
   upcoming_classes: ClassSession[];
   announcements: AnnouncementItem[];
+  lesson_progress?: ParentLessonProgress;
   current_month: string;
   payment_deadline_day: number;
+}
+
+export interface Lesson {
+  id: number;
+  title: string;
+  slug: string;
+  summary?: string | null;
+  content?: string;
+  level: 'beginner' | 'intermediate' | 'advanced' | 'super_advanced' | string;
+  is_published: boolean;
+  sort_order: number;
+  video_url?: string | null;
+  cover_image_url?: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  access_count?: number;
+  completion_count?: number;
+  student_has_access?: boolean;
+  student_completed?: boolean;
+  opened_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface LessonAssignmentStudent {
+  id: number;
+  full_name: string;
+  username: string;
+  level: number;
+  rating: number;
 }
 
 export const parentAPI = {
@@ -983,6 +1044,7 @@ export interface CoachInvite {
   id: number;
   token: string;
   invite_url: string;
+  full_name?: string | null;
   email: string | null;
   expires_at: string;
   used_at: string | null;
@@ -992,6 +1054,8 @@ export interface CoachInvite {
   expires_in_hours?: number;
   created_at: string;
   used_by?: number | null;
+  email_sent?: boolean;
+  email_error?: string | null;
 }
 
 export interface AdminAuditLogRow {
@@ -1003,6 +1067,50 @@ export interface AdminAuditLogRow {
   target_id?: number | null;
   details?: Record<string, unknown>;
   created_at: string;
+}
+
+export interface CoachActivityRow {
+  id: number;
+  username: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+  last_login: string | null;
+  days_since_login: number | null;
+  total_batches: number;
+  active_batches: number;
+  total_students: number;
+  active_students: number;
+  primary_students: number;
+  total_assignments: number;
+  active_assignments: number;
+  assignments_this_week: number;
+  sessions_total: number;
+  sessions_this_week: number;
+  attendance_marked_total: number;
+  attendance_marked_this_week: number;
+  announcements_total: number;
+  batch_names: string[];
+}
+
+export interface CoachActivityBatchRow {
+  id: number;
+  name: string;
+  is_active: boolean;
+  student_count: number;
+  schedule?: string | null;
+}
+
+export interface CoachRecentActivityRow {
+  activity_type: string;
+  label: string;
+  occurred_at: string;
+}
+
+export interface CoachDetailedActivity extends CoachActivityRow {
+  batches: CoachActivityBatchRow[];
+  recent_activity: CoachRecentActivityRow[];
 }
 
 export interface AdminOperationalMetrics {
@@ -1103,8 +1211,23 @@ export const batchAPI = {
   removeStudent: async (batchId: number, studentId: number): Promise<void> => {
     await api.delete(`/api/batches/${batchId}/students/${studentId}`);
   },
-  createClass: async (batchId: number, data: { date: string; duration_minutes?: number; topic?: string; meeting_link?: string; notes?: string }): Promise<ClassSession> => {
+  createClass: async (
+    batchId: number,
+    data: {
+      date: string;
+      duration_minutes?: number;
+      topic?: string;
+      meeting_link?: string;
+      notes?: string;
+      session_kind?: 'regular' | 'makeup';
+      student_ids?: number[];
+    },
+  ): Promise<ClassSession> => {
     const response = await api.post(`/api/batches/${batchId}/classes`, data);
+    return response.data;
+  },
+  openRecurringSlot: async (batchId: number, date: string): Promise<ClassSession> => {
+    const response = await api.post(`/api/batches/${batchId}/classes/open-slot`, { date });
     return response.data;
   },
   listClasses: async (batchId: number): Promise<ClassSession[]> => {
@@ -1126,7 +1249,11 @@ export const batchAPI = {
 };
 
 export const adminAPI = {
-  createCoachInvite: async (data: { email: string; expires_in_days?: number }): Promise<CoachInvite> => {
+  createCoachInvite: async (data: {
+    full_name: string;
+    email: string;
+    expires_in_days?: number;
+  }): Promise<CoachInvite> => {
     const response = await api.post('/api/admin/coach-invites', data);
     return response.data;
   },
@@ -1147,6 +1274,14 @@ export const adminAPI = {
   },
   getOperationalMetrics: async (): Promise<AdminOperationalMetrics> => {
     const response = await api.get('/api/admin/operational-metrics');
+    return response.data;
+  },
+  listCoachActivity: async (): Promise<CoachActivityRow[]> => {
+    const response = await api.get('/api/admin/coaches/activity');
+    return response.data;
+  },
+  getCoachActivity: async (coachRef: string): Promise<CoachDetailedActivity> => {
+    const response = await api.get(`/api/admin/coaches/${encodeURIComponent(coachRef)}/activity`);
     return response.data;
   },
 };
@@ -1191,19 +1326,41 @@ export const adminBotsAPI = {
 let coachBootstrapInFlight: Promise<{ user: User; stats: Record<string, unknown> }> | null =
   null;
 
+export interface CoachStudentGameSummary {
+  id: number;
+  started_at: string | null;
+  ended_at: string | null;
+  result: string | null;
+  total_moves: number;
+  white_player_id: number;
+  black_player_id: number;
+  has_pgn: boolean;
+}
+
+export interface CoachGameForAnalysis {
+  id: number;
+  started_at: string | null;
+  result: string | null;
+  total_moves: number;
+  white_player_id: number;
+  black_player_id: number;
+  pgn: string | null;
+  starting_fen: string | null;
+  final_fen: string | null;
+}
+
+export interface CoachUpcomingClass {
+  id: number;
+  batch_id: number;
+  batch_name?: string;
+  date: string;
+  duration_minutes: number;
+  topic?: string;
+  meeting_link?: string;
+  notes?: string;
+}
+
 export interface CoachPriorities {
-  inactive_students: Array<{ id: number; username: string; days_since_active: number }>;
-  low_accuracy_students: Array<{
-    id: number;
-    username: string;
-    success_rate: number;
-    attempts: number;
-  }>;
-  low_game_activity_students: Array<{
-    id: number;
-    username: string;
-    reason: string;
-  }>;
   assignments_overdue: Array<{
     id: number;
     title: string;
@@ -1217,13 +1374,72 @@ export interface CoachPriorities {
     target_label: string;
   }>;
   counts: {
-    inactive_students: number;
-    low_accuracy_students: number;
-    low_game_activity_students: number;
     assignments_overdue: number;
     assignments_due_soon: number;
   };
 }
+
+export interface StudentActivityBucket {
+  date: string;
+  games: number;
+  puzzle_attempts: number;
+  puzzles_solved: number;
+}
+
+export type StudentActivityPresetDays = 7 | 30 | 90 | 180 | 365;
+
+export interface StudentActivityResponse {
+  days: number;
+  start_date: string;
+  end_date: string;
+  buckets: StudentActivityBucket[];
+  totals: {
+    games: number;
+    puzzle_attempts: number;
+    puzzles_solved: number;
+  };
+}
+
+export type StudentActivityQuery =
+  | { days: StudentActivityPresetDays }
+  | { startDate: string; endDate: string };
+
+export interface UpcomingClassSession {
+  id: number;
+  batch_id: number;
+  batch_name?: string | null;
+  date: string;
+  duration_minutes: number;
+  topic?: string | null;
+  meeting_link?: string | null;
+  session_kind: string;
+  can_join: boolean;
+}
+
+export interface JoinClassResponse {
+  success: boolean;
+  session_id: number;
+  student_id: number;
+  joined_at: string;
+  attendance_status: string;
+  attendance_source: string | null;
+  meeting_link?: string | null;
+  coach_override?: boolean;
+}
+
+export const attendanceAPI = {
+  joinSession: async (sessionId: number, studentId?: number): Promise<JoinClassResponse> => {
+    const response = await api.post(`/api/attendance/session/${sessionId}/join`, {
+      student_id: studentId ?? null,
+    });
+    return response.data;
+  },
+
+  getUpcomingSessions: async (limit = 10): Promise<UpcomingClassSession[]> => {
+    const response = await api.get('/api/attendance/upcoming-sessions', { params: { limit } });
+    return response.data;
+  },
+};
 
 // Coach API
 export const coachAPI = {
@@ -1255,13 +1471,71 @@ export const coachAPI = {
     return response.data;
   },
 
-  nudgeStudent: async (
+  getStudentActivity: async (
+    studentRef: number | string,
+    query: StudentActivityQuery = { days: 7 },
+  ): Promise<StudentActivityResponse> => {
+    const ref =
+      typeof studentRef === 'number' ? String(studentRef) : encodeURIComponent(studentRef);
+    const params =
+      'days' in query
+        ? { days: query.days }
+        : { start_date: query.startDate, end_date: query.endDate };
+    const response = await api.get(`/api/coach/students/${ref}/activity`, { params });
+    return response.data;
+  },
+
+  getUpcomingClasses: async (limit = 10): Promise<CoachUpcomingClass[]> => {
+    const response = await api.get('/api/coach/upcoming-classes', { params: { limit } });
+    return response.data;
+  },
+
+  getStudentGames: async (
     studentId: number,
+    limit = 40,
+  ): Promise<CoachStudentGameSummary[]> => {
+    const response = await api.get(`/api/coach/students/${studentId}/games`, {
+      params: { limit },
+    });
+    return response.data;
+  },
+
+  getGameForAnalysis: async (gameId: number): Promise<CoachGameForAnalysis> => {
+    const response = await api.get(`/api/coach/games/${gameId}`);
+    return response.data;
+  },
+
+  getCoachPuzzle: async (puzzleId: number): Promise<Puzzle> => {
+    const response = await api.get(`/api/coach/puzzles/${puzzleId}`);
+    return response.data;
+  },
+
+  nudgeStudent: async (
+    studentRef: number | string,
     message?: string | null,
   ): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post(`/api/coach/students/${studentId}/nudge`, {
+    const ref =
+      typeof studentRef === 'number' ? String(studentRef) : encodeURIComponent(studentRef);
+    const response = await api.post(`/api/coach/students/${ref}/nudge`, {
       message: message?.trim() ? message.trim() : null,
     });
+    return response.data;
+  },
+
+  updateStudent: async (
+    studentRef: number | string,
+    data: {
+      full_name?: string;
+      age?: number | null;
+      guardian_email?: string | null;
+      phone?: string | null;
+      whatsapp?: string | null;
+      student_email?: string | null;
+    },
+  ) => {
+    const ref =
+      typeof studentRef === 'number' ? String(studentRef) : encodeURIComponent(studentRef);
+    const response = await api.patch(`/api/coach/students/${ref}`, data);
     return response.data;
   },
 
@@ -1334,6 +1608,81 @@ export const coachAPI = {
     students: { id: number; username: string; email: string }[];
   }> => {
     const response = await api.get('/api/coach/students/deactivated-notice');
+    return response.data;
+  },
+
+  getLessons: async (params?: {
+    include_unpublished?: boolean;
+    level?: string;
+    search?: string;
+  }): Promise<Lesson[]> => {
+    const response = await api.get('/api/coach/lessons', { params });
+    return response.data;
+  },
+
+  getLesson: async (lessonId: number): Promise<Lesson> => {
+    const response = await api.get(`/api/coach/lessons/${lessonId}`);
+    return response.data;
+  },
+
+  createLesson: async (data: {
+    title: string;
+    summary?: string;
+    content: string;
+    video_url?: string;
+    cover_image_url?: string;
+    level: string;
+    is_published: boolean;
+  }): Promise<Lesson> => {
+    const response = await api.post('/api/coach/lessons', data);
+    return response.data;
+  },
+
+  updateLesson: async (
+    lessonId: number,
+    data: Partial<{
+      title: string;
+      summary: string;
+      content: string;
+      video_url: string;
+      cover_image_url: string;
+      level: string;
+      is_published: boolean;
+    }>,
+  ): Promise<Lesson> => {
+    const response = await api.put(`/api/coach/lessons/${lessonId}`, data);
+    return response.data;
+  },
+
+  reorderLessons: async (lessonIds: number[]): Promise<void> => {
+    await api.post('/api/coach/lessons/reorder', { lesson_ids: lessonIds });
+  },
+
+  getLessonStudents: async (): Promise<LessonAssignmentStudent[]> => {
+    const response = await api.get('/api/coach/lesson-students');
+    return response.data;
+  },
+
+  openLessonForStudent: async (lessonId: number, studentId: number): Promise<void> => {
+    await api.post(`/api/coach/lessons/${lessonId}/open-for-student`, { student_id: studentId });
+  },
+};
+
+export const lessonAPI = {
+  getMyLessons: async (): Promise<Lesson[]> => {
+    const response = await api.get('/api/lessons/my-lessons');
+    return response.data;
+  },
+
+  getLesson: async (lessonId: number): Promise<Lesson> => {
+    const response = await api.get(`/api/lessons/${lessonId}`);
+    return response.data;
+  },
+
+  completeLesson: async (
+    lessonId: number,
+  ): Promise<{ success: boolean; already_completed: boolean; completed_at: string }> => {
+    const response = await api.post(`/api/lessons/${lessonId}/complete`);
     return response.data;
   },
 };

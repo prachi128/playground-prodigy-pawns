@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useAuthStore } from "@/lib/store"
 import { StarShopPreview } from "./star-shop"
 import { LevelCard } from "./level-card"
+import { StudentUpcomingClasses } from "./StudentUpcomingClasses"
 
 // --- Data ---
 
@@ -71,6 +72,8 @@ export function DashboardContent() {
           </div>
         </div>
       </section>
+
+      <StudentUpcomingClasses />
 
       {/* Action Cards - Vibrant gradient backgrounds */}
       <section className="mb-6">

@@ -183,7 +183,8 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex ${sidebarWidthClass} flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 lg:translate-x-0 ${
+        data-student-sidebar
+        className={`student-sidebar-panel fixed inset-y-0 left-0 z-50 flex ${sidebarWidthClass} flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         role="navigation"

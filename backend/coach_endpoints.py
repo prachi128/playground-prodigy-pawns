@@ -7,13 +7,13 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case, or_
 from typing import List, Optional
 from pydantic import BaseModel, field_serializer
-from models import Puzzle, User, DifficultyLevel, PuzzleFormat, UserRole, Assignment, PuzzleAttempt, Game
+from models import Puzzle, User, DifficultyLevel, PuzzleFormat, UserRole, Assignment, PuzzleAttempt, Game, Batch, ClassSession
 from schemas import UserResponse
 from auth import get_current_user
 from database import get_db
 from stockfish_service import get_stockfish_service
 from puzzle_utils import resolve_puzzle_format
-from datetime import datetime, timedelta
+from datetime import date as date_type, datetime, timedelta
 
 from student_management_backend import _coach_roster_student_ids, _is_admin
 
@@ -426,113 +426,9 @@ def get_coach_priorities(
     user: User = Depends(require_coach),
     db: Session = Depends(get_db),
 ):
-    """
-    Snapshot for the coach dashboard: students who may need follow-up and
-    assignments that are overdue or due within three days.
-    """
+    """Assignments overdue or due within three days (coach dashboard)."""
     now = datetime.utcnow()
     soon = now + timedelta(days=3)
-
-    q = db.query(User).filter(User.role == UserRole.student, User.is_active == True)
-    roster = _coach_roster_student_ids(user, db)
-    if not _is_admin(user) and roster is not None:
-        if not roster:
-            students = []
-        else:
-            students = q.filter(User.id.in_(roster)).all()
-    else:
-        students = q.all()
-
-    ids = [s.id for s in students]
-    attempt_map: dict = {}
-    last_map: dict = {}
-    if ids:
-        att_rows = (
-            db.query(
-                PuzzleAttempt.user_id,
-                func.count(PuzzleAttempt.id),
-                func.sum(case((PuzzleAttempt.is_solved == True, 1), else_=0)),
-            )
-            .filter(PuzzleAttempt.user_id.in_(ids))
-            .group_by(PuzzleAttempt.user_id)
-            .all()
-        )
-        for uid, cnt, sol in att_rows:
-            attempt_map[int(uid)] = (int(cnt or 0), int(sol or 0))
-        last_rows = (
-            db.query(PuzzleAttempt.user_id, func.max(PuzzleAttempt.attempted_at))
-            .filter(PuzzleAttempt.user_id.in_(ids))
-            .group_by(PuzzleAttempt.user_id)
-            .all()
-        )
-        for uid, mx in last_rows:
-            if mx is not None:
-                last_map[int(uid)] = mx
-
-    inactive_students: List[dict] = []
-    low_accuracy_students: List[dict] = []
-    low_game_activity_students: List[dict] = []
-    for s in students:
-        attempted, solved = attempt_map.get(s.id, (0, 0))
-        rate = (solved / attempted * 100) if attempted else 0.0
-        last_a = last_map.get(s.id) or s.last_login or s.created_at
-        days = (now - last_a).days if last_a else 999
-        if days > 7:
-            inactive_students.append(
-                {"id": s.id, "username": s.username, "days_since_active": days}
-            )
-        if attempted >= 5 and rate < 50:
-            low_accuracy_students.append(
-                {
-                    "id": s.id,
-                    "username": s.username,
-                    "success_rate": round(rate, 1),
-                    "attempts": attempted,
-                }
-            )
-
-    game_totals: dict[int, int] = {}
-    game_recent: dict[int, int] = {}
-    if ids:
-        game_rows = (
-            db.query(
-                User.id,
-                func.count(Game.id),
-                func.sum(
-                    case(
-                        (Game.started_at >= (now - timedelta(days=14)), 1),
-                        else_=0,
-                    )
-                ),
-            )
-            .select_from(User)
-            .outerjoin(
-                Game,
-                or_(Game.white_player_id == User.id, Game.black_player_id == User.id),
-            )
-            .filter(User.id.in_(ids))
-            .group_by(User.id)
-            .all()
-        )
-        for uid, total, recent14 in game_rows:
-            game_totals[int(uid)] = int(total or 0)
-            game_recent[int(uid)] = int(recent14 or 0)
-
-    for s in students:
-        total_games = game_totals.get(s.id, 0)
-        recent14 = game_recent.get(s.id, 0)
-        if total_games == 0:
-            low_game_activity_students.append(
-                {"id": s.id, "username": s.username, "reason": "No games played yet"}
-            )
-        elif recent14 == 0:
-            low_game_activity_students.append(
-                {"id": s.id, "username": s.username, "reason": "No games in last 14 days"}
-            )
-
-    inactive_students.sort(key=lambda x: x["days_since_active"], reverse=True)
-    low_accuracy_students.sort(key=lambda x: x["success_rate"])
-    low_game_activity_students.sort(key=lambda x: x["username"])
 
     aq = (
         db.query(Assignment)
@@ -569,16 +465,246 @@ def get_coach_priorities(
     due_soon.sort(key=lambda x: x["due_date"])
 
     return {
-        "inactive_students": inactive_students[:25],
-        "low_accuracy_students": low_accuracy_students[:25],
-        "low_game_activity_students": low_game_activity_students[:25],
         "assignments_overdue": overdue[:25],
         "assignments_due_soon": due_soon[:25],
         "counts": {
-            "inactive_students": len(inactive_students),
-            "low_accuracy_students": len(low_accuracy_students),
-            "low_game_activity_students": len(low_game_activity_students),
             "assignments_overdue": len(overdue),
             "assignments_due_soon": len(due_soon),
         },
+    }
+
+
+@router.get("/upcoming-classes")
+def get_coach_upcoming_classes(
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+):
+    """Upcoming class sessions across the coach's active batches (for dashboard)."""
+    cap = max(1, min(limit, 25))
+    now = datetime.utcnow()
+    batch_rows = (
+        db.query(Batch)
+        .filter(Batch.coach_id == user.id, Batch.is_active == True)
+        .all()
+    )
+    batch_ids = [b.id for b in batch_rows]
+    batch_name_by_id = {b.id: b.name for b in batch_rows}
+    if not batch_ids:
+        return []
+
+    sessions = (
+        db.query(ClassSession)
+        .filter(ClassSession.batch_id.in_(batch_ids), ClassSession.date >= now)
+        .order_by(ClassSession.date.asc())
+        .limit(cap)
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "batch_id": s.batch_id,
+            "batch_name": batch_name_by_id.get(s.batch_id),
+            "date": s.date.isoformat(),
+            "duration_minutes": s.duration_minutes,
+            "topic": s.topic,
+            "meeting_link": s.meeting_link,
+            "notes": s.notes,
+        }
+        for s in sessions
+    ]
+
+
+def _coach_can_view_student(user: User, student_id: int, db: Session) -> bool:
+    if _is_admin(user):
+        return True
+    roster = _coach_roster_student_ids(user, db)
+    return roster is not None and student_id in roster
+
+
+_ACTIVITY_PRESET_DAYS = (7, 30, 90, 180, 365)
+_ACTIVITY_MAX_SPAN_DAYS = 366
+
+
+@router.get("/students/{student_ref}/activity")
+def get_student_activity(
+    student_ref: str,
+    days: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Daily game and puzzle counts for a preset window or custom date range."""
+    from student_ref_utils import resolve_student_user
+
+    student = resolve_student_user(student_ref, db)
+    student_id = student.id
+    if not _coach_can_view_student(user, student_id, db):
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    now = datetime.utcnow()
+    today = now.date()
+
+    if start_date is not None or end_date is not None:
+        if not start_date or not end_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Both start_date and end_date are required for a custom range",
+            )
+        try:
+            range_start = date_type.fromisoformat(start_date)
+            range_end = date_type.fromisoformat(end_date)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Dates must be YYYY-MM-DD",
+            ) from exc
+        if range_end < range_start:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="end_date must be on or after start_date",
+            )
+        span_days = (range_end - range_start).days + 1
+        if span_days > _ACTIVITY_MAX_SPAN_DAYS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Date range cannot exceed {_ACTIVITY_MAX_SPAN_DAYS} days",
+            )
+    else:
+        if days not in _ACTIVITY_PRESET_DAYS:
+            days = 7
+        range_end = today
+        range_start = range_end - timedelta(days=days - 1)
+        span_days = days
+
+    period_start = datetime.combine(range_start, datetime.min.time())
+    period_end = datetime.combine(range_end, datetime.max.time())
+
+    buckets: List[dict] = []
+    by_date: dict[str, dict] = {}
+    cursor = range_start
+    while cursor <= range_end:
+        key = cursor.isoformat()
+        row = {
+            "date": key,
+            "games": 0,
+            "puzzle_attempts": 0,
+            "puzzles_solved": 0,
+        }
+        buckets.append(row)
+        by_date[key] = row
+        cursor += timedelta(days=1)
+
+    games = (
+        db.query(Game)
+        .filter(
+            or_(Game.white_player_id == student_id, Game.black_player_id == student_id),
+            Game.started_at >= period_start,
+            Game.started_at <= period_end,
+        )
+        .all()
+    )
+    for g in games:
+        if g.started_at:
+            key = g.started_at.date().isoformat()
+            if key in by_date:
+                by_date[key]["games"] += 1
+
+    attempts = (
+        db.query(PuzzleAttempt)
+        .filter(
+            PuzzleAttempt.user_id == student_id,
+            PuzzleAttempt.attempted_at >= period_start,
+            PuzzleAttempt.attempted_at <= period_end,
+        )
+        .all()
+    )
+    for a in attempts:
+        if a.attempted_at:
+            key = a.attempted_at.date().isoformat()
+            if key in by_date:
+                by_date[key]["puzzle_attempts"] += 1
+                if a.is_solved:
+                    by_date[key]["puzzles_solved"] += 1
+
+    totals = {
+        "games": sum(b["games"] for b in buckets),
+        "puzzle_attempts": sum(b["puzzle_attempts"] for b in buckets),
+        "puzzles_solved": sum(b["puzzles_solved"] for b in buckets),
+    }
+    return {
+        "days": span_days,
+        "start_date": range_start.isoformat(),
+        "end_date": range_end.isoformat(),
+        "buckets": buckets,
+        "totals": totals,
+    }
+
+
+@router.get("/students/{student_ref}/games")
+def coach_list_student_games(
+    student_ref: str,
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+    limit: int = 40,
+):
+    """Recent games for a student on the coach roster (for Analysis load)."""
+    from student_ref_utils import resolve_student_user
+
+    cap = max(1, min(limit, 50))
+    student = resolve_student_user(student_ref, db)
+    student_id = student.id
+    if not _coach_can_view_student(user, student_id, db):
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    games = (
+        db.query(Game)
+        .filter(
+            or_(Game.white_player_id == student_id, Game.black_player_id == student_id),
+        )
+        .order_by(Game.started_at.desc())
+        .limit(cap)
+        .all()
+    )
+    return [
+        {
+            "id": g.id,
+            "started_at": g.started_at.isoformat() if g.started_at else None,
+            "ended_at": g.ended_at.isoformat() if g.ended_at else None,
+            "result": g.result,
+            "total_moves": g.total_moves,
+            "white_player_id": g.white_player_id,
+            "black_player_id": g.black_player_id,
+            "has_pgn": bool(g.pgn and g.pgn.strip()),
+        }
+        for g in games
+    ]
+
+
+@router.get("/games/{game_id}")
+def coach_get_game_for_analysis(
+    game_id: int,
+    user: User = Depends(require_coach),
+    db: Session = Depends(get_db),
+):
+    """Fetch a game PGN for coach analysis (roster-scoped)."""
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    player_ids = {game.white_player_id, game.black_player_id}
+    if not _is_admin(user):
+        roster = _coach_roster_student_ids(user, db) or set()
+        if not player_ids & roster:
+            raise HTTPException(status_code=403, detail="Access denied")
+    return {
+        "id": game.id,
+        "started_at": game.started_at.isoformat() if game.started_at else None,
+        "result": game.result,
+        "total_moves": game.total_moves,
+        "white_player_id": game.white_player_id,
+        "black_player_id": game.black_player_id,
+        "pgn": game.pgn,
+        "starting_fen": game.starting_fen,
+        "final_fen": game.final_fen,
     }

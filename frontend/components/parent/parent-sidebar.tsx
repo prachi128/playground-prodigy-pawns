@@ -60,10 +60,10 @@ export function ParentSidebar({ isOpen, onClose }: ParentSidebarProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full w-64 z-50 transform transition-transform duration-300 lg:translate-x-0 ${
+        data-parent-sidebar
+        className={`parent-sidebar-panel fixed top-0 left-0 h-full w-64 z-50 transform transition-transform duration-300 lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{ backgroundColor: "#1a4a3a" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-5 border-b border-white/10">

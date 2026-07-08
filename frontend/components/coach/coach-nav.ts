@@ -1,7 +1,21 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Puzzle, Users, Layers, BookOpen, Trophy, Shield, Presentation, Wallet, UserPlus, UserCog, ClipboardList, Bot, Swords } from "lucide-react";
+import {
+  LayoutDashboard,
+  Puzzle,
+  Users,
+  Layers,
+  BookOpen,
+  Shield,
+  Presentation,
+  Wallet,
+  UserPlus,
+  UserCog,
+  ClipboardList,
+  Bot,
+  LineChart,
+} from "lucide-react";
 
-export type CoachNavSection = "teaching" | "coach" | "admin";
+export type CoachNavSection = "overview" | "teach" | "manage" | "admin";
 
 export interface CoachNavItem {
   label: string;
@@ -12,19 +26,26 @@ export interface CoachNavItem {
   adminOnly?: boolean;
 }
 
+export const COACH_NAV_SECTION_LABELS: Record<Exclude<CoachNavSection, "admin">, string> = {
+  overview: "Overview",
+  teach: "Teach",
+  manage: "Manage",
+};
+
 export const coachNav: CoachNavItem[] = [
-  { label: "Dashboard", href: "/coach", icon: LayoutDashboard, section: "coach" },
-  { label: "Coach", href: "/coach/teaching", icon: Presentation, section: "teaching" },
-  { label: "Play", href: "/coach/play", icon: Swords, section: "teaching" },
-  { label: "Students", href: "/coach/students", icon: Users, section: "coach" },
-  { label: "Leaderboard", href: "/coach/leaderboard", icon: Trophy, section: "coach" },
-  { label: "Batches", href: "/coach/batches", icon: Layers, section: "coach" },
-  { label: "Assignments", href: "/coach/assignments", icon: BookOpen, section: "coach" },
-  { label: "Puzzles", href: "/coach/puzzles", icon: Puzzle, section: "coach" },
-  { label: "Admin: coach invites", href: "/coach/admin/coach-invites", icon: UserPlus, section: "admin", adminOnly: true },
-  { label: "Admin: coaches", href: "/coach/admin/coaches", icon: UserCog, section: "admin", adminOnly: true },
-  { label: "Admin: payments", href: "/admin/payments", icon: Wallet, section: "admin", adminOnly: true },
-  { label: "Admin: students", href: "/coach/admin/students", icon: Shield, section: "admin", adminOnly: true },
-  { label: "Admin: audit logs", href: "/coach/admin/audit-logs", icon: ClipboardList, section: "admin", adminOnly: true },
-  { label: "Admin: bot calibration", href: "/coach/admin/bot-calibration", icon: Bot, section: "admin", adminOnly: true },
+  { label: "Dashboard", href: "/coach", icon: LayoutDashboard, section: "overview" },
+  { label: "My classes", href: "/coach/batches", icon: Layers, section: "overview" },
+  { label: "Teaching board", href: "/coach/teaching", icon: Presentation, section: "teach" },
+  { label: "Engine", href: "/coach/analysis", icon: LineChart, section: "teach" },
+  { label: "Students", href: "/coach/students", icon: Users, section: "manage" },
+  { label: "Coaches", href: "/coach/coaches", icon: UserCog, section: "manage", adminOnly: true },
+  { label: "Assignments", href: "/coach/assignments", icon: BookOpen, section: "manage" },
+  { label: "Lessons", href: "/coach/lessons", icon: BookOpen, section: "manage" },
+  { label: "Puzzles", href: "/coach/puzzles", icon: Puzzle, section: "manage" },
+  { label: "Coach invites", href: "/coach/admin/coach-invites", icon: UserPlus, section: "admin", adminOnly: true },
+  { label: "Coaches", href: "/coach/admin/coaches", icon: UserCog, section: "admin", adminOnly: true },
+  { label: "Payments", href: "/admin/payments", icon: Wallet, section: "admin", adminOnly: true },
+  { label: "Students", href: "/coach/admin/students", icon: Shield, section: "admin", adminOnly: true },
+  { label: "Audit logs", href: "/coach/admin/audit-logs", icon: ClipboardList, section: "admin", adminOnly: true },
+  { label: "Bot calibration", href: "/coach/admin/bot-calibration", icon: Bot, section: "admin", adminOnly: true },
 ];

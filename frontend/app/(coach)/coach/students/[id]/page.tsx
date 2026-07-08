@@ -8,24 +8,31 @@ import { useAuthStore } from '@/lib/store';
 import {
   ArrowLeft,
   Award,
-  TrendingUp,
-  Target,
   Calendar,
-  Zap,
-  Trophy,
-  AlertCircle,
-  BarChart3,
-  Activity,
+  CalendarCheck,
   Loader2,
   FileText,
   UserX,
   UserCheck,
   Send,
+  BarChart3,
+  Target,
+  Gamepad2,
+  Zap,
+  AlertCircle,
+  Phone,
+  Mail,
+  Pencil,
+  MessageCircle,
+  ExternalLink,
+  Info,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api, { batchAPI, coachAPI, type Batch } from '@/lib/api';
+import api, { coachAPI } from '@/lib/api';
+import { coachStudentApiRef, coachStudentReportPath } from '@/lib/coach-student-path';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import StudentActivityCharts from '@/components/coach/StudentActivityCharts';
 
 interface ThemePerformanceRow {
   theme_key: string;
@@ -34,28 +41,27 @@ interface ThemePerformanceRow {
   accuracy_pct: number;
 }
 
-interface WeeklyBucket {
-  period_label: string;
-  start_date: string;
-  attempts: number;
-  solved: number;
-  accuracy_pct: number;
-}
-
 interface StudentDetails {
   id: number;
   username: string;
+  full_name: string;
   email: string;
+  guardian_email?: string | null;
+  student_email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  age?: number | null;
+  rating?: number;
+  skill_level?: string;
+  batch_names?: string[];
+  attendance_pct?: number | null;
+  last_class_attended?: string | null;
   xp: number;
   created_at: string;
   last_active: string;
   total_puzzles_attempted: number;
   total_puzzles_solved: number;
   success_rate: number;
-  beginner_solved: number;
-  intermediate_solved: number;
-  advanced_solved: number;
-  expert_solved: number;
   puzzles_this_week: number;
   xp_this_week: number;
   games_played: number;
@@ -65,34 +71,158 @@ interface StudentDetails {
   days_since_active: number;
   is_active?: boolean;
   theme_performance?: ThemePerformanceRow[];
-  weekly_buckets?: WeeklyBucket[];
   weekly_trend?: string;
 }
 
-const WEEKLY_TREND_LABELS: Record<string, string> = {
-  improving: 'Improving',
-  stable: 'Stable',
-  declining: 'Needs support',
-  insufficient_data: 'Not enough recent data',
-};
+const panel = 'rounded-lg border border-border bg-card p-5';
+
+function displayName(s: StudentDetails): string {
+  return s.full_name?.trim() || s.username;
+}
+
+function formatLastClassDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatLastActive(days: number): string {
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+function lastActiveClass(days: number): string {
+  if (days <= 1) return 'coach-text-success';
+  if (days <= 7) return 'text-foreground';
+  if (days <= 14) return 'coach-text-warning';
+  return 'coach-text-danger';
+}
+
+function attendanceClass(pct: number | null | undefined): string {
+  if (pct == null) return 'text-muted-foreground';
+  if (pct >= 80) return 'coach-text-success';
+  if (pct >= 50) return 'coach-text-warning';
+  return 'coach-text-danger';
+}
+
+function skillLevelClass(level: string | undefined): string {
+  switch (level) {
+    case 'Expert':
+      return 'coach-text-accent';
+    case 'Advanced':
+      return 'coach-text-link';
+    case 'Intermediate':
+      return 'coach-text-success';
+    case 'Beginner':
+      return 'coach-text-warning';
+    default:
+      return 'text-muted-foreground';
+  }
+}
 
 function formatThemeLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-const statCard =
-  'rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md';
+function whatsappDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
 
-const panelCard = 'rounded-xl border border-border bg-card p-6 shadow-sm';
+function ContactRow({
+  icon: Icon,
+  label,
+  value,
+  href,
+  external,
+}: {
+  icon: typeof Mail;
+  label: string;
+  value: string | null | undefined;
+  href?: string;
+  external?: boolean;
+}) {
+  const display = value?.trim() || 'Not provided';
+  const hasValue = Boolean(value?.trim());
+
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        {hasValue && href ? (
+          <a
+            href={href}
+            target={external ? '_blank' : undefined}
+            rel={external ? 'noopener noreferrer' : undefined}
+            className="mt-0.5 inline-flex items-center gap-1 break-all text-sm font-medium coach-text-link hover:underline"
+          >
+            {display}
+            {external ? <ExternalLink className="h-3 w-3 shrink-0" /> : null}
+          </a>
+        ) : (
+          <p className={`mt-0.5 text-sm ${hasValue ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {display}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoTooltip({ text, ariaLabel }: { text: string; ariaLabel: string }) {
+  return (
+    <div className="group relative shrink-0">
+      <button
+        type="button"
+        className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={ariaLabel}
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      <div
+        role="tooltip"
+        className="pointer-events-none invisible absolute right-0 top-full z-10 mt-1.5 w-56 rounded-lg border border-border bg-card px-3 py-2 text-[12px] leading-snug text-foreground shadow-md group-hover:visible group-focus-within:visible"
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function SnapshotItem({
+  label,
+  value,
+  sub,
+  infoTip,
+  valueClass = 'text-foreground',
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  infoTip?: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+        {infoTip ? <InfoTooltip text={infoTip} ariaLabel={`About ${label}`} /> : null}
+      </div>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${valueClass}`}>{value}</p>
+      {sub ? <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p> : null}
+    </div>
+  );
+}
 
 export default function StudentDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const studentId = parseInt(params.id as string, 10);
+  const studentUsername = decodeURIComponent(String(params.id ?? ''));
   const { isAuthenticated, user } = useAuthStore();
 
   const [student, setStudent] = useState<StudentDetails | null>(null);
-  const [studentBatchName, setStudentBatchName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAwardDialog, setShowAwardDialog] = useState(false);
   const [xpAmount, setXpAmount] = useState(10);
@@ -106,44 +236,38 @@ export default function StudentDetailPage() {
   const [showNudgeDialog, setShowNudgeDialog] = useState(false);
   const [nudgeMessage, setNudgeMessage] = useState('');
   const [nudgeSending, setNudgeSending] = useState(false);
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    age: '',
+    guardian_email: '',
+    student_email: '',
+    phone: '',
+    whatsapp: '',
+  });
 
   useEffect(() => {
     if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
       router.push('/dashboard');
       return;
     }
+    if (!studentUsername) {
+      router.push('/coach/students');
+      return;
+    }
     loadStudent();
-  }, [isAuthenticated, user, router, studentId]);
+  }, [isAuthenticated, user, router, studentUsername]);
 
   const loadStudent = async () => {
+    if (!studentUsername) return;
     setIsLoading(true);
-    setStudentBatchName(null);
     try {
-      const studentPromise = api.get(`/api/coach/students/${studentId}`);
-      const batchesPromise = batchAPI.list().catch(() => [] as Batch[]);
-
-      const [response, batches] = await Promise.all([studentPromise, batchesPromise]);
-      setStudent(response.data);
-
-      let foundName: string | null = null;
-      if (batches.length > 0) {
-        const settled = await Promise.allSettled(
-          batches.map(async (b) => {
-            const list = await batchAPI.listStudents(b.id);
-            return { batch: b, list };
-          }),
-        );
-        for (const r of settled) {
-          if (
-            r.status === 'fulfilled' &&
-            r.value.list.some((row) => row.student_id === studentId)
-          ) {
-            foundName = r.value.batch.name;
-            break;
-          }
-        }
-      }
-      setStudentBatchName(foundName);
+      const response = await api.get(
+        `/api/coach/students/${coachStudentApiRef(studentUsername)}`,
+      );
+      setStudent(response.data as StudentDetails);
     } catch {
       toast.error('Failed to load student details');
       router.push('/coach/students');
@@ -153,15 +277,16 @@ export default function StudentDetailPage() {
   };
 
   const handleAwardXP = async () => {
-    if (!xpAmount || xpAmount < 1 || xpAmount > 100) {
+    if (!student || !xpAmount || xpAmount < 1 || xpAmount > 100) {
       toast.error('XP must be between 1 and 100');
       return;
     }
-
     setIsAwarding(true);
     try {
-      await api.post(`/api/coach/students/${studentId}/award-xp?xp_amount=${xpAmount}`);
-      toast.success(`Awarded ${xpAmount} XP to ${student?.username}!`);
+      await api.post(
+        `/api/coach/students/${coachStudentApiRef(student.username)}/award-xp?xp_amount=${xpAmount}`,
+      );
+      toast.success(`Awarded ${xpAmount} XP to ${student.username}`);
       setShowAwardDialog(false);
       loadStudent();
     } catch (err: unknown) {
@@ -176,14 +301,14 @@ export default function StudentDetailPage() {
   };
 
   const handleDeactivate = async () => {
-    if (deactivateLock.current) return;
+    if (!student || deactivateLock.current) return;
     deactivateLock.current = true;
     setIsDeactivating(true);
     try {
-      await api.put(`/api/coach/students/${studentId}/deactivate`);
+      await api.put(`/api/coach/students/${coachStudentApiRef(student.username)}/deactivate`);
       toast.success('Student account deactivated');
       setShowDeactivateDialog(false);
-      router.push('/coach/admin/students');
+      loadStudent();
     } catch (err: unknown) {
       const detail =
         err && typeof err === 'object' && 'response' in err
@@ -197,9 +322,10 @@ export default function StudentDetailPage() {
   };
 
   const handleSendNudge = async () => {
+    if (!student) return;
     setNudgeSending(true);
     try {
-      await coachAPI.nudgeStudent(studentId, nudgeMessage.trim() || null);
+      await coachAPI.nudgeStudent(student.username, nudgeMessage.trim() || null);
       toast.success('Reminder sent to student');
       setShowNudgeDialog(false);
       setNudgeMessage('');
@@ -214,12 +340,66 @@ export default function StudentDetailPage() {
     }
   };
 
+  const openEditDialog = () => {
+    if (!student) return;
+    setEditForm({
+      full_name: student.full_name?.trim() || student.username,
+      age: student.age != null ? String(student.age) : '',
+      guardian_email: student.guardian_email?.trim() || '',
+      student_email: student.student_email?.trim() || '',
+      phone: student.phone?.trim() || '',
+      whatsapp: student.whatsapp?.trim() || '',
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!student) return;
+    const fullName = editForm.full_name.trim();
+    if (!fullName) {
+      toast.error('Full name is required');
+      return;
+    }
+    const ageRaw = editForm.age.trim();
+    let age: number | null = null;
+    if (ageRaw) {
+      age = parseInt(ageRaw, 10);
+      if (Number.isNaN(age) || age < 4 || age > 99) {
+        toast.error('Age must be between 4 and 99');
+        return;
+      }
+    }
+
+    setEditSaving(true);
+    try {
+      const updated = await coachAPI.updateStudent(student.username, {
+        full_name: fullName,
+        age,
+        guardian_email: editForm.guardian_email.trim() || null,
+        student_email: editForm.student_email.trim() || null,
+        phone: editForm.phone.trim() || null,
+        whatsapp: editForm.whatsapp.trim() || null,
+      });
+      setStudent(updated as StudentDetails);
+      toast.success('Student details updated');
+      setShowEditDialog(false);
+    } catch (err: unknown) {
+      const detail =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      toast.error(detail || 'Failed to update student');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleReactivate = async () => {
-    if (reactivateLock.current) return;
+    if (!student || reactivateLock.current) return;
     reactivateLock.current = true;
     setIsReactivating(true);
     try {
-      await api.put(`/api/coach/students/${studentId}/reactivate`);
+      await api.put(`/api/coach/students/${coachStudentApiRef(student.username)}/reactivate`);
       toast.success('Student account reactivated');
       setShowReactivateDialog(false);
       loadStudent();
@@ -246,69 +426,109 @@ export default function StudentDetailPage() {
     );
   }
 
-  const difficultyData = [
-    { name: 'Beginner', solved: student.beginner_solved, color: 'bg-[hsl(var(--green-medium))]' },
-    { name: 'Intermediate', solved: student.intermediate_solved, color: 'bg-[hsl(var(--gold-medium))]' },
-    { name: 'Advanced', solved: student.advanced_solved, color: 'bg-[hsl(var(--orange-medium))]' },
-    { name: 'Expert', solved: student.expert_solved, color: 'bg-[hsl(var(--red-medium))]' },
-  ];
-
-  const maxSolved = Math.max(...difficultyData.map((d) => d.solved), 1);
   const isStudentActive = student.is_active !== false;
   const isAdmin = user?.role === 'admin';
+  const batches = student.batch_names ?? [];
+  const topTopics = (student.theme_performance ?? []).slice(0, 6);
+  const practiceThisWeek = student.puzzles_this_week + student.games_this_week;
 
   return (
-    <div>
-      <div className="mb-6">
-        <Link
-          href="/coach/students"
-          className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/90"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to students
-        </Link>
+    <div className="space-y-6">
+      <Link
+        href="/coach/students"
+        className="inline-flex items-center gap-2 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to students
+      </Link>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              {student.username} — Profile
+      {/* Identity + actions */}
+      <div className={`${panel} space-y-4`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="font-heading text-xl font-semibold text-foreground sm:text-2xl">
+              {displayName(student)}
             </h1>
-            <p className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span>{student.email}</span>
-              {studentBatchName ? (
-                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-900 dark:bg-indigo-950/70 dark:text-indigo-100">
-                  {studentBatchName}
-                </span>
-              ) : null}
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              <span className="coach-text-link">@{student.username}</span>
+              {student.age != null && (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  Age {student.age}
+                </>
+              )}
+              {student.rating != null && (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  Rating <span className="font-semibold text-foreground">{student.rating}</span>
+                </>
+              )}
+              {student.skill_level && student.skill_level !== '—' && (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  <span className={`font-medium ${skillLevelClass(student.skill_level)}`}>
+                    {student.skill_level}
+                  </span>
+                </>
+              )}
             </p>
+            {batches.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {batches.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
+
           <div className="flex shrink-0 flex-wrap gap-2">
             <button
               type="button"
-              onClick={() =>
-                window.open(`/coach/students/${studentId}/report`, '_blank', 'noopener,noreferrer')
-              }
-              className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted/60"
+              onClick={() => setShowContactDialog(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted/60"
             >
-              <FileText className="h-5 w-5" />
-              Generate Report
+              <Phone className="h-3.5 w-3.5" />
+              Contact
+            </button>
+            <button
+              type="button"
+              onClick={openEditDialog}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted/60"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                window.open(coachStudentReportPath(student.username), '_blank', 'noopener,noreferrer')
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted/60"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Report
             </button>
             {isStudentActive && (
               <>
                 <button
                   type="button"
                   onClick={() => setShowNudgeDialog(true)}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted/60"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted/60"
                 >
-                  <Send className="h-5 w-5" />
-                  Send reminder
+                  <Send className="h-3.5 w-3.5" />
+                  Remind
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAwardDialog(true)}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  <Award className="h-5 w-5" />
+                  <Award className="h-3.5 w-3.5" />
                   Award XP
                 </button>
               </>
@@ -317,9 +537,9 @@ export default function StudentDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowDeactivateDialog(true)}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-destructive/40 bg-background px-5 py-2.5 text-sm font-semibold text-destructive shadow-sm transition-colors hover:bg-destructive/10"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 px-3 py-2 text-[13px] font-medium text-destructive hover:bg-destructive/10"
               >
-                <UserX className="h-5 w-5" />
+                <UserX className="h-3.5 w-3.5" />
                 Deactivate
               </button>
             )}
@@ -327,346 +547,372 @@ export default function StudentDetailPage() {
               <button
                 type="button"
                 onClick={() => setShowReactivateDialog(true)}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-5 py-2.5 text-sm font-semibold text-primary shadow-sm transition-colors hover:bg-primary/15"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[13px] font-medium text-primary hover:bg-primary/15"
               >
-                <UserCheck className="h-5 w-5" />
+                <UserCheck className="h-3.5 w-3.5" />
                 Reactivate
               </button>
             )}
           </div>
         </div>
-      </div>
 
-      {!isStudentActive && isAdmin && (
-        <div
-          className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
-          role="status"
-        >
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
-          <p>
-            This account is <span className="font-semibold">deactivated</span> (left the academy or suspended). The
-            profile remains in the database. Students cannot sign in until you reactivate.
-          </p>
-        </div>
-      )}
-
-      <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <div className={statCard}>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--gold-light))]">
-              <Zap className="h-5 w-5 text-[hsl(var(--gold-dark))]" />
-            </div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Total XP</h3>
-          </div>
-          <p className="font-heading text-3xl font-bold text-[hsl(var(--gold-dark))]">{student.xp}</p>
-          <p className="mt-1 text-xs text-muted-foreground">+{student.xp_this_week} this week</p>
-        </div>
-
-        <div className={statCard}>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--blue-light))]">
-              <Target className="h-5 w-5 text-[hsl(var(--blue-dark))]" />
-            </div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Puzzles solved</h3>
-          </div>
-          <p className="font-heading text-3xl font-bold text-[hsl(var(--blue-dark))]">
-            {student.total_puzzles_solved}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">of {student.total_puzzles_attempted} attempted</p>
-        </div>
-
-        <div className={statCard}>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--green-very-light))]">
-              <TrendingUp className="h-5 w-5 text-[hsl(var(--green-medium))]" />
-            </div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Success rate</h3>
-          </div>
-          <p
-            className={`font-heading text-3xl font-bold ${
-              student.success_rate >= 70
-                ? 'text-[hsl(var(--green-medium))]'
-                : student.success_rate >= 50
-                  ? 'text-[hsl(var(--gold-dark))]'
-                  : 'text-[hsl(var(--red-medium))]'
-            }`}
+        {!isStudentActive && (
+          <div
+            className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-foreground"
+            role="status"
           >
-            {student.success_rate}%
-          </p>
-        </div>
-
-        <div className={statCard}>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--blue-light))]/70">
-              <Trophy className="h-5 w-5 text-[hsl(var(--blue-dark))]" />
-            </div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Games</h3>
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p>
+              Account deactivated — student cannot sign in
+              {isAdmin ? ' until reactivated.' : '.'}
+            </p>
           </div>
-          <p className="font-heading text-3xl font-bold text-[hsl(var(--blue-dark))]">{student.games_played}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {student.games_won} wins · {student.game_win_rate}% win rate
-          </p>
-        </div>
+        )}
 
-        <div className={statCard}>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(var(--purple-light))]/90">
-              <Calendar className="h-5 w-5 text-[hsl(var(--purple-dark))]" />
-            </div>
-            <h3 className="text-sm font-semibold text-muted-foreground">Last active</h3>
+        {student.days_since_active > 7 && isStudentActive && (
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 coach-text-warning" />
+            <p className="text-muted-foreground">
+              No app activity for{' '}
+              <span className={`font-medium ${lastActiveClass(student.days_since_active)}`}>
+                {student.days_since_active} days
+              </span>
+              . Consider sending a reminder.
+            </p>
           </div>
-          <p className="font-heading text-2xl font-bold text-[hsl(var(--purple-dark))]">
-            {student.days_since_active === 0
-              ? 'Today'
-              : student.days_since_active === 1
-                ? 'Yesterday'
-                : `${student.days_since_active} days ago`}
-          </p>
-        </div>
+        )}
       </div>
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <div className={`${panelCard} lg:col-span-2`}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-heading flex items-center gap-2 text-lg font-bold text-card-foreground">
-              <BarChart3 className="h-5 w-5 text-primary" />
-              Recent weekly activity
-            </h2>
-            {student.weekly_trend && (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${
-                  student.weekly_trend === 'improving'
-                    ? 'border border-[hsl(var(--green-medium))]/35 bg-[hsl(var(--green-very-light))] text-[hsl(var(--green-medium))]'
-                    : student.weekly_trend === 'declining'
-                      ? 'border border-destructive/30 bg-destructive/10 text-destructive'
-                      : 'border border-border bg-muted text-muted-foreground'
+      {/* Coach snapshot */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SnapshotItem
+          label="Class attendance"
+          value={student.attendance_pct != null ? `${student.attendance_pct}%` : '—'}
+          infoTip="Present ÷ scheduled classes"
+          valueClass={attendanceClass(student.attendance_pct)}
+        />
+        <SnapshotItem
+          label="Last class attended"
+          value={formatLastClassDate(student.last_class_attended)}
+          infoTip="Most recent present mark"
+        />
+        <SnapshotItem
+          label="Last app activity"
+          value={formatLastActive(student.days_since_active)}
+          valueClass={lastActiveClass(student.days_since_active)}
+        />
+        <SnapshotItem
+          label="Practice this week"
+          value={String(practiceThisWeek)}
+          sub={`${student.puzzles_this_week} puzzles · ${student.games_this_week} games`}
+          valueClass={practiceThisWeek > 0 ? 'coach-text-success' : 'coach-text-warning'}
+        />
+      </div>
+
+      {/* Activity charts */}
+      <section className={panel}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="font-heading flex items-center gap-2 text-base font-semibold text-foreground">
+            <BarChart3 className="coach-text-link h-4 w-4" />
+            Activity
+          </h2>
+          <InfoTooltip
+            ariaLabel="About activity charts"
+            text="Daily games and puzzle attempts — use this to see if they are practicing between classes."
+          />
+        </div>
+        <StudentActivityCharts studentId={student.id} />
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Practice summary */}
+        <section className={panel}>
+          <h2 className="font-heading mb-4 flex items-center gap-2 text-base font-semibold text-foreground">
+            <Target className="coach-text-link h-4 w-4" />
+            Practice summary
+          </h2>
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <dt className="text-muted-foreground">Puzzles solved</dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {student.total_puzzles_solved}
+                <span className="font-normal text-muted-foreground">
+                  {' '}
+                  / {student.total_puzzles_attempted}
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <dt className="text-muted-foreground">Puzzle success rate</dt>
+              <dd
+                className={`font-semibold tabular-nums ${
+                  student.success_rate >= 70
+                    ? 'coach-text-success'
+                    : student.success_rate >= 50
+                      ? 'coach-text-warning'
+                      : 'coach-text-danger'
                 }`}
               >
-                {WEEKLY_TREND_LABELS[student.weekly_trend] ?? student.weekly_trend}
-              </span>
-            )}
-          </div>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Four rolling weeks of puzzle attempts. Trend compares the latest week to the one before.
-          </p>
-          {(student.weekly_buckets?.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">No weekly breakdown yet.</p>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {(student.weekly_buckets ?? []).map((w) => (
-                <div key={w.start_date} className="rounded-lg border border-border/80 bg-muted/30 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">{w.period_label}</p>
-                  <p className="mt-1 font-heading text-lg font-bold text-foreground">{w.attempts} attempts</p>
-                  <p className="text-sm text-muted-foreground">{w.solved} solved · {w.accuracy_pct}%</p>
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${Math.min(w.accuracy_pct, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                {student.success_rate}%
+              </dd>
             </div>
-          )}
-        </div>
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <dt className="flex items-center gap-1.5 text-muted-foreground">
+                <Gamepad2 className="h-3.5 w-3.5" />
+                Games played
+              </dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {student.games_played}
+                <span className="font-normal text-muted-foreground">
+                  {' '}
+                  · {student.games_won} wins ({student.game_win_rate}%)
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <dt className="flex items-center gap-1.5 text-muted-foreground">
+                <Zap className="h-3.5 w-3.5" />
+                Total XP
+              </dt>
+              <dd className="font-semibold tabular-nums text-foreground">
+                {student.xp.toLocaleString()}
+                <span className="font-normal text-muted-foreground">
+                  {' '}
+                  (+{student.xp_this_week} this week)
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="flex items-center gap-1.5 text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                Member since
+              </dt>
+              <dd className="text-foreground">
+                {new Date(student.created_at).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </dd>
+            </div>
+          </dl>
+        </section>
 
-        <div className={`${panelCard} lg:col-span-2`}>
-          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
-            <Target className="h-5 w-5 text-primary" />
-            Performance by puzzle topic
-          </h2>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Accuracy by theme (from your puzzle library tags). Use this to spot strengths and topics to assign next.
-          </p>
-          {(student.theme_performance?.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No themed attempts yet. Topics appear after students solve tagged puzzles.
-            </p>
+        {/* Top topics */}
+        <section className={panel}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="font-heading flex items-center gap-2 text-base font-semibold text-foreground">
+              <CalendarCheck className="coach-text-link h-4 w-4" />
+              Puzzle topics
+            </h2>
+            <InfoTooltip
+              ariaLabel="About puzzle topics"
+              text="Where they spend practice time — assign homework in weaker areas."
+            />
+          </div>
+          {topTopics.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No themed puzzle data yet.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50">
+                <thead className="bg-muted/50 text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Topic</th>
-                    <th className="px-3 py-2 text-right font-semibold">Attempts</th>
-                    <th className="px-3 py-2 text-right font-semibold">Solved</th>
-                    <th className="px-3 py-2 text-right font-semibold">Accuracy</th>
+                    <th className="px-3 py-2 text-left font-medium">Topic</th>
+                    <th className="px-3 py-2 text-right font-medium">Solved</th>
+                    <th className="px-3 py-2 text-right font-medium">Accuracy</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(student.theme_performance ?? []).map((row) => (
+                  {topTopics.map((row) => (
                     <tr key={row.theme_key} className="border-t border-border">
-                      <td className="px-3 py-2 font-medium capitalize text-foreground">
+                      <td className="px-3 py-2 capitalize text-foreground">
                         {formatThemeLabel(row.theme_key)}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{row.attempts}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{row.solved}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.accuracy_pct}%</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {row.solved}/{row.attempts}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-medium tabular-nums ${
+                          row.accuracy_pct >= 70
+                            ? 'coach-text-success'
+                            : row.accuracy_pct >= 50
+                              ? 'coach-text-warning'
+                              : 'coach-text-danger'
+                        }`}
+                      >
+                        {row.accuracy_pct}%
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className={panelCard}>
-          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
-            <Trophy className="h-5 w-5 text-primary" />
-            Performance by difficulty
-          </h2>
-
-          <div className="space-y-4">
-            {difficultyData.map((item) => (
-              <div key={item.name}>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">{item.name}</span>
-                  <span className="text-sm font-medium text-muted-foreground">{item.solved} solved</span>
-                </div>
-                <div className="h-4 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`${item.color} h-full rounded-full transition-all duration-500`}
-                    style={{ width: `${(item.solved / maxSolved) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+      {showContactDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-title"
+          >
+            <h3
+              id="contact-title"
+              className="font-heading mb-1 flex items-center gap-2 text-lg font-semibold text-foreground"
+            >
+              <Phone className="h-5 w-5 text-primary" />
+              Contact information
+            </h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Parent/guardian and student contact details on file.
+            </p>
+            <div className="space-y-2">
+              <ContactRow
+                icon={Mail}
+                label="Parent / guardian email"
+                value={student.guardian_email}
+                href={student.guardian_email ? `mailto:${student.guardian_email}` : undefined}
+              />
+              <ContactRow
+                icon={Mail}
+                label="Student email"
+                value={student.student_email}
+                href={student.student_email ? `mailto:${student.student_email}` : undefined}
+              />
+              <ContactRow
+                icon={Phone}
+                label="Phone"
+                value={student.phone}
+                href={student.phone ? `tel:${student.phone.replace(/\s/g, '')}` : undefined}
+              />
+              <ContactRow
+                icon={MessageCircle}
+                label="WhatsApp"
+                value={student.whatsapp}
+                href={
+                  student.whatsapp && whatsappDigits(student.whatsapp)
+                    ? `https://wa.me/${whatsappDigits(student.whatsapp)}`
+                    : undefined
+                }
+                external
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowContactDialog(false)}
+              className="mt-5 w-full rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium"
+            >
+              Close
+            </button>
           </div>
         </div>
+      )}
 
-        <div className={panelCard}>
-          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
-            <BarChart3 className="h-5 w-5 text-primary" />
-            Activity summary
-          </h2>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">Member since</span>
-              <span className="text-sm text-muted-foreground">
-                {new Date(student.created_at).toLocaleDateString()}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">Puzzles this week</span>
-              <span className="text-sm font-semibold text-[hsl(var(--green-medium))]">
-                {student.puzzles_this_week}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">XP this week</span>
-              <span className="text-sm font-semibold text-[hsl(var(--gold-dark))]">
-                {student.xp_this_week} XP
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">Games this week</span>
-              <span className="text-sm font-semibold text-[hsl(var(--blue-dark))]">
-                {student.games_this_week}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">Average per puzzle</span>
-              <span className="text-sm text-muted-foreground">
-                {student.total_puzzles_attempted > 0
-                  ? Math.round(student.xp / student.total_puzzles_attempted)
-                  : 0}{' '}
-                XP
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className={panelCard}>
-          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold text-card-foreground">
-            <Activity className="h-5 w-5 text-primary" />
-            Strengths and focus areas
-          </h2>
-
-          <div className="space-y-4">
-            {(() => {
-              const strongest = [...difficultyData].sort((a, b) => b.solved - a.solved)[0];
-              return (
-                strongest.solved > 0 && (
-                  <div className="rounded-xl border border-[hsl(var(--green-medium))]/25 bg-[hsl(var(--green-very-light))]/50 p-4">
-                    <p className="mb-1 text-sm font-semibold text-[hsl(var(--green-medium))]">Strongest area</p>
-                    <p className="text-lg font-bold text-foreground">{strongest.name} puzzles</p>
-                    <p className="text-sm text-muted-foreground">{strongest.solved} solved</p>
-                  </div>
-                )
-              );
-            })()}
-
-            {(() => {
-              const weakest = [...difficultyData].sort((a, b) => a.solved - b.solved)[0];
-              return (
-                weakest.solved === 0 && (
-                  <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
-                    <p className="mb-1 text-sm font-semibold text-destructive">Needs practice</p>
-                    <p className="text-lg font-bold text-foreground">{weakest.name} puzzles</p>
-                    <p className="text-sm text-muted-foreground">No puzzles solved yet</p>
-                  </div>
-                )
-              );
-            })()}
-
-            {student.days_since_active > 7 && (
-              <div className="flex items-start gap-3 rounded-xl border border-[hsl(var(--gold-medium))]/30 bg-[hsl(var(--gold-light))]/40 p-4">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-dark))]" />
-                <div>
-                  <p className="mb-1 text-sm font-semibold text-[hsl(var(--gold-dark))]">Inactive student</p>
-                  <p className="text-sm text-muted-foreground">
-                    Last active {student.days_since_active} days ago. Consider reaching out.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-sidebar-border bg-[hsl(var(--sidebar-background))] p-6 text-sidebar-foreground shadow-sm">
-          <h2 className="font-heading mb-4 flex items-center gap-2 text-lg font-bold">
-            <Target className="h-5 w-5 text-amber-300" />
-            Quick stats
-          </h2>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-sidebar-foreground/85">Total attempts</span>
-              <span className="font-heading text-2xl font-bold">{student.total_puzzles_attempted}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-sidebar-foreground/85">Successful</span>
-              <span className="font-heading text-2xl font-bold">{student.total_puzzles_solved}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-sidebar-foreground/85">Failed</span>
-              <span className="font-heading text-2xl font-bold">
-                {student.total_puzzles_attempted - student.total_puzzles_solved}
-              </span>
-            </div>
-
-            <div className="mt-3 border-t border-white/15 pt-3">
-              <p className="mb-2 text-sm text-sidebar-foreground/85">Overall performance</p>
-              <div className="h-3 w-full rounded-full bg-white/15">
-                <div
-                  className="h-full rounded-full bg-sidebar-foreground transition-all"
-                  style={{ width: `${student.success_rate}%` }}
+      {showEditDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-title"
+          >
+            <h3
+              id="edit-title"
+              className="font-heading mb-1 flex items-center gap-2 text-lg font-semibold text-foreground"
+            >
+              <Pencil className="h-5 w-5 text-primary" />
+              Edit student details
+            </h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Update profile and contact info for <span className="font-medium">@{student.username}</span>.
+            </p>
+            <div className="max-h-[min(60vh,420px)] space-y-3 overflow-y-auto pr-1">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">Full name</span>
+                <input
+                  type="text"
+                  value={editForm.full_name}
+                  onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-              </div>
-              <p className="mt-1 text-right text-xs text-sidebar-foreground/70">
-                {student.success_rate}% success
-              </p>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">Age</span>
+                <input
+                  type="number"
+                  min={4}
+                  max={99}
+                  value={editForm.age}
+                  onChange={(e) => setEditForm({ ...editForm, age: e.target.value })}
+                  placeholder="Optional"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">Parent / guardian email</span>
+                <input
+                  type="email"
+                  value={editForm.guardian_email}
+                  onChange={(e) => setEditForm({ ...editForm, guardian_email: e.target.value })}
+                  placeholder="parent@example.com"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">Student email</span>
+                <input
+                  type="email"
+                  value={editForm.student_email}
+                  onChange={(e) => setEditForm({ ...editForm, student_email: e.target.value })}
+                  placeholder="Optional — leave blank if none"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">Phone</span>
+                <input
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  placeholder="Optional"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-foreground">WhatsApp</span>
+                <input
+                  type="tel"
+                  value={editForm.whatsapp}
+                  onChange={(e) => setEditForm({ ...editForm, whatsapp: e.target.value })}
+                  placeholder="Optional — include country code"
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowEditDialog(false)}
+                disabled={editSaving}
+                className="flex-1 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveEdit()}
+                disabled={editSaving}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {showNudgeDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -678,21 +924,21 @@ export default function StudentDetailPage() {
           >
             <h3
               id="nudge-title"
-              className="font-heading mb-2 flex items-center gap-2 text-xl font-bold text-card-foreground"
+              className="font-heading mb-2 flex items-center gap-2 text-lg font-semibold text-foreground"
             >
-              <Send className="h-6 w-6 text-primary" />
-              Send in-app reminder
+              <Send className="h-5 w-5 text-primary" />
+              Send reminder
             </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              The student gets a notification with a link to puzzles. Leave blank to use a friendly default message.
+              Sends an in-app notification. Leave blank for the default message.
             </p>
             <textarea
               value={nudgeMessage}
               onChange={(e) => setNudgeMessage(e.target.value)}
               rows={3}
               maxLength={500}
-              placeholder="Optional personal note…"
-              className="mb-4 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Optional note…"
+              className="mb-4 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <div className="flex gap-3">
               <button
@@ -702,7 +948,7 @@ export default function StudentDetailPage() {
                   setNudgeMessage('');
                 }}
                 disabled={nudgeSending}
-                className="flex-1 rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80 disabled:opacity-50"
+                className="flex-1 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -710,19 +956,10 @@ export default function StudentDetailPage() {
                 type="button"
                 onClick={() => void handleSendNudge()}
                 disabled={nudgeSending}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
-                {nudgeSending ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Sending…
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-5 w-5" />
-                    Send
-                  </>
-                )}
+                {nudgeSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send
               </button>
             </div>
           </div>
@@ -739,58 +976,39 @@ export default function StudentDetailPage() {
           >
             <h3
               id="award-xp-title"
-              className="font-heading mb-4 flex items-center gap-2 text-xl font-bold text-card-foreground"
+              className="font-heading mb-4 flex items-center gap-2 text-lg font-semibold text-foreground"
             >
-              <Award className="h-6 w-6 text-primary" />
+              <Award className="h-5 w-5 text-primary" />
               Award bonus XP
             </h3>
-
-            <p className="mb-4 text-muted-foreground">
-              Award bonus XP to <span className="font-semibold text-foreground">{student.username}</span> for good
-              performance.
+            <p className="mb-4 text-sm text-muted-foreground">
+              Award XP to <span className="font-medium text-foreground">{student.username}</span>.
             </p>
-
-            <div className="mb-6">
-              <label htmlFor="xp-amount" className="mb-2 block text-sm font-semibold text-foreground">
-                XP amount (1–100)
-              </label>
-              <input
-                id="xp-amount"
-                type="number"
-                min={1}
-                max={100}
-                value={xpAmount}
-                onChange={(e) => setXpAmount(parseInt(e.target.value, 10) || 0)}
-                className="w-full rounded-lg border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-
+            <input
+              id="xp-amount"
+              type="number"
+              min={1}
+              max={100}
+              value={xpAmount}
+              onChange={(e) => setXpAmount(parseInt(e.target.value, 10) || 0)}
+              className="mb-6 w-full rounded-lg border border-input bg-background px-4 py-3 text-lg font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setShowAwardDialog(false)}
                 disabled={isAwarding}
-                className="flex-1 rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted/80 disabled:opacity-50"
+                className="flex-1 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleAwardXP}
+                onClick={() => void handleAwardXP()}
                 disabled={isAwarding}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
-                {isAwarding ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Awarding…
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-5 w-5" />
-                    Award {xpAmount} XP
-                  </>
-                )}
+                {isAwarding ? <Loader2 className="h-4 w-4 animate-spin" /> : `Award ${xpAmount} XP`}
               </button>
             </div>
           </div>
@@ -800,7 +1018,7 @@ export default function StudentDetailPage() {
       <ConfirmDialog
         isOpen={showDeactivateDialog}
         title="Deactivate student account?"
-        message={`This will deactivate ${student.username} and prevent them from signing in. Their data is kept in the database. Coaches will no longer see this student in their active roster but will be notified that the account is deactivated.`}
+        message={`Deactivate ${student.username}? They cannot sign in until reactivated.`}
         confirmText={isDeactivating ? 'Deactivating…' : 'Deactivate'}
         cancelText="Cancel"
         isDanger
@@ -811,7 +1029,7 @@ export default function StudentDetailPage() {
       <ConfirmDialog
         isOpen={showReactivateDialog}
         title="Reactivate student account?"
-        message={`Restore sign-in for ${student.username}? They will appear again in coach rosters as an active student.`}
+        message={`Restore sign-in for ${student.username}?`}
         confirmText={isReactivating ? 'Reactivating…' : 'Reactivate'}
         cancelText="Cancel"
         isDanger={false}
