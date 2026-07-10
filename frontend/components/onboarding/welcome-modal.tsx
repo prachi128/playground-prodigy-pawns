@@ -11,7 +11,7 @@ export function WelcomeModal() {
   if (state.hasSeenWelcome) return null
 
   const screens = [
-    { title: 'Welcome to Prodigy Pawns!', subtitle: "Let's start your chess adventure!", content: "🎉 Get ready to become a chess master with fun quests, puzzles, and games designed just for you!", emoji: '♟️' },
+    { title: 'Welcome to Torus Chess!', subtitle: "Let's start your chess adventure!", content: "🎉 Get ready to become a chess master with fun quests, puzzles, and games designed just for you!", emoji: '♟️' },
     { title: 'Meet Your Dashboard', subtitle: 'This is your home base!', content: 'Track your XP and complete daily quests. Everything starts here!', emoji: '📊' },
     { title: 'Start Your Journey', subtitle: 'Complete quests to level up!', content: 'Click on the Adventure tab to see the full map and start your first quest now!', emoji: '🗺️' },
   ]

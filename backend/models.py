@@ -521,6 +521,35 @@ class Payment(Base):
     batch = relationship("Batch", back_populates="payments")
 
 
+class PaymentBillingAdjustment(Base):
+    """Admin overrides for class-count / fee calculation per student-month."""
+    __tablename__ = "payment_billing_adjustments"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "batch_id",
+            "billing_month",
+            name="uq_payment_billing_adjustments_student_batch_month",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    batch_id = Column(Integer, ForeignKey("batches.id"), nullable=False, index=True)
+    billing_month = Column(String, nullable=False, index=True)  # "YYYY-MM"
+    expected_class_count = Column(Integer, nullable=True)
+    billable_class_count = Column(Integer, nullable=True)
+    amount_override = Column(Numeric(10, 2), nullable=True)
+    notes = Column(Text, nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship("User", foreign_keys=[student_id])
+    batch = relationship("Batch", foreign_keys=[batch_id])
+    updater = relationship("User", foreign_keys=[updated_by])
+
+
 class ShopPurchase(Base):
     __tablename__ = "shop_purchases"
 

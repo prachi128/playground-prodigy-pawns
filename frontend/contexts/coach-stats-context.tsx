@@ -10,6 +10,9 @@ export interface CoachStatsData {
   total_attempts: number;
   total_success: number;
   overall_success_rate: number;
+  roster_students_without_batch: number;
+  students_without_coach: number;
+  students_with_coach_without_batch: number;
 }
 
 export const CoachStatsContext = createContext<{

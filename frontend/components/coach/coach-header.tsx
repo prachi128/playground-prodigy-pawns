@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
 import { getAvatarDisplayUrl, isDefaultOrEmptyAvatar, personInitial } from "@/lib/avatar";
-import { ChevronDown, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, Menu, Settings, Shield } from "lucide-react";
 
 interface CoachHeaderProps {
   onMenuClick: () => void;
@@ -19,6 +19,7 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  const isAdmin = user?.role === "admin";
   const displayName = user?.full_name?.split(" ")[0] ?? "Coach";
   const avatarSrc = getAvatarDisplayUrl(user?.avatar_url);
   const showAvatarImage =
@@ -52,7 +53,7 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
         <button
           type="button"
           onClick={onMenuClick}
-          className="rounded-xl p-2.5 text-sidebar-foreground/85 transition-colors hover:bg-white/10 hover:text-sidebar-foreground lg:hidden"
+          className="rounded-xl p-2.5 text-sidebar-foreground/85 transition-colors hover:bg-white/10 hover:text-sidebar-foreground md:hidden"
           aria-label="Open menu"
         >
           <Menu className="h-6 w-6" />
@@ -121,6 +122,16 @@ export function CoachHeader({ onMenuClick }: CoachHeaderProps) {
               </p>
               <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
             </div>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted/80"
+                onClick={() => setUserMenuOpen(false)}
+              >
+                <Shield className="h-4 w-4 shrink-0" />
+                Admin mode
+              </Link>
+            )}
             <Link
               href="/coach/settings"
               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-semibold text-card-foreground transition-colors hover:bg-muted/80"

@@ -10,8 +10,8 @@ const inter = Inter({ subsets: ["latin"] });
 const fredoka = Fredoka({ subsets: ["latin"], variable: "--font-fredoka" });
 
 export const metadata: Metadata = {
-  title: "Prodigy Pawns - Chess Academy Portal",
-  description: "Learn, play, and master chess with Prodigy Pawns!",
+  title: "Torus Chess - Chess Academy Portal",
+  description: "Learn, play, and master chess with Torus Chess!",
 };
 
 export default function RootLayout({

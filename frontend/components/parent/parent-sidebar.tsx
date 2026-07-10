@@ -69,7 +69,7 @@ export function ParentSidebar({ isOpen, onClose }: ParentSidebarProps) {
         <div className="flex items-center justify-between px-4 py-5 border-b border-white/10">
           <div className="flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-amber-400" />
-            <span className="text-white font-bold text-lg">Prodigy Pawns</span>
+            <span className="text-white font-bold text-lg">Torus Chess</span>
           </div>
           <button
             onClick={onClose}

@@ -13,7 +13,7 @@ from models import (
 )
 from auth import get_current_user
 from database import get_db
-from student_management_backend import _coach_can_access_student
+from student_management_backend import _coach_can_access_student, _is_admin, require_admin
 from schemas import (
     AssignmentCreate, AssignmentUpdate,
     AssignmentResponse, AssignmentProgressResponse,
@@ -24,6 +24,7 @@ from schemas import (
 )
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
+admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 # ── Auth helpers ─────────────────────────────────────────────
@@ -48,12 +49,6 @@ def require_student(
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
-
-def _is_admin_coach(user: User) -> bool:
-    return user.role in (UserRole.admin, "admin")
-
-
-# ── Internal helpers ─────────────────────────────────────────
 
 def _build_assignment_response(a: Assignment, db: Session) -> AssignmentResponse:
     """Resolve names and puzzle info into the response shape."""
@@ -86,6 +81,98 @@ def _build_assignment_response(a: Assignment, db: Session) -> AssignmentResponse
         created_at   = a.created_at,
         puzzle_count = len(puzzles_info),
         puzzles      = puzzles_info,
+    )
+
+
+class AdminAssignmentResponse(AssignmentResponse):
+    coach_username: Optional[str] = None
+    coach_full_name: Optional[str] = None
+
+
+def _to_admin_assignment_response(
+    a: Assignment,
+    db: Session,
+    coaches_by_id: Optional[dict[int, User]] = None,
+) -> AdminAssignmentResponse:
+    base = _build_assignment_response(a, db)
+    coach = coaches_by_id.get(a.coach_id) if coaches_by_id else None
+    if coach is None and a.coach_id:
+        coach = db.query(User).filter(User.id == a.coach_id).first()
+    return AdminAssignmentResponse(
+        **base.model_dump(),
+        coach_username=coach.username if coach else None,
+        coach_full_name=coach.full_name if coach else None,
+    )
+
+
+def _build_assignment_progress_response(
+    assignment_id: int,
+    a: Assignment,
+    db: Session,
+) -> AssignmentProgressResponse:
+    total_puzzles = len(a.puzzles)
+
+    if a.batch_id:
+        students = _get_batch_students(a.batch_id, db)
+    elif a.student_id:
+        student = db.query(User).filter(User.id == a.student_id).first()
+        students = [student] if student else []
+    else:
+        students = []
+
+    student_rows: List[StudentProgress] = []
+    total_completed_sum = 0
+
+    for student in students:
+        completed_puzzle_ids = (
+            db.query(AssignmentCompletion.puzzle_id)
+            .filter(
+                AssignmentCompletion.assignment_id == assignment_id,
+                AssignmentCompletion.student_id == student.id,
+            )
+            .all()
+        )
+        completed_count = len(completed_puzzle_ids)
+        total_completed_sum += completed_count
+
+        last_row = (
+            db.query(AssignmentCompletion)
+            .filter(
+                AssignmentCompletion.assignment_id == assignment_id,
+                AssignmentCompletion.student_id == student.id,
+            )
+            .order_by(AssignmentCompletion.completed_at.desc())
+            .first()
+        )
+
+        pct = round((completed_count / total_puzzles * 100), 1) if total_puzzles > 0 else 0.0
+
+        student_rows.append(StudentProgress(
+            student_id=student.id,
+            username=student.username,
+            full_name=student.full_name,
+            puzzles_completed=completed_count,
+            total_puzzles=total_puzzles,
+            completion_pct=pct,
+            is_complete=completed_count >= total_puzzles,
+            last_completed_at=last_row.completed_at if last_row else None,
+        ))
+
+    student_rows.sort(key=lambda r: (r.is_complete, -r.completion_pct))
+
+    overall_pct = (
+        round(total_completed_sum / (total_puzzles * len(students)) * 100, 1)
+        if total_puzzles > 0 and len(students) > 0
+        else 0.0
+    )
+
+    return AssignmentProgressResponse(
+        assignment_id=assignment_id,
+        title=a.title,
+        total_puzzles=total_puzzles,
+        total_students=len(students),
+        overall_completion_pct=overall_pct,
+        students=student_rows,
     )
 
 
@@ -133,11 +220,11 @@ def create_assignment(
             raise HTTPException(status_code=404, detail="Student not found")
         if student.role != UserRole.student:
             raise HTTPException(status_code=400, detail="Target user is not a student")
-        if not _is_admin_coach(coach) and not _coach_can_access_student(
+        if not _is_admin(coach) and not _coach_can_access_student(
             coach, db, data.student_id
         ):
             raise HTTPException(status_code=404, detail="Student not found")
-        if not _is_admin_coach(coach) and student.is_active is False:
+        if not _is_admin(coach) and student.is_active is False:
             raise HTTPException(status_code=404, detail="Student not found")
 
     # Validate all puzzles exist and are active
@@ -439,74 +526,73 @@ def get_assignment_progress(
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    total_puzzles = len(a.puzzles)
+    return _build_assignment_progress_response(assignment_id, a, db)
 
-    # Determine the student list
-    if a.batch_id:
-        students = _get_batch_students(a.batch_id, db)
-    elif a.student_id:
-        student = db.query(User).filter(User.id == a.student_id).first()
-        students = [student] if student else []
-    else:
-        students = []
 
-    student_rows: List[StudentProgress] = []
-    total_completed_sum = 0
+# ═══════════════════════════════════════════════════════════
+# ADMIN ENDPOINTS — org-wide assignment oversight
+# ═══════════════════════════════════════════════════════════
 
-    for student in students:
-        # Count distinct puzzles completed by this student for this assignment
-        completed_puzzle_ids = (
-            db.query(AssignmentCompletion.puzzle_id)
-            .filter(
-                AssignmentCompletion.assignment_id == assignment_id,
-                AssignmentCompletion.student_id    == student.id,
-            )
-            .all()
+@admin_router.get("/assignments", response_model=List[AdminAssignmentResponse])
+def list_admin_assignments(
+    coach_id: Optional[int] = None,
+    batch_id: Optional[int] = None,
+    is_active: Optional[bool] = None,
+    search: Optional[str] = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """All academy assignments with coach attribution (admin only)."""
+    q = db.query(Assignment)
+    if coach_id is not None:
+        q = q.filter(Assignment.coach_id == coach_id)
+    if batch_id is not None:
+        q = q.filter(Assignment.batch_id == batch_id)
+    if is_active is not None:
+        q = q.filter(Assignment.is_active == is_active)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            (Assignment.title.ilike(term)) | (Assignment.description.ilike(term))
         )
-        completed_count = len(completed_puzzle_ids)
-        total_completed_sum += completed_count
+    assignments = q.order_by(Assignment.created_at.desc()).all()
+    if not assignments:
+        return []
 
-        # Last completion timestamp
-        last_row = (
-            db.query(AssignmentCompletion)
-            .filter(
-                AssignmentCompletion.assignment_id == assignment_id,
-                AssignmentCompletion.student_id    == student.id,
-            )
-            .order_by(AssignmentCompletion.completed_at.desc())
-            .first()
-        )
+    coach_ids = {int(a.coach_id) for a in assignments if a.coach_id is not None}
+    coaches_by_id = {
+        u.id: u
+        for u in db.query(User).filter(User.id.in_(coach_ids)).all()
+    } if coach_ids else {}
 
-        pct = round((completed_count / total_puzzles * 100), 1) if total_puzzles > 0 else 0.0
+    return [
+        _to_admin_assignment_response(a, db, coaches_by_id)
+        for a in assignments
+    ]
 
-        student_rows.append(StudentProgress(
-            student_id        = student.id,
-            username          = student.username,
-            full_name         = student.full_name,
-            puzzles_completed = completed_count,
-            total_puzzles     = total_puzzles,
-            completion_pct    = pct,
-            is_complete       = completed_count >= total_puzzles,
-            last_completed_at = last_row.completed_at if last_row else None,
-        ))
 
-    # Sort: incomplete first (so coach sees who needs attention), then by % desc
-    student_rows.sort(key=lambda r: (r.is_complete, -r.completion_pct))
+@admin_router.get("/assignments/{assignment_id}", response_model=AdminAssignmentResponse)
+def get_admin_assignment(
+    assignment_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    a = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return _to_admin_assignment_response(a, db)
 
-    overall_pct = (
-        round(total_completed_sum / (total_puzzles * len(students)) * 100, 1)
-        if total_puzzles > 0 and len(students) > 0
-        else 0.0
-    )
 
-    return AssignmentProgressResponse(
-        assignment_id         = assignment_id,
-        title                 = a.title,
-        total_puzzles         = total_puzzles,
-        total_students        = len(students),
-        overall_completion_pct= overall_pct,
-        students              = student_rows,
-    )
+@admin_router.get("/assignments/{assignment_id}/progress", response_model=AssignmentProgressResponse)
+def get_admin_assignment_progress(
+    assignment_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    a = db.query(Assignment).filter(Assignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return _build_assignment_progress_response(assignment_id, a, db)
 
 
 # ═══════════════════════════════════════════════════════════

@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { batchAPI, coachAPI, type Batch, type CoachUpcomingClass } from '@/lib/api';
-import { useAuthStore } from '@/lib/store';
 import {
   buildCoachWeekSchedule,
   getBatchScheduleHints,
@@ -96,8 +95,6 @@ function CalendarLegendTooltip() {
 
 export default function CoachBatchesPage() {
   const router = useRouter();
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [upcomingClasses, setUpcomingClasses] = useState<CoachUpcomingClass[]>([]);
@@ -110,7 +107,6 @@ export default function CoachBatchesPage() {
   const [editForm, setEditForm] = useState({
     name: '',
     description: '',
-    monthly_fee: '',
     is_active: true,
   });
   const [editSchedule, setEditSchedule] = useState(emptyScheduleValue);
@@ -193,7 +189,6 @@ export default function CoachBatchesPage() {
     setEditForm({
       name: b.name,
       description: b.description ?? '',
-      monthly_fee: b.monthly_fee ? Number(b.monthly_fee).toFixed(2) : '',
       is_active: b.is_active,
     });
     setEditSchedule(batchToScheduleValue(b));
@@ -215,7 +210,6 @@ export default function CoachBatchesPage() {
         schedule_timezone: editSchedule.schedule_timezone || undefined,
         default_duration_minutes: editSchedule.default_duration_minutes,
         default_meeting_link: editSchedule.default_meeting_link || undefined,
-        monthly_fee: isAdmin && editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : undefined,
         is_active: editForm.is_active,
       } as Partial<Batch>);
       setBatches((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
@@ -673,21 +667,6 @@ export default function CoachBatchesPage() {
               <div className="space-y-3">
                 <ClassSchedulePicker value={editSchedule} onChange={setEditSchedule} compact />
               </div>
-              {isAdmin && (
-                <div>
-                  <label className="mb-1 block text-sm font-semibold text-foreground">
-                    Monthly fee (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editForm.monthly_fee}
-                    onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
               <div>
                 <label className="mb-1 block text-sm font-semibold text-foreground">
                   Description <span className="font-normal text-muted-foreground">(optional)</span>

@@ -1,8 +1,8 @@
-// app/(coach)/coach/students/page.tsx - Student Management Page
+// app/(coach)/coach/students/page.tsx — Coach roster (personal students only)
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
@@ -18,84 +18,17 @@ import {
 import toast from 'react-hot-toast';
 import api, { batchAPI, type Batch } from '@/lib/api';
 import { coachStudentProfilePath } from '@/lib/coach-student-path';
-
-interface Student {
-  id: number;
-  username: string;
-  full_name: string;
-  email: string;
-  age?: number | null;
-  internal_rating?: number;
-  online_rating?: number | null;
-  rating?: number;
-  batch_names?: string[];
-  skill_level?: string;
-  attendance_pct?: number | null;
-  is_active?: boolean;
-}
-
-type StudentSortCol =
-  | 'name'
-  | 'username'
-  | 'age'
-  | 'rating'
-  | 'batch'
-  | 'skill_level'
-  | 'attendance_pct'
-  | 'status';
-
-const PAGE_SIZE = 10;
-
-const SKILL_ORDER: Record<string, number> = {
-  Unrated: 0,
-  Beginner: 1,
-  Intermediate: 2,
-  Advanced: 3,
-  Expert: 4,
-};
-
-function displayName(s: Student): string {
-  return s.full_name?.trim() || s.username;
-}
-
-function isStudentActive(s: Student): boolean {
-  return s.is_active !== false;
-}
-
-function statusSortKey(s: Student): number {
-  return isStudentActive(s) ? 1 : 0;
-}
-
-function appRating(s: Student): number | null {
-  const value = s.internal_rating ?? s.rating;
-  return value != null ? value : null;
-}
-
-function ratingSortKey(s: Student): number {
-  return appRating(s) ?? 0;
-}
-
-function attendanceTextClass(pct: number | null | undefined): string {
-  if (pct == null) return 'text-muted-foreground';
-  if (pct >= 80) return 'coach-text-success';
-  if (pct >= 50) return 'coach-text-warning';
-  return 'coach-text-danger';
-}
-
-function skillLevelClass(level: string | undefined): string {
-  switch (level) {
-    case 'Expert':
-      return 'coach-text-accent';
-    case 'Advanced':
-      return 'coach-text-link';
-    case 'Intermediate':
-      return 'coach-text-success';
-    case 'Beginner':
-      return 'coach-text-warning';
-    default:
-      return 'text-muted-foreground';
-  }
-}
+import {
+  STUDENT_PAGE_SIZE,
+  STUDENT_SKILL_ORDER,
+  type StudentListRow,
+  type StudentSortCol,
+  studentDisplayName,
+  studentAppRating,
+  studentRatingSortKey,
+  attendanceTextClass,
+  skillLevelClass,
+} from '@/lib/student-table-utils';
 
 function SortableHeader({
   label,
@@ -116,9 +49,7 @@ function SortableHeader({
         type="button"
         onClick={() => onSort(col)}
         className="inline-flex items-center gap-1 rounded-md font-semibold transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-sort={
-          sortCol === col ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-        }
+        aria-sort={sortCol === col ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
       >
         {label}
         {sortCol === col && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
@@ -127,11 +58,11 @@ function SortableHeader({
   );
 }
 
-export default function StudentsPage() {
+export default function CoachStudentsPage() {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
 
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentListRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -143,28 +74,42 @@ export default function StudentsPage() {
 
   const [sortCol, setSortCol] = useState<StudentSortCol | null>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated || (user?.role !== 'coach' && user?.role !== 'admin')) {
+    if (authLoading) return;
+    if (!isAuthenticated) {
       router.push('/dashboard');
       return;
     }
-    loadData();
-  }, [isAuthenticated, user, router]);
+    if (user?.role !== 'coach' && user?.role !== 'admin') {
+      router.push('/dashboard');
+      return;
+    }
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    void loadData();
+  }, [authLoading, isAuthenticated, user?.role, router]);
 
   const loadData = async () => {
     setIsLoading(true);
-    const results = await Promise.allSettled([api.get('/api/coach/students'), batchAPI.list()]);
+    const results = await Promise.allSettled([
+      api.get('/api/coach/students'),
+      batchAPI.list(),
+    ]);
 
     if (results[0].status === 'fulfilled') {
-      setStudents(results[0].value.data);
+      const loaded = Array.isArray(results[0].value.data) ? results[0].value.data : [];
+      setStudents(loaded);
     } else {
       toast.error('Failed to load students');
+      setStudents([]);
     }
+
     if (results[1].status === 'fulfilled') {
       setBatches(results[1].value);
     } else {
-      toast.error('Failed to load batches');
+      toast.error('Failed to load classes');
       setBatches([]);
     }
     setIsLoading(false);
@@ -183,7 +128,7 @@ export default function StudentsPage() {
     if (q) {
       list = list.filter(
         (s) =>
-          displayName(s).toLowerCase().includes(q) ||
+          studentDisplayName(s).toLowerCase().includes(q) ||
           s.username.toLowerCase().includes(q) ||
           s.email.toLowerCase().includes(q),
       );
@@ -195,8 +140,8 @@ export default function StudentsPage() {
         let vb: string | number = 0;
         switch (sortCol) {
           case 'name':
-            va = displayName(a).toLowerCase();
-            vb = displayName(b).toLowerCase();
+            va = studentDisplayName(a).toLowerCase();
+            vb = studentDisplayName(b).toLowerCase();
             break;
           case 'username':
             va = a.username.toLowerCase();
@@ -207,29 +152,25 @@ export default function StudentsPage() {
             vb = b.age ?? -1;
             break;
           case 'rating':
-            va = ratingSortKey(a);
-            vb = ratingSortKey(b);
+            va = studentRatingSortKey(a);
+            vb = studentRatingSortKey(b);
             break;
           case 'batch':
             va = (a.batch_names ?? []).join(', ').toLowerCase();
             vb = (b.batch_names ?? []).join(', ').toLowerCase();
             break;
           case 'skill_level':
-            va = SKILL_ORDER[a.skill_level ?? ''] ?? -1;
-            vb = SKILL_ORDER[b.skill_level ?? ''] ?? -1;
+            va = STUDENT_SKILL_ORDER[a.skill_level ?? ''] ?? -1;
+            vb = STUDENT_SKILL_ORDER[b.skill_level ?? ''] ?? -1;
             break;
           case 'attendance_pct':
             va = a.attendance_pct ?? -1;
             vb = b.attendance_pct ?? -1;
             break;
-          case 'status':
-            va = statusSortKey(a);
-            vb = statusSortKey(b);
-            break;
         }
         if (va < vb) return -1 * mult;
         if (va > vb) return 1 * mult;
-        return displayName(a).localeCompare(displayName(b));
+        return studentDisplayName(a).localeCompare(studentDisplayName(b));
       });
     }
     return list;
@@ -259,7 +200,7 @@ export default function StudentsPage() {
       const roster = await batchAPI.listStudents(id);
       setBatchStudentIds(new Set(roster.map((r) => r.student_id)));
     } catch {
-      toast.error('Failed to load batch roster');
+      toast.error('Failed to load class roster');
       setSelectedBatchId(null);
       setBatchStudentIds(new Set());
     } finally {
@@ -277,7 +218,7 @@ export default function StudentsPage() {
   };
 
   const totalFiltered = filteredStudents.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / STUDENT_PAGE_SIZE));
 
   useEffect(() => {
     setPage(1);
@@ -288,19 +229,19 @@ export default function StudentsPage() {
   }, [page, totalPages]);
 
   const safePage = Math.min(page, totalPages);
-  const pageStart = totalFiltered === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const pageEnd = totalFiltered === 0 ? 0 : Math.min(safePage * PAGE_SIZE, totalFiltered);
-  const paginatedStudents = filteredStudents.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const goPrev = () => setPage((p) => Math.max(1, p - 1));
-  const goNext = () => setPage((p) => Math.min(totalPages, p + 1));
+  const pageStart = totalFiltered === 0 ? 0 : (safePage - 1) * STUDENT_PAGE_SIZE + 1;
+  const pageEnd = totalFiltered === 0 ? 0 : Math.min(safePage * STUDENT_PAGE_SIZE, totalFiltered);
+  const paginatedStudents = filteredStudents.slice(
+    (safePage - 1) * STUDENT_PAGE_SIZE,
+    safePage * STUDENT_PAGE_SIZE,
+  );
 
   if (isLoading) {
     return (
       <div className="flex min-h-[min(50vh,400px)] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm font-medium text-muted-foreground">Loading students…</p>
+          <p className="text-sm font-medium text-muted-foreground">Loading your students…</p>
         </div>
       </div>
     );
@@ -312,11 +253,14 @@ export default function StudentsPage() {
         <div>
           <h1 className="font-heading flex items-center gap-2 text-foreground">
             <Users className="coach-text-link h-4 w-4 shrink-0" aria-hidden />
-            Students
+            My students
             {students.length > 0 && (
               <span className="coach-text-accent text-[13px] font-normal">({students.length})</span>
             )}
           </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Students on your roster and in your classes.
+          </p>
         </div>
         <Link
           href="/coach/leaderboard"
@@ -379,70 +323,21 @@ export default function StudentsPage() {
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead className="bg-muted/60 text-muted-foreground">
               <tr>
-                <SortableHeader
-                  label="Name"
-                  col="name"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Username"
-                  col="username"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Age"
-                  col="age"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Rating"
-                  col="rating"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Batch"
-                  col="batch"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Skill level"
-                  col="skill_level"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Attendance %"
-                  col="attendance_pct"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
-                <SortableHeader
-                  label="Status"
-                  col="status"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSortHeaderClick}
-                />
+                <SortableHeader label="Name" col="name" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Username" col="username" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Age" col="age" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Rating" col="rating" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Batch" col="batch" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Skill level" col="skill_level" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
+                <SortableHeader label="Attendance %" col="attendance_pct" sortCol={sortCol} sortDir={sortDir} onSort={handleSortHeaderClick} />
               </tr>
             </thead>
             <tbody>
               {paginatedStudents.map((student, index) => {
-                const rowIndex = (safePage - 1) * PAGE_SIZE + index;
+                const rowIndex = (safePage - 1) * STUDENT_PAGE_SIZE + index;
                 const batchLabel =
                   student.batch_names && student.batch_names.length > 0
                     ? student.batch_names.join(', ')
@@ -460,18 +355,16 @@ export default function StudentsPage() {
                         className="block rounded-md p-1 -m-1 transition-colors hover:bg-muted/60"
                       >
                         <p className="coach-text-link font-medium hover:underline">
-                          {displayName(student)}
+                          {studentDisplayName(student)}
                         </p>
                       </Link>
                     </td>
-                    <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
-                      @{student.username}
-                    </td>
+                    <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">@{student.username}</td>
                     <td className="px-3 py-3 text-foreground whitespace-nowrap">
                       {student.age != null ? student.age : '—'}
                     </td>
                     <td className="coach-text-link px-3 py-3 font-semibold whitespace-nowrap">
-                      {appRating(student) ?? '—'}
+                      {studentAppRating(student) ?? '—'}
                     </td>
                     <td className="max-w-[10rem] px-3 py-3 text-foreground">
                       <span className="line-clamp-2" title={batchLabel}>
@@ -479,9 +372,7 @@ export default function StudentsPage() {
                       </span>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      <span
-                        className={`text-[13px] font-medium ${skillLevelClass(student.skill_level)}`}
-                      >
+                      <span className={`text-[13px] font-medium ${skillLevelClass(student.skill_level)}`}>
                         {student.skill_level ?? '—'}
                       </span>
                     </td>
@@ -489,17 +380,6 @@ export default function StudentsPage() {
                       className={`px-3 py-3 font-medium whitespace-nowrap ${attendanceTextClass(student.attendance_pct)}`}
                     >
                       {student.attendance_pct != null ? `${student.attendance_pct}%` : '—'}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {isStudentActive(student) ? (
-                        <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                          Deactivated
-                        </span>
-                      )}
                     </td>
                   </tr>
                 );
@@ -510,7 +390,7 @@ export default function StudentsPage() {
 
         {totalFiltered === 0 && (
           <div className="border-t border-border py-12 text-center">
-            <p className="text-muted-foreground">No students found</p>
+            <p className="text-muted-foreground">No students on your roster yet.</p>
           </div>
         )}
 
@@ -531,7 +411,7 @@ export default function StudentsPage() {
               <div className="flex overflow-hidden rounded-lg border border-border bg-card shadow-sm">
                 <button
                   type="button"
-                  onClick={goPrev}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={safePage <= 1}
                   className="inline-flex h-9 w-9 items-center justify-center border-r border-border text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                   aria-label="Previous page"
@@ -540,7 +420,7 @@ export default function StudentsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={goNext}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage >= totalPages}
                   className="inline-flex h-9 w-9 items-center justify-center text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
                   aria-label="Next page"

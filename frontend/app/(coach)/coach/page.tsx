@@ -5,12 +5,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { Loader2, CalendarClock, Presentation, Video } from 'lucide-react';
+import { Loader2, CalendarClock, Presentation, Video, AlertTriangle, Users, ListChecks, Clock } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { batchAPI, coachAPI, type Batch, type CoachUpcomingClass } from '@/lib/api';
+import { batchAPI, coachAPI, type Batch, type CoachPriorities, type CoachUpcomingClass } from '@/lib/api';
+import { formatAssignmentDate } from '@/lib/assignment-ui';
 import { formatDateTimeIST } from '@/lib/class-time';
 import { getNextDashboardClass } from '@/lib/coach-schedule';
+import { useCoachStats } from '@/contexts/coach-stats-context';
 
 function greetingForHour(hour: number): string {
   if (hour < 12) return 'Good morning';
@@ -21,10 +23,13 @@ function greetingForHour(hour: number): string {
 export default function CoachDashboard() {
   const router = useRouter();
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
+  const { stats } = useCoachStats();
 
   const [batches, setBatches] = useState<Batch[]>([]);
   const [upcomingClasses, setUpcomingClasses] = useState<CoachUpcomingClass[]>([]);
+  const [priorities, setPriorities] = useState<CoachPriorities | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -44,18 +49,24 @@ export default function CoachDashboard() {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setLoadError(false);
       try {
-        const [batchList, classes] = await Promise.all([
+        const [batchList, classes, priorityData] = await Promise.all([
           batchAPI.list(),
           coachAPI.getUpcomingClasses(10),
+          coachAPI.getPriorities(),
         ]);
         if (cancelled) return;
         setBatches(batchList.filter((b) => b.is_active));
         setUpcomingClasses(classes);
+        setPriorities(priorityData);
       } catch {
         if (!cancelled) {
           setBatches([]);
           setUpcomingClasses([]);
+          setPriorities(null);
+          setLoadError(true);
+          toast.error('Failed to load dashboard data');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -75,6 +86,10 @@ export default function CoachDashboard() {
   const nextClassWhen = nextClass ? formatDateTimeIST(nextClass.startsAt) : null;
 
   const displayName = user?.full_name?.trim() || user?.username || 'Coach';
+  const coachNeedsBatchAssignments = stats?.roster_students_without_batch ?? 0;
+  const overdueCount = priorities?.counts.assignments_overdue ?? 0;
+  const dueSoonCount = priorities?.counts.assignments_due_soon ?? 0;
+  const hasAssignmentPriorities = overdueCount > 0 || dueSoonCount > 0;
 
   if (loading) {
     return (
@@ -102,6 +117,108 @@ export default function CoachDashboard() {
           Start lesson
         </Link>
       </div>
+
+      {loadError ? (
+        <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          Some dashboard data could not be loaded. Refresh the page or try again in a moment.
+        </div>
+      ) : null}
+
+      {coachNeedsBatchAssignments > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <Users className="h-4 w-4" />
+                Assignment attention needed
+              </h2>
+              <div className="mt-2 space-y-2 text-sm text-amber-800">
+                <p>
+                  <span className="font-semibold">{coachNeedsBatchAssignments}</span> student
+                  {coachNeedsBatchAssignments === 1 ? '' : 's'} under your roster still need batch
+                  assignment.
+                </p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href="/coach/students"
+                  className="inline-flex items-center rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+                >
+                  Review students
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasAssignmentPriorities && priorities ? (
+        <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <ListChecks className="h-4 w-4 text-primary" />
+              Assignment priorities
+            </h2>
+            <Link
+              href="/coach/assignments"
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              View all assignments
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {overdueCount > 0 ? (
+              <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-destructive">
+                  Overdue ({overdueCount})
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {priorities.assignments_overdue.slice(0, 3).map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        href={`/coach/assignments/${item.id}`}
+                        className="block text-sm font-medium text-foreground hover:text-primary"
+                      >
+                        {item.title}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {item.target_label} · Due {formatAssignmentDate(item.due_date)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {dueSoonCount > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Due soon ({dueSoonCount})
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {priorities.assignments_due_soon.slice(0, 3).map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        href={`/coach/assignments/${item.id}`}
+                        className="block text-sm font-medium text-foreground hover:text-primary"
+                      >
+                        {item.title}
+                      </Link>
+                      <p className="text-xs text-amber-900/80">
+                        {item.target_label} ·{' '}
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Due {formatAssignmentDate(item.due_date)}
+                        </span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

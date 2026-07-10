@@ -1,4 +1,4 @@
-// lib/api.ts - API Client for Prodigy Pawns Backend
+// lib/api.ts - API Client for Torus Chess Backend
 
 import axios from 'axios';
 import type { StudentProgressReportData } from '@/components/student/student-progress-types';
@@ -832,6 +832,56 @@ export interface Batch {
   student_count?: number;
 }
 
+export interface AdminBatch extends Batch {
+  coach_username?: string | null;
+  coach_full_name?: string | null;
+}
+
+export interface CoachAssignment {
+  id: number;
+  title: string;
+  description: string | null;
+  coach_id: number;
+  batch_id: number | null;
+  batch_name: string | null;
+  student_id: number | null;
+  student_name: string | null;
+  due_date: string | null;
+  is_active: boolean;
+  created_at: string;
+  puzzle_count: number;
+  puzzles?: Array<{
+    puzzle_id: number;
+    position?: number;
+    title: string;
+    difficulty: string;
+    xp_reward: number;
+  }>;
+}
+
+export interface AdminAssignment extends CoachAssignment {
+  coach_username?: string | null;
+  coach_full_name?: string | null;
+}
+
+export interface AssignmentProgress {
+  assignment_id: number;
+  title: string;
+  total_puzzles: number;
+  total_students: number;
+  overall_completion_pct: number;
+  students: Array<{
+    student_id: number;
+    username: string;
+    full_name: string;
+    puzzles_completed: number;
+    total_puzzles: number;
+    completion_pct: number;
+    is_complete: boolean;
+    last_completed_at: string | null;
+  }>;
+}
+
 export interface ClassSession {
   id: number;
   batch_id: number;
@@ -1274,6 +1324,30 @@ export const adminAPI = {
   },
   getOperationalMetrics: async (): Promise<AdminOperationalMetrics> => {
     const response = await api.get('/api/admin/operational-metrics');
+    return response.data;
+  },
+  listBatches: async (params?: {
+    coach_id?: number;
+    include_inactive?: boolean;
+  }): Promise<AdminBatch[]> => {
+    const response = await api.get('/api/admin/batches', { params });
+    return response.data;
+  },
+  listAssignments: async (params?: {
+    coach_id?: number;
+    batch_id?: number;
+    is_active?: boolean;
+    search?: string;
+  }): Promise<AdminAssignment[]> => {
+    const response = await api.get('/api/admin/assignments', { params });
+    return response.data;
+  },
+  getAssignment: async (assignmentId: number): Promise<AdminAssignment> => {
+    const response = await api.get(`/api/admin/assignments/${assignmentId}`);
+    return response.data;
+  },
+  getAssignmentProgress: async (assignmentId: number): Promise<AssignmentProgress> => {
+    const response = await api.get(`/api/admin/assignments/${assignmentId}/progress`);
     return response.data;
   },
   listCoachActivity: async (): Promise<CoachActivityRow[]> => {

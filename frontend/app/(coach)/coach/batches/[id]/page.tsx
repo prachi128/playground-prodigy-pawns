@@ -12,7 +12,6 @@ import {
   type ClassSession,
   type AnnouncementItem,
   type StudentBatchInfo,
-  type PaymentStatusOverview,
   type User,
 } from '@/lib/api';
 import api from '@/lib/api';
@@ -22,11 +21,8 @@ import {
   Users,
   Calendar,
   Megaphone,
-  CreditCard,
   Plus,
   ExternalLink,
-  AlertTriangle,
-  CheckCircle,
   X,
   Search,
   Pencil,
@@ -37,40 +33,47 @@ import {
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { CoachBatchSessionsTab } from '@/components/coach/CoachBatchSessionsTab';
-import { useAuthStore } from '@/lib/store';
 
-type Tab = 'students' | 'classes' | 'announcements' | 'payments';
+type Tab = 'students' | 'classes' | 'announcements';
 type CoachStudentStatsLite = { id: number; xp: number; success_rate: number };
+type BulkStudentDraft = {
+  first_name: string;
+  last_name: string;
+  username: string;
+  guardian_email: string;
+  age: string;
+  gender: string;
+  password: string;
+};
 
 const panel = 'rounded-xl border border-border bg-card shadow-sm';
 const STUDENT_PAGE = 10;
 
-function formatInr(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+function createEmptyBulkStudentDraft(): BulkStudentDraft {
+  return {
+    first_name: '',
+    last_name: '',
+    username: '',
+    guardian_email: '',
+    age: '',
+    gender: '',
+    password: '',
+  };
 }
 
-const VALID_TABS: Tab[] = ['students', 'classes', 'announcements', 'payments'];
+const VALID_TABS: Tab[] = ['students', 'classes', 'announcements'];
 
 export default function BatchDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const batchId = Number(params.id);
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
 
   const tabFromUrl = searchParams.get('tab');
   const sessionFromUrl = searchParams.get('session');
   const initialSessionId = sessionFromUrl ? parseInt(sessionFromUrl, 10) : null;
-  const resolvedTab =
-    tabFromUrl && VALID_TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'students';
   const initialTab: Tab =
-    resolvedTab === 'payments' && !isAdmin ? 'students' : resolvedTab;
+    tabFromUrl && VALID_TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'students';
 
   const [batch, setBatch] = useState<Batch | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
@@ -84,7 +87,9 @@ export default function BatchDetailPage() {
   const [showBulkCreate, setShowBulkCreate] = useState(false);
   const [bulkCreating, setBulkCreating] = useState(false);
   const [bulkDefaultPassword, setBulkDefaultPassword] = useState('chess123');
-  const [bulkCsv, setBulkCsv] = useState('');
+  const [bulkStudents, setBulkStudents] = useState<BulkStudentDraft[]>([
+    createEmptyBulkStudentDraft(),
+  ]);
   const [bulkResult, setBulkResult] = useState<import('@/lib/api').BulkStudentCreateResponse | null>(null);
   const [studentPage, setStudentPage] = useState(1);
   const [removeId, setRemoveId] = useState<number | null>(null);
@@ -95,24 +100,17 @@ export default function BatchDetailPage() {
   const [showAddAnn, setShowAddAnn] = useState(false);
   const [annForm, setAnnForm] = useState({ title: '', message: '' });
 
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusOverview | null>(null);
-  const [paymentLoaded, setPaymentLoaded] = useState(false);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-
   const [showEditBatch, setShowEditBatch] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     description: '',
     schedule: '',
-    monthly_fee: '',
     is_active: true,
   });
   const [savingBatch, setSavingBatch] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    setPaymentLoaded(false);
-    setPaymentStatus(null);
     try {
       const [batchRes, studentsRes, classesRes, announcementsRes, coachStudentsRes] = await Promise.allSettled([
         batchAPI.get(batchId),
@@ -159,7 +157,6 @@ export default function BatchDetailPage() {
           name: b.name,
           description: b.description ?? '',
           schedule: b.schedule ?? '',
-          monthly_fee: b.monthly_fee ? Number(b.monthly_fee).toFixed(2) : '',
           is_active: b.is_active,
         });
       }
@@ -175,33 +172,6 @@ export default function BatchDetailPage() {
     loadAll();
   }, [loadAll]);
 
-  useEffect(() => {
-    if (activeTab !== 'payments' || paymentLoaded) return;
-    let cancelled = false;
-
-    (async () => {
-      setPaymentLoading(true);
-      try {
-        const data = await batchAPI.getPaymentStatus(batchId);
-        if (cancelled) return;
-        setPaymentStatus(data);
-        setPaymentLoaded(true);
-      } catch {
-        if (!cancelled) {
-          toast.error('Failed to load payment status');
-        }
-      } finally {
-        if (!cancelled) {
-          setPaymentLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, paymentLoaded, batchId]);
-
   const handleSaveBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batch || !editForm.name.trim()) return;
@@ -211,8 +181,6 @@ export default function BatchDetailPage() {
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         schedule: editForm.schedule.trim() || undefined,
-        monthly_fee:
-          isAdmin && editForm.monthly_fee ? parseFloat(editForm.monthly_fee) : undefined,
         is_active: editForm.is_active,
       });
       setBatch(updated);
@@ -248,24 +216,22 @@ export default function BatchDetailPage() {
     }
   };
 
-  const parseBulkCsv = (text: string) => {
-    const lines = text
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    return lines.map((line, index) => {
-      const parts = line.split(',').map((p) => p.trim());
-      if (parts.length < 3) {
-        throw new Error(`Line ${index + 1}: need first_name, last_name, username`);
-      }
-      const [first_name, last_name, username, guardian_email] = parts;
-      return {
-        first_name,
-        last_name,
-        username,
-        guardian_email: guardian_email || undefined,
-      };
-    });
+  const updateBulkStudent = (
+    index: number,
+    field: keyof BulkStudentDraft,
+    value: string,
+  ) => {
+    setBulkStudents((prev) =>
+      prev.map((row, rowIndex) => (rowIndex === index ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const addBulkStudentRow = () => {
+    setBulkStudents((prev) => [...prev, createEmptyBulkStudentDraft()]);
+  };
+
+  const removeBulkStudentRow = (index: number) => {
+    setBulkStudents((prev) => (prev.length === 1 ? [createEmptyBulkStudentDraft()] : prev.filter((_, i) => i !== index)));
   };
 
   const handleBulkCreate = async (e: React.FormEvent) => {
@@ -274,24 +240,56 @@ export default function BatchDetailPage() {
       toast.error('Default password must be at least 4 characters');
       return;
     }
-    let rows;
-    try {
-      rows = parseBulkCsv(bulkCsv);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Invalid CSV format');
-      return;
-    }
+
+    const rows = bulkStudents
+      .map((row) => ({
+        first_name: row.first_name.trim(),
+        last_name: row.last_name.trim(),
+        username: row.username.trim(),
+        guardian_email: row.guardian_email.trim(),
+        age: row.age.trim(),
+        gender: row.gender.trim(),
+        password: row.password.trim(),
+      }))
+      .filter((row) => Object.values(row).some(Boolean));
+
     if (rows.length === 0) {
       toast.error('Add at least one student row');
       return;
     }
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (!row.first_name || !row.last_name || !row.username) {
+        toast.error(`Student ${index + 1}: first name, last name, and username are required`);
+        return;
+      }
+      if (row.password && row.password.length < 4) {
+        toast.error(`Student ${index + 1}: password must be at least 4 characters`);
+        return;
+      }
+      if (row.age && Number.isNaN(Number(row.age))) {
+        toast.error(`Student ${index + 1}: age must be a number`);
+        return;
+      }
+    }
+
     setBulkCreating(true);
     try {
       const result = await batchAPI.bulkCreateStudents(batchId, {
-        students: rows,
+        students: rows.map((row) => ({
+          first_name: row.first_name,
+          last_name: row.last_name,
+          username: row.username,
+          guardian_email: row.guardian_email || undefined,
+          age: row.age ? Number(row.age) : undefined,
+          gender: row.gender || undefined,
+          password: row.password || undefined,
+        })),
         default_password: bulkDefaultPassword,
       });
       setBulkResult(result);
+      setBulkStudents([createEmptyBulkStudentDraft()]);
       const updated = await batchAPI.listStudents(batchId);
       setStudents(updated);
       const b = await batchAPI.get(batchId);
@@ -412,16 +410,6 @@ export default function BatchDetailPage() {
     { key: 'students', label: 'Students', icon: Users, count: students.length },
     { key: 'classes', label: 'Sessions', icon: Calendar, count: classes.length },
     { key: 'announcements', label: 'News', icon: Megaphone, count: announcements.length },
-    ...(isAdmin
-      ? [
-          {
-            key: 'payments' as const,
-            label: 'Payments',
-            icon: CreditCard,
-            count: paymentStatus?.overdue_count,
-          },
-        ]
-      : []),
   ];
 
   return (
@@ -448,9 +436,6 @@ export default function BatchDetailPage() {
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
             {batch.schedule && <span>{batch.schedule} · </span>}
-            {isAdmin && batch.monthly_fee > 0 && (
-              <span>{formatInr(batch.monthly_fee)}/month · </span>
-            )}
             {students.length} students
           </p>
         </div>
@@ -496,13 +481,7 @@ export default function BatchDetailPage() {
             <tab.icon className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{tab.label}</span>
             {tab.count !== undefined && tab.count > 0 && (
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-xs ${
-                  tab.key === 'payments' && (paymentStatus?.overdue_count ?? 0) > 0
-                    ? 'bg-destructive/15 text-destructive'
-                    : 'bg-muted text-muted-foreground'
-                }`}
-              >
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                 {tab.count}
               </span>
             )}
@@ -540,8 +519,7 @@ export default function BatchDetailPage() {
               <div>
                 <h3 className="font-semibold text-foreground">Bulk create student accounts</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  One student per line: <code className="text-xs">first_name, last_name, username, guardian_email</code>.
-                  Guardian email is optional but recommended for parent auto-linking.
+                  Fill one row per student. Guardian email helps parent accounts auto-link, and individual passwords are optional.
                 </p>
               </div>
               <form onSubmit={handleBulkCreate} className="space-y-3">
@@ -559,14 +537,88 @@ export default function BatchDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Students (CSV lines)</label>
-                  <textarea
-                    value={bulkCsv}
-                    onChange={(e) => setBulkCsv(e.target.value)}
-                    rows={6}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
-                    placeholder={'Emma, Sharma, emma_sharma, mom@gmail.com\nArjun, Sharma, arjun_sharma, mom@gmail.com'}
-                  />
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label className="block text-sm font-medium text-foreground">Students</label>
+                    <button
+                      type="button"
+                      onClick={addBulkStudentRow}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/60"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add another
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {bulkStudents.map((row, index) => (
+                      <div key={index} className="rounded-xl border border-border bg-background/50 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-foreground">Student {index + 1}</p>
+                          <button
+                            type="button"
+                            onClick={() => removeBulkStudentRow(index)}
+                            className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            title="Remove student row"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <input
+                            type="text"
+                            value={row.first_name}
+                            onChange={(e) => updateBulkStudent(index, 'first_name', e.target.value)}
+                            placeholder="First name *"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={row.last_name}
+                            onChange={(e) => updateBulkStudent(index, 'last_name', e.target.value)}
+                            placeholder="Last name *"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={row.username}
+                            onChange={(e) => updateBulkStudent(index, 'username', e.target.value)}
+                            placeholder="Username *"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="email"
+                            value={row.guardian_email}
+                            onChange={(e) => updateBulkStudent(index, 'guardian_email', e.target.value)}
+                            placeholder="Guardian email"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={row.age}
+                            onChange={(e) => updateBulkStudent(index, 'age', e.target.value)}
+                            placeholder="Age"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          />
+                          <select
+                            value={row.gender}
+                            onChange={(e) => updateBulkStudent(index, 'gender', e.target.value)}
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                          >
+                            <option value="">Gender</option>
+                            <option value="girl">Girl</option>
+                            <option value="boy">Boy</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={row.password}
+                            onChange={(e) => updateBulkStudent(index, 'password', e.target.value)}
+                            placeholder="Password (optional)"
+                            className="rounded-lg border border-input bg-background px-3 py-2 text-sm md:col-span-2"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <button
                   type="submit"
@@ -778,92 +830,6 @@ export default function BatchDetailPage() {
         </div>
       )}
 
-      {activeTab === 'payments' && paymentLoading && (
-        <div className={`${panel} flex min-h-[220px] items-center justify-center`}>
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm font-medium text-muted-foreground">Loading payments…</p>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'payments' && paymentStatus && (
-        <div>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className={`${panel} p-4 text-center`}>
-              <p className="font-heading text-2xl font-bold text-foreground">{paymentStatus.total_students}</p>
-              <p className="text-xs text-muted-foreground">Students</p>
-            </div>
-            <div className={`${panel} border-[hsl(var(--green-medium))]/25 bg-[hsl(var(--green-very-light))]/40 p-4 text-center`}>
-              <p className="font-heading text-2xl font-bold text-[hsl(var(--green-medium))]">{paymentStatus.paid_count}</p>
-              <p className="text-xs text-[hsl(var(--green-medium))]">Paid</p>
-            </div>
-            <div
-              className={`${panel} p-4 text-center ${
-                paymentStatus.overdue_count > 0 ? 'border-destructive/30 bg-destructive/5' : ''
-              }`}
-            >
-              <p
-                className={`font-heading text-2xl font-bold ${
-                  paymentStatus.overdue_count > 0 ? 'text-destructive' : 'text-foreground'
-                }`}
-              >
-                {paymentStatus.overdue_count}
-              </p>
-              <p className={`text-xs ${paymentStatus.overdue_count > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                Overdue
-              </p>
-            </div>
-          </div>
-
-          {paymentStatus.is_past_deadline && paymentStatus.overdue_count > 0 && (
-            <div className="mb-4 flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 p-4">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-              <div>
-                <p className="font-semibold text-destructive">
-                  {paymentStatus.overdue_count} student(s) overdue
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Deadline (10th) passed for {paymentStatus.billing_month}.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className={`${panel} divide-y divide-border`}>
-            {paymentStatus.students.map((s) => (
-              <div key={s.student_id} className="flex items-center justify-between p-4">
-                <div>
-                  <Link
-                    href={`/coach/students/${encodeURIComponent(s.student_username)}`}
-                    className="font-semibold text-primary hover:underline"
-                  >
-                    {s.student_name}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">@{s.student_username}</p>
-                </div>
-                <div>
-                  {s.payment_status === 'paid' ? (
-                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[hsl(var(--green-medium))]">
-                      <CheckCircle className="h-4 w-4" /> Paid
-                    </span>
-                  ) : s.is_overdue ? (
-                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-destructive">
-                      <AlertTriangle className="h-4 w-4" /> Overdue
-                    </span>
-                  ) : (
-                    <span className="text-sm font-semibold text-[hsl(var(--gold-dark))]">Pending</span>
-                  )}
-                </div>
-              </div>
-            ))}
-            {paymentStatus.students.length === 0 && (
-              <p className="p-8 text-center text-muted-foreground">No students in this batch.</p>
-            )}
-          </div>
-        </div>
-      )}
-
       <ConfirmDialog
         isOpen={removeId !== null}
         title="Remove student from batch?"
@@ -899,20 +865,6 @@ export default function BatchDetailPage() {
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 />
               </div>
-              {isAdmin && (
-                <div>
-                  <label className="mb-1 block text-sm font-semibold">Monthly fee (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editForm.monthly_fee}
-                    onChange={(e) => setEditForm({ ...editForm, monthly_fee: e.target.value })}
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="1600.00"
-                  />
-                </div>
-              )}
               <div>
                 <label className="mb-1 block text-sm font-semibold">Description</label>
                 <textarea

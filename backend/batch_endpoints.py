@@ -11,8 +11,23 @@ import secrets
 import json
 
 from email_service import send_coach_invite_email
+from parent_payment_utils import compute_billing_status
 
-from models import Batch, StudentBatch, ClassSession, SessionStudent, Announcement, Payment, Notification, User, UserRole, CoachSignupInvite, AdminAuditLog
+from models import (
+    Batch,
+    StudentBatch,
+    ClassSession,
+    SessionStudent,
+    Announcement,
+    Payment,
+    PaymentBillingAdjustment,
+    Notification,
+    User,
+    UserRole,
+    CoachSignupInvite,
+    AdminAuditLog,
+    Attendance,
+)
 from batch_schedule_service import (
     apply_schedule_fields_to_batch,
     batch_to_response,
@@ -59,6 +74,16 @@ def require_admin(user_id: int = Depends(get_current_user), db: Session = Depend
     return user
 
 
+def _get_accessible_batch(db: Session, batch_id: int, user: User) -> Batch:
+    """Coaches may only access their batches; admins may access any batch."""
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if not is_admin_user(user) and batch.coach_id != user.id:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return batch
+
+
 def _parse_billing_month(s: str) -> tuple[int, int]:
     parts = s.split("-")
     if len(parts) != 2:
@@ -72,6 +97,119 @@ def _parse_billing_month(s: str) -> tuple[int, int]:
 def _is_past_tenth_of_billing_month(billing_month: str, now: datetime) -> bool:
     y, m = _parse_billing_month(billing_month)
     return now.date() > date(y, m, 10)
+
+
+def _month_key(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+
+def _next_billing_month(billing_month: str) -> str:
+    year, month = _parse_billing_month(billing_month)
+    month += 1
+    if month > 12:
+        year += 1
+        month = 1
+    return _month_key(year, month)
+
+
+def _billing_months_between(start_month: str, end_month: str) -> list[str]:
+    months: list[str] = []
+    current = start_month
+    while current <= end_month:
+        months.append(current)
+        if current == end_month:
+            break
+        current = _next_billing_month(current)
+    return months
+
+
+def _billing_month_start(billing_month: str) -> datetime:
+    year, month = _parse_billing_month(billing_month)
+    return datetime(year, month, 1)
+
+
+def _billing_month_range(billing_month: str) -> tuple[datetime, datetime]:
+    start = _billing_month_start(billing_month)
+    end = _next_billing_month(billing_month)
+    end_dt = _billing_month_start(end)
+    return start, end_dt
+
+
+def _empty_payments_payload(month: str) -> dict:
+    return {
+        "summary": {
+            "total_students": 0,
+            "paid_count": 0,
+            "pending_count": 0,
+            "overdue_count": 0,
+            "total_collected": 0,
+            "total_pending_amount": 0,
+            "students_with_pending_balance": 0,
+            "billing_month": month,
+        },
+        "payments": [],
+    }
+
+
+def _fee_for_classes(monthly_fee: float, billable_classes: int, planned_classes: int) -> float:
+    fee = float(monthly_fee or 0)
+    classes = max(int(billable_classes or 0), 0)
+    denom = max(int(planned_classes or 0), 1)
+    return round(fee * classes / denom, 2)
+
+
+DEFAULT_EXPECTED_CLASSES_PER_MONTH = 8
+FEE_FOR_EIGHT_CLASSES = 2500.0
+FEE_FOR_FOUR_TO_FIVE_CLASSES = 1500.0
+
+
+def _fee_for_expected_class_count(expected: int) -> float:
+    """Tiered monthly fee from expected class count (Fees admin page)."""
+    n = max(int(expected or 0), 0)
+    if n >= DEFAULT_EXPECTED_CLASSES_PER_MONTH:
+        return FEE_FOR_EIGHT_CLASSES
+    if 4 <= n <= 5:
+        return FEE_FOR_FOUR_TO_FIVE_CLASSES
+    return round(FEE_FOR_EIGHT_CLASSES * n / DEFAULT_EXPECTED_CLASSES_PER_MONTH, 2)
+
+
+def _resolve_payment_expected_classes(adj) -> int:
+    """Expected class denominator for payments (default 8 per month)."""
+    if adj and adj.expected_class_count is not None:
+        return int(adj.expected_class_count)
+    return DEFAULT_EXPECTED_CLASSES_PER_MONTH
+
+
+def _count_regular_batch_sessions(db: Session, batch_id: int, month_start, month_end) -> int:
+    return (
+        db.query(ClassSession)
+        .filter(
+            ClassSession.batch_id == batch_id,
+            ClassSession.date >= month_start,
+            ClassSession.date < month_end,
+            ClassSession.session_kind == "regular",
+        )
+        .count()
+    )
+
+
+def _resolve_student_primary_batch(
+    student_id: int,
+    student_enrollments: list,
+    batch_by_id: dict,
+    fallback_batch_by_coach: dict,
+    coach_id: Optional[int],
+) -> Optional[int]:
+    active = [e for e in student_enrollments if e.is_active]
+    pool = active or student_enrollments
+    if pool:
+        pool = sorted(pool, key=lambda e: (e.joined_at or datetime.min, e.id), reverse=True)
+        return int(pool[0].batch_id)
+    if coach_id is not None:
+        fallback = fallback_batch_by_coach.get(int(coach_id))
+        if fallback:
+            return int(fallback.id)
+    return None
 
 
 def _notify_batch_students(
@@ -153,9 +291,7 @@ def list_batches(coach: User = Depends(require_coach), db: Session = Depends(get
 
 @router.get("/{batch_id}", response_model=BatchResponse)
 def get_batch(batch_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     count = db.query(StudentBatch).filter(
         StudentBatch.batch_id == batch.id, StudentBatch.is_active == True
     ).count()
@@ -164,9 +300,7 @@ def get_batch(batch_id: int, coach: User = Depends(require_coach), db: Session =
 
 @router.put("/{batch_id}", response_model=BatchResponse)
 def update_batch(batch_id: int, data: BatchUpdate, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     payload = data.model_dump(exclude_unset=True)
     schedule_weekdays = payload.pop("schedule_weekdays", None)
     schedule_time = payload.pop("schedule_time", None)
@@ -199,9 +333,7 @@ def update_batch(batch_id: int, data: BatchUpdate, coach: User = Depends(require
 
 @router.post("/{batch_id}/students", response_model=StudentBatchResponse)
 def add_student_to_batch(batch_id: int, data: StudentBatchAdd, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     student = db.query(User).filter(User.id == data.student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -244,9 +376,7 @@ def bulk_create_batch_students(
     db: Session = Depends(get_db),
 ):
     """Create multiple student accounts and enroll them in a batch."""
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
 
     created_rows: List[BulkStudentCreatedRow] = []
     warnings: List[str] = []
@@ -305,9 +435,7 @@ def bulk_create_batch_students(
 
 @router.get("/{batch_id}/students", response_model=List[StudentBatchResponse])
 def list_batch_students(batch_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     sbs = db.query(StudentBatch).filter(StudentBatch.batch_id == batch_id, StudentBatch.is_active == True).all()
     result = []
     for sb in sbs:
@@ -323,9 +451,7 @@ def list_batch_students(batch_id: int, coach: User = Depends(require_coach), db:
 
 @router.delete("/{batch_id}/students/{student_id}")
 def remove_student_from_batch(batch_id: int, student_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     sb = db.query(StudentBatch).filter(
         StudentBatch.student_id == student_id,
         StudentBatch.batch_id == batch_id,
@@ -342,9 +468,7 @@ def remove_student_from_batch(batch_id: int, student_id: int, coach: User = Depe
 
 @router.post("/{batch_id}/classes", response_model=ClassSessionResponse)
 def create_class_session(batch_id: int, data: ClassSessionCreate, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
 
     kind = (data.session_kind or "regular").strip().lower()
     if kind not in ("regular", "makeup"):
@@ -406,9 +530,7 @@ def open_recurring_slot(
     db: Session = Depends(get_db),
 ):
     """Create (or return) a regular session for a recurring calendar slot."""
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
 
     slot_date = combine_date_and_schedule_time(data.date, batch.schedule_time)
     existing = find_session_near_datetime(db, batch_id, slot_date)
@@ -434,9 +556,7 @@ def open_recurring_slot(
 
 @router.get("/{batch_id}/classes", response_model=List[ClassSessionResponse])
 def list_class_sessions(batch_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     sessions = db.query(ClassSession).filter(
         ClassSession.batch_id == batch_id
     ).order_by(ClassSession.date.desc()).all()
@@ -447,9 +567,7 @@ def list_class_sessions(batch_id: int, coach: User = Depends(require_coach), db:
 
 @router.post("/{batch_id}/announcements", response_model=AnnouncementResponse)
 def create_announcement(batch_id: int, data: AnnouncementCreate, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     ann = Announcement(
         batch_id=batch_id,
         title=data.title,
@@ -477,9 +595,7 @@ def create_announcement(batch_id: int, data: AnnouncementCreate, coach: User = D
 
 @router.get("/{batch_id}/announcements", response_model=List[AnnouncementResponse])
 def list_announcements(batch_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
     anns = db.query(Announcement).filter(
         Announcement.batch_id == batch_id
     ).order_by(Announcement.created_at.desc()).all()
@@ -498,9 +614,7 @@ def list_announcements(batch_id: int, coach: User = Depends(require_coach), db: 
 
 @router.get("/{batch_id}/payment-status")
 def get_payment_status(batch_id: int, coach: User = Depends(require_coach), db: Session = Depends(get_db)):
-    batch = db.query(Batch).filter(Batch.id == batch_id, Batch.coach_id == coach.id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
+    batch = _get_accessible_batch(db, batch_id, coach)
 
     now = datetime.utcnow()
     current_month = now.strftime("%Y-%m")
@@ -553,11 +667,81 @@ def get_payment_status(batch_id: int, coach: User = Depends(require_coach), db: 
 admin_router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+class AdminBatchResponse(BatchResponse):
+    coach_username: Optional[str] = None
+    coach_full_name: Optional[str] = None
+
+
+@admin_router.get("/batches", response_model=List[AdminBatchResponse])
+def list_admin_batches(
+    coach_id: Optional[int] = None,
+    include_inactive: bool = True,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """All academy classes with coach attribution (admin only)."""
+    q = db.query(Batch)
+    if coach_id is not None:
+        q = q.filter(Batch.coach_id == coach_id)
+    if not include_inactive:
+        q = q.filter(Batch.is_active == True)
+    batches = q.order_by(Batch.is_active.desc(), Batch.name.asc()).all()
+    if not batches:
+        return []
+
+    coach_ids = {int(b.coach_id) for b in batches if b.coach_id is not None}
+    coaches_by_id = {}
+    if coach_ids:
+        coaches_by_id = {
+            u.id: u
+            for u in db.query(User).filter(User.id.in_(coach_ids)).all()
+        }
+
+    result: List[AdminBatchResponse] = []
+    for batch in batches:
+        count = (
+            db.query(StudentBatch)
+            .filter(StudentBatch.batch_id == batch.id, StudentBatch.is_active == True)
+            .count()
+        )
+        base = batch_to_response(batch, count, admin)
+        coach = coaches_by_id.get(batch.coach_id)
+        result.append(
+            AdminBatchResponse(
+                **base.model_dump(),
+                coach_username=coach.username if coach else None,
+                coach_full_name=(coach.full_name or coach.username) if coach else None,
+            )
+        )
+    return result
+
+
 class MarkPaidRequest(BaseModel):
     student_id: int
     batch_id: int
     billing_month: str  # "YYYY-MM"
+    amount: Optional[float] = None
     notes: Optional[str] = None  # e.g. "Paid via UPI"
+
+
+class BillingAdjustmentRequest(BaseModel):
+    student_id: int
+    batch_id: int
+    billing_month: str  # "YYYY-MM"
+    expected_class_count: Optional[int] = None
+    billable_class_count: Optional[int] = None
+    amount_override: Optional[float] = None
+    clear_amount_override: bool = False
+    notes: Optional[str] = None
+
+
+class FeesAdjustmentRequest(BaseModel):
+    student_id: int
+    batch_id: int
+    billing_month: str  # "YYYY-MM"
+    expected_class_count: Optional[int] = None
+    fee_override: Optional[float] = None
+    clear_fee_override: bool = False
 
 
 class CoachInviteCreateRequest(BaseModel):
@@ -581,93 +765,365 @@ def get_all_payments(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid billing_month; use YYYY-MM")
 
-    batches = db.query(Batch).filter(Batch.coach_id == admin.id).all()
-    batch_ids = [b.id for b in batches]
-    if batch_id is not None:
-        if batch_id not in batch_ids:
-            return {
-                "summary": {
-                    "total_students": 0,
-                    "paid_count": 0,
-                    "pending_count": 0,
-                    "overdue_count": 0,
-                    "total_collected": 0,
-                    "billing_month": month,
-                },
-                "payments": [],
-            }
-        batch_ids = [batch_id]
+    batches = db.query(Batch).all()
+    batch_by_id = {b.id: b for b in batches}
+    selected_batch_ids = [b.id for b in batches]
+    filter_batch_id = batch_id
+    if filter_batch_id is not None:
+        if filter_batch_id not in batch_by_id:
+            return _empty_payments_payload(month)
+        selected_batch_ids = [filter_batch_id]
 
-    if not batch_ids:
-        return {
-            "summary": {
-                "total_students": 0,
-                "paid_count": 0,
-                "pending_count": 0,
-                "overdue_count": 0,
-                "total_collected": 0,
-                "billing_month": month,
-            },
-            "payments": [],
-        }
+    if not selected_batch_ids and not db.query(User).filter(User.role == UserRole.student).first():
+        return _empty_payments_payload(month)
 
-    sbs = (
+    month_start, month_end = _billing_month_range(month)
+
+    students = (
+        db.query(User)
+        .filter(User.role == UserRole.student)
+        .order_by(User.full_name.asc(), User.username.asc())
+        .all()
+    )
+    student_by_id = {s.id: s for s in students}
+    if not students:
+        return _empty_payments_payload(month)
+
+    enrollments = (
         db.query(StudentBatch)
+        .filter(StudentBatch.student_id.in_([s.id for s in students]))
+        .order_by(StudentBatch.joined_at.desc(), StudentBatch.id.desc())
+        .all()
+    )
+    enrollments_by_student: dict[int, list[StudentBatch]] = {}
+    for sb in enrollments:
+        enrollments_by_student.setdefault(int(sb.student_id), []).append(sb)
+
+    coaches = {
+        u.id: u
+        for u in db.query(User)
+        .filter(User.role.in_([UserRole.coach, UserRole.admin, "coach", "admin"]))
+        .all()
+    }
+
+    fallback_batch_by_coach: dict[int, Batch] = {}
+    for batch in sorted(
+        batches,
+        key=lambda b: (
+            0 if getattr(b, "is_active", False) else 1,
+            b.created_at or datetime.min,
+            b.id,
+        ),
+        reverse=True,
+    ):
+        coach_id = getattr(batch, "coach_id", None)
+        if coach_id is not None and int(coach_id) not in fallback_batch_by_coach:
+            fallback_batch_by_coach[int(coach_id)] = batch
+
+    payments = (
+        db.query(Payment)
+        .filter(Payment.student_id.in_([s.id for s in students]))
+        .order_by(Payment.billing_month.desc(), Payment.created_at.desc())
+        .all()
+    )
+    completed_by_key: dict[tuple[int, int, str], Payment] = {}
+    history_by_pair: dict[tuple[int, int], list[dict]] = {}
+    for payment in payments:
+        pair = (int(payment.student_id), int(payment.batch_id))
+        history_by_pair.setdefault(pair, []).append({
+            "id": payment.id,
+            "billing_month": payment.billing_month,
+            "amount": float(payment.amount or 0),
+            "currency": payment.currency or "inr",
+            "status": payment.status,
+            "paid_at": payment.paid_at,
+            "created_at": payment.created_at,
+            "recorded_by": (
+                "parent_stripe"
+                if payment.stripe_checkout_session_id
+                else "admin_manual"
+            ),
+        })
+        if payment.status == "completed":
+            key = (int(payment.student_id), int(payment.batch_id), str(payment.billing_month))
+            if key not in completed_by_key:
+                completed_by_key[key] = payment
+
+    adjustments = (
+        db.query(PaymentBillingAdjustment)
+        .filter(PaymentBillingAdjustment.billing_month == month)
+        .all()
+    )
+    adjustment_by_key = {
+        (int(a.student_id), int(a.batch_id), str(a.billing_month)): a
+        for a in adjustments
+    }
+
+    month_sessions = (
+        db.query(ClassSession)
         .filter(
-            StudentBatch.batch_id.in_(batch_ids),
-            StudentBatch.is_active == True,
+            ClassSession.date >= month_start,
+            ClassSession.date < month_end,
         )
         .all()
     )
+    sessions_by_batch: dict[int, list[ClassSession]] = {}
+    session_ids = [s.id for s in month_sessions]
+    for session in month_sessions:
+        sessions_by_batch.setdefault(int(session.batch_id), []).append(session)
 
-    batch_by_id = {b.id: b for b in batches}
-    past_deadline = _is_past_tenth_of_billing_month(month, now)
+    expected_rows = []
+    if session_ids:
+        expected_rows = (
+            db.query(SessionStudent)
+            .filter(
+                SessionStudent.class_session_id.in_(session_ids),
+                SessionStudent.expected_to_join == True,
+            )
+            .all()
+        )
+    expected_by_pair: dict[tuple[int, int], set[int]] = {}
+    for row in expected_rows:
+        session = next((s for s in month_sessions if s.id == row.class_session_id), None)
+        if not session:
+            continue
+        key = (int(row.student_id), int(session.batch_id))
+        expected_by_pair.setdefault(key, set()).add(int(row.class_session_id))
+
+    # Legacy sessions without roster: treat active enrollments as expected for all batch sessions.
+    for batch_id_key, sessions in sessions_by_batch.items():
+        roster_exists = any(
+            s.id in {r.class_session_id for r in expected_rows}
+            for s in sessions
+        )
+        if roster_exists:
+            continue
+        for sb in enrollments:
+            if int(sb.batch_id) != int(batch_id_key) or not sb.is_active:
+                continue
+            key = (int(sb.student_id), int(batch_id_key))
+            expected_by_pair.setdefault(key, set()).update(int(s.id) for s in sessions)
+
+    attended_by_pair: dict[tuple[int, int], int] = {}
+    if session_ids:
+        present_rows = (
+            db.query(Attendance.class_session_id, Attendance.student_id)
+            .filter(
+                Attendance.class_session_id.in_(session_ids),
+                Attendance.status == "present",
+            )
+            .all()
+        )
+        session_batch = {s.id: int(s.batch_id) for s in month_sessions}
+        for class_session_id, student_id in present_rows:
+            b_id = session_batch.get(int(class_session_id))
+            if b_id is None:
+                continue
+            key = (int(student_id), b_id)
+            # Only count attendance against expected sessions when we know them.
+            expected_set = expected_by_pair.get(key)
+            if expected_set is not None and int(class_session_id) not in expected_set:
+                continue
+            attended_by_pair[key] = attended_by_pair.get(key, 0) + 1
+
     payments_out = []
 
-    for sb in sbs:
-        batch = batch_by_id.get(sb.batch_id)
-        if not batch:
-            batch = db.query(Batch).filter(Batch.id == sb.batch_id).first()
-        if not batch:
-            continue
+    for student in students:
+        student_id = int(student.id)
+        student_enrollments = enrollments_by_student.get(student_id, [])
 
-        completed = (
-            db.query(Payment)
-            .filter(
-                Payment.student_id == sb.student_id,
-                Payment.batch_id == sb.batch_id,
-                Payment.billing_month == month,
-                Payment.status == "completed",
+        candidate_batch_ids: list[int] = []
+        seen_batches: set[int] = set()
+
+        def _add_batch(bid: Optional[int]) -> None:
+            if bid is None:
+                return
+            bid_i = int(bid)
+            if bid_i in seen_batches:
+                return
+            if filter_batch_id is not None and bid_i != int(filter_batch_id):
+                return
+            if bid_i not in batch_by_id:
+                return
+            seen_batches.add(bid_i)
+            candidate_batch_ids.append(bid_i)
+
+        for sb in student_enrollments:
+            _add_batch(sb.batch_id)
+
+        for payment in payments:
+            if int(payment.student_id) == student_id:
+                _add_batch(payment.batch_id)
+
+        for adj in adjustments:
+            if int(adj.student_id) == student_id:
+                _add_batch(adj.batch_id)
+
+        if not candidate_batch_ids:
+            coach_id = getattr(student, "primary_coach_id", None)
+            if coach_id is not None:
+                if filter_batch_id is not None:
+                    selected = batch_by_id.get(int(filter_batch_id))
+                    if selected and int(selected.coach_id) == int(coach_id):
+                        _add_batch(selected.id)
+                else:
+                    fallback = fallback_batch_by_coach.get(int(coach_id))
+                    if fallback:
+                        _add_batch(fallback.id)
+
+        # Always include students even with no batch (unassigned row).
+        if not candidate_batch_ids:
+            if filter_batch_id is not None:
+                continue
+            candidate_batch_ids = [None]  # type: ignore[list-item]
+
+        for resolved_batch_id in candidate_batch_ids:
+            sb = None
+            batch = None
+            monthly_fee = 0.0
+            batch_name = "Unassigned"
+            coach_id = getattr(student, "primary_coach_id", None)
+            coach_name = None
+            is_enrollment_active = False
+            joined_at = student.created_at or now
+
+            if resolved_batch_id is not None:
+                sb = next(
+                    (e for e in student_enrollments if int(e.batch_id) == int(resolved_batch_id)),
+                    None,
+                )
+                batch = batch_by_id.get(int(resolved_batch_id))
+                if not batch:
+                    continue
+                monthly_fee = float(batch.monthly_fee or 0)
+                batch_name = batch.name
+                coach_id = batch.coach_id
+                is_enrollment_active = bool(sb.is_active) if sb else False
+                if sb and sb.joined_at:
+                    joined_at = sb.joined_at
+
+            if coach_id is not None and int(coach_id) in coaches:
+                coach = coaches[int(coach_id)]
+                coach_name = coach.full_name or coach.username
+
+            pair_key = (
+                student_id,
+                int(resolved_batch_id) if resolved_batch_id is not None else -1,
             )
-            .first()
-        )
+            expected_session_ids = expected_by_pair.get(
+                (student_id, int(resolved_batch_id)) if resolved_batch_id is not None else (-1, -1),
+                set(),
+            )
+            scheduled_classes = len(expected_session_ids)
+            if resolved_batch_id is not None and scheduled_classes == 0:
+                # Fall back to number of regular sessions created for the batch that month.
+                batch_sessions = sessions_by_batch.get(int(resolved_batch_id), [])
+                scheduled_classes = len(
+                    [s for s in batch_sessions if (s.session_kind or "regular") == "regular"]
+                )
+            attended_classes = attended_by_pair.get(
+                (student_id, int(resolved_batch_id)) if resolved_batch_id is not None else (-1, -1),
+                0,
+            )
 
-        if completed:
-            row_status = "paid"
-            paid_at = completed.paid_at
-            payment_id = completed.id
-        elif past_deadline:
-            row_status = "overdue"
-            paid_at = None
-            payment_id = None
-        else:
-            row_status = "pending"
-            paid_at = None
-            payment_id = None
+            adj = None
+            if resolved_batch_id is not None:
+                adj = adjustment_by_key.get((student_id, int(resolved_batch_id), month))
 
-        student = db.query(User).filter(User.id == sb.student_id).first()
-        payments_out.append({
-            "student_id": sb.student_id,
-            "student_name": student.full_name if student else "Unknown",
-            "student_username": student.username if student else "unknown",
-            "batch_id": sb.batch_id,
-            "batch_name": batch.name,
-            "monthly_fee": batch.monthly_fee,
-            "billing_month": month,
-            "status": row_status,
-            "paid_at": paid_at,
-            "payment_id": payment_id,
-        })
+            expected_classes = _resolve_payment_expected_classes(adj)
+
+            if adj and adj.billable_class_count is not None:
+                billable_class_count = int(adj.billable_class_count)
+                billable_source = "admin_override"
+            else:
+                billable_class_count = scheduled_classes
+                billable_source = "auto"
+
+            planned_classes = expected_classes
+            fee_per_class = round(monthly_fee / max(planned_classes, 1), 2) if monthly_fee else 0.0
+            calculated_amount = _fee_for_classes(monthly_fee, billable_class_count, planned_classes)
+            amount_override = float(adj.amount_override) if adj and adj.amount_override is not None else None
+            final_amount = amount_override if amount_override is not None else calculated_amount
+
+            completed = None
+            if resolved_batch_id is not None:
+                completed = completed_by_key.get((student_id, int(resolved_batch_id), month))
+
+            if completed:
+                row_status = "paid"
+                paid_at = completed.paid_at
+                payment_id = completed.id
+                payment_amount = float(completed.amount or 0)
+            else:
+                payment_id = None
+                paid_at = None
+                payment_amount = None
+                # Unassigned / zero fee stay as informative pending rows.
+                if _is_past_tenth_of_billing_month(month, now) and monthly_fee > 0:
+                    row_status = "overdue"
+                else:
+                    row_status = "pending"
+
+            pending_months: list[str] = []
+            overdue_months = 0
+            if resolved_batch_id is not None:
+                due_months = _billing_months_between(joined_at.strftime("%Y-%m"), month)
+                for due_month in due_months:
+                    due_completed = completed_by_key.get((student_id, int(resolved_batch_id), due_month))
+                    computed_status, _, _ = compute_billing_status(
+                        has_completed_payment=bool(due_completed),
+                        billing_month=due_month,
+                        joined_at=joined_at,
+                        now=now,
+                    )
+                    if computed_status != "paid":
+                        pending_months.append(due_month)
+                        if computed_status == "overdue":
+                            overdue_months += 1
+
+            pending_months_count = len(pending_months)
+            # Approximate arrears using current final_amount for unpaid months.
+            pending_amount_total = round(final_amount * pending_months_count, 2) if pending_months_count else 0.0
+            current_due_amount = 0.0 if row_status == "paid" else final_amount
+
+            history = history_by_pair.get(
+                (student_id, int(resolved_batch_id)) if resolved_batch_id is not None else (-1, -1),
+                [],
+            )
+
+            payments_out.append({
+                "student_id": student_id,
+                "student_name": student.full_name or "Unknown",
+                "student_username": student.username or "unknown",
+                "batch_id": resolved_batch_id,
+                "batch_name": batch_name,
+                "coach_id": int(coach_id) if coach_id is not None else None,
+                "coach_name": coach_name,
+                "is_enrollment_active": is_enrollment_active,
+                "joined_at": joined_at,
+                "monthly_fee": monthly_fee,
+                "fee_per_class": fee_per_class,
+                "expected_classes": expected_classes,
+                "attended_classes": attended_classes,
+                "billable_class_count": billable_class_count,
+                "billable_class_count_source": billable_source,
+                "calculated_amount": calculated_amount,
+                "amount_override": amount_override,
+                "final_amount": final_amount,
+                "billing_month": month,
+                "status": row_status,
+                "paid_at": paid_at,
+                "payment_id": payment_id,
+                "payment_amount": payment_amount,
+                "current_due_amount": current_due_amount,
+                "pending_amount_total": pending_amount_total,
+                "pending_months_count": pending_months_count,
+                "overdue_months_count": overdue_months,
+                "oldest_pending_month": pending_months[0] if pending_months else None,
+                "pending_months": pending_months,
+                "payment_history": history,
+                "notes": adj.notes if adj else None,
+            })
 
     if status:
         norm = status.lower()
@@ -679,8 +1135,12 @@ def get_all_payments(
     pending_count = sum(1 for p in payments_out if p["status"] == "pending")
     overdue_count = sum(1 for p in payments_out if p["status"] == "overdue")
     total_collected = sum(
-        p["monthly_fee"] for p in payments_out if p["status"] == "paid"
+        float(p["payment_amount"] or p["final_amount"] or 0)
+        for p in payments_out
+        if p["status"] == "paid"
     )
+    total_pending_amount = sum(float(p["pending_amount_total"] or 0) for p in payments_out)
+    students_with_pending_balance = sum(1 for p in payments_out if p["pending_months_count"] > 0)
 
     return {
         "summary": {
@@ -689,9 +1149,342 @@ def get_all_payments(
             "pending_count": pending_count,
             "overdue_count": overdue_count,
             "total_collected": total_collected,
+            "total_pending_amount": total_pending_amount,
+            "students_with_pending_balance": students_with_pending_balance,
             "billing_month": month,
         },
         "payments": payments_out,
+    }
+
+
+@admin_router.get("/fees")
+def get_all_fees(
+    billing_month: Optional[str] = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+    month = billing_month or now.strftime("%Y-%m")
+    try:
+        _parse_billing_month(month)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid billing_month; use YYYY-MM")
+
+    students = (
+        db.query(User)
+        .filter(User.role == UserRole.student)
+        .order_by(User.full_name.asc(), User.username.asc())
+        .all()
+    )
+    if not students:
+        return {"billing_month": month, "fees": []}
+
+    batches = db.query(Batch).all()
+    batch_by_id = {b.id: b for b in batches}
+    fallback_batch_by_coach: dict[int, Batch] = {}
+    for batch in sorted(
+        batches,
+        key=lambda b: (
+            0 if getattr(b, "is_active", False) else 1,
+            b.created_at or datetime.min,
+            b.id,
+        ),
+        reverse=True,
+    ):
+        coach_id = getattr(batch, "coach_id", None)
+        if coach_id is not None and int(coach_id) not in fallback_batch_by_coach:
+            fallback_batch_by_coach[int(coach_id)] = batch
+
+    enrollments = (
+        db.query(StudentBatch)
+        .filter(StudentBatch.student_id.in_([s.id for s in students]))
+        .order_by(StudentBatch.joined_at.desc(), StudentBatch.id.desc())
+        .all()
+    )
+    enrollments_by_student: dict[int, list[StudentBatch]] = {}
+    for sb in enrollments:
+        enrollments_by_student.setdefault(int(sb.student_id), []).append(sb)
+
+    adjustments = (
+        db.query(PaymentBillingAdjustment)
+        .filter(PaymentBillingAdjustment.billing_month == month)
+        .all()
+    )
+    adjustment_by_key = {
+        (int(a.student_id), int(a.batch_id), str(a.billing_month)): a
+        for a in adjustments
+    }
+
+    month_start, month_end = _billing_month_range(month)
+    month_sessions = (
+        db.query(ClassSession)
+        .filter(
+            ClassSession.date >= month_start,
+            ClassSession.date < month_end,
+        )
+        .all()
+    )
+    session_ids = [s.id for s in month_sessions]
+    session_batch = {s.id: int(s.batch_id) for s in month_sessions}
+
+    attended_by_pair: dict[tuple[int, int], int] = {}
+    if session_ids:
+        present_rows = (
+            db.query(Attendance.class_session_id, Attendance.student_id)
+            .filter(
+                Attendance.class_session_id.in_(session_ids),
+                Attendance.status == "present",
+            )
+            .all()
+        )
+        for class_session_id, student_id in present_rows:
+            b_id = session_batch.get(int(class_session_id))
+            if b_id is None:
+                continue
+            key = (int(student_id), b_id)
+            attended_by_pair[key] = attended_by_pair.get(key, 0) + 1
+
+    fees_out = []
+    for student in students:
+        student_id = int(student.id)
+        student_enrollments = enrollments_by_student.get(student_id, [])
+        coach_id = getattr(student, "primary_coach_id", None)
+        resolved_batch_id = _resolve_student_primary_batch(
+            student_id,
+            student_enrollments,
+            batch_by_id,
+            fallback_batch_by_coach,
+            coach_id,
+        )
+
+        batch_name = "Unassigned"
+        if resolved_batch_id is not None:
+            batch = batch_by_id.get(resolved_batch_id)
+            batch_name = batch.name if batch else "Unknown batch"
+
+        adj = None
+        if resolved_batch_id is not None:
+            adj = adjustment_by_key.get((student_id, resolved_batch_id, month))
+
+        if adj and adj.expected_class_count is not None:
+            expected_classes = int(adj.expected_class_count)
+            expected_source = "admin_override"
+        else:
+            expected_classes = DEFAULT_EXPECTED_CLASSES_PER_MONTH
+            expected_source = "default"
+
+        attended_classes = (
+            attended_by_pair.get((student_id, resolved_batch_id), 0)
+            if resolved_batch_id is not None
+            else 0
+        )
+
+        calculated_fee = _fee_for_expected_class_count(expected_classes)
+        fee_override = float(adj.amount_override) if adj and adj.amount_override is not None else None
+        final_fee = fee_override if fee_override is not None else calculated_fee
+
+        fees_out.append({
+            "student_id": student_id,
+            "student_name": student.full_name or "Unknown",
+            "student_username": student.username or "unknown",
+            "batch_id": resolved_batch_id,
+            "batch_name": batch_name,
+            "expected_classes": expected_classes,
+            "expected_classes_source": expected_source,
+            "attended_classes": attended_classes,
+            "calculated_fee": calculated_fee,
+            "fee_override": fee_override,
+            "final_fee": final_fee,
+            "billing_month": month,
+        })
+
+    return {"billing_month": month, "fees": fees_out}
+
+
+@admin_router.patch("/fees/adjustment")
+def upsert_fees_adjustment(
+    data: FeesAdjustmentRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    try:
+        _parse_billing_month(data.billing_month)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid billing_month; use YYYY-MM")
+
+    student = db.query(User).filter(User.id == data.student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    batch = db.query(Batch).filter(Batch.id == data.batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if data.expected_class_count is not None and data.expected_class_count < 0:
+        raise HTTPException(status_code=400, detail="expected_class_count must be >= 0")
+    if data.fee_override is not None and data.fee_override < 0:
+        raise HTTPException(status_code=400, detail="fee_override must be >= 0")
+
+    adj = (
+        db.query(PaymentBillingAdjustment)
+        .filter(
+            PaymentBillingAdjustment.student_id == data.student_id,
+            PaymentBillingAdjustment.batch_id == data.batch_id,
+            PaymentBillingAdjustment.billing_month == data.billing_month,
+        )
+        .first()
+    )
+    if not adj:
+        adj = PaymentBillingAdjustment(
+            student_id=data.student_id,
+            batch_id=data.batch_id,
+            billing_month=data.billing_month,
+            updated_by=admin.id,
+        )
+        db.add(adj)
+
+    if data.expected_class_count is not None:
+        adj.expected_class_count = data.expected_class_count
+    if data.clear_fee_override:
+        adj.amount_override = None
+    elif data.fee_override is not None:
+        adj.amount_override = data.fee_override
+    adj.updated_by = admin.id
+    adj.updated_at = datetime.utcnow()
+
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="fees_adjustment",
+        target_type="payment_billing_adjustment",
+        target_id=adj.id,
+        details={
+            "student_id": data.student_id,
+            "batch_id": data.batch_id,
+            "billing_month": data.billing_month,
+            "expected_class_count": adj.expected_class_count,
+            "fee_override": float(adj.amount_override) if adj.amount_override is not None else None,
+        },
+    )
+    db.commit()
+    db.refresh(adj)
+
+    expected = (
+        int(adj.expected_class_count)
+        if adj.expected_class_count is not None
+        else DEFAULT_EXPECTED_CLASSES_PER_MONTH
+    )
+    calculated_fee = _fee_for_expected_class_count(expected)
+    fee_override = float(adj.amount_override) if adj.amount_override is not None else None
+    return {
+        "student_id": adj.student_id,
+        "batch_id": adj.batch_id,
+        "billing_month": adj.billing_month,
+        "expected_classes": expected,
+        "expected_classes_source": (
+            "admin_override" if adj.expected_class_count is not None else "default"
+        ),
+        "calculated_fee": calculated_fee,
+        "fee_override": fee_override,
+        "final_fee": fee_override if fee_override is not None else calculated_fee,
+    }
+
+
+@admin_router.patch("/payments/billing-adjustment")
+def upsert_billing_adjustment(
+    data: BillingAdjustmentRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    try:
+        _parse_billing_month(data.billing_month)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid billing_month; use YYYY-MM")
+
+    student = db.query(User).filter(User.id == data.student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    batch = db.query(Batch).filter(Batch.id == data.batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    if data.billable_class_count is not None and data.billable_class_count < 0:
+        raise HTTPException(status_code=400, detail="billable_class_count must be >= 0")
+    if data.expected_class_count is not None and data.expected_class_count < 0:
+        raise HTTPException(status_code=400, detail="expected_class_count must be >= 0")
+    if data.amount_override is not None and data.amount_override < 0:
+        raise HTTPException(status_code=400, detail="amount_override must be >= 0")
+
+    adj = (
+        db.query(PaymentBillingAdjustment)
+        .filter(
+            PaymentBillingAdjustment.student_id == data.student_id,
+            PaymentBillingAdjustment.batch_id == data.batch_id,
+            PaymentBillingAdjustment.billing_month == data.billing_month,
+        )
+        .first()
+    )
+    if not adj:
+        adj = PaymentBillingAdjustment(
+            student_id=data.student_id,
+            batch_id=data.batch_id,
+            billing_month=data.billing_month,
+            updated_by=admin.id,
+        )
+        db.add(adj)
+
+    if data.billable_class_count is not None:
+        adj.billable_class_count = data.billable_class_count
+    if data.expected_class_count is not None:
+        adj.expected_class_count = data.expected_class_count
+    if data.clear_amount_override:
+        adj.amount_override = None
+    elif data.amount_override is not None:
+        adj.amount_override = data.amount_override
+    if data.notes is not None:
+        adj.notes = data.notes
+    adj.updated_by = admin.id
+    adj.updated_at = datetime.utcnow()
+
+    log_admin_action(
+        db,
+        admin_id=admin.id,
+        action="payment_billing_adjustment",
+        target_type="payment_billing_adjustment",
+        target_id=adj.id,
+        details={
+            "student_id": data.student_id,
+            "batch_id": data.batch_id,
+            "billing_month": data.billing_month,
+            "billable_class_count": adj.billable_class_count,
+            "amount_override": float(adj.amount_override) if adj.amount_override is not None else None,
+            "notes": adj.notes,
+        },
+    )
+    db.commit()
+    db.refresh(adj)
+
+    monthly_fee = float(batch.monthly_fee or 0)
+    month_start, month_end = _billing_month_range(data.billing_month)
+    planned = _resolve_payment_expected_classes(adj)
+    scheduled = _count_regular_batch_sessions(db, data.batch_id, month_start, month_end)
+    billable = (
+        int(adj.billable_class_count)
+        if adj.billable_class_count is not None
+        else scheduled
+    )
+    calculated = _fee_for_classes(monthly_fee, billable, planned)
+    amount_override = float(adj.amount_override) if adj.amount_override is not None else None
+    return {
+        "student_id": adj.student_id,
+        "batch_id": adj.batch_id,
+        "billing_month": adj.billing_month,
+        "billable_class_count": adj.billable_class_count,
+        "amount_override": amount_override,
+        "calculated_amount": calculated,
+        "final_amount": amount_override if amount_override is not None else calculated,
+        "notes": adj.notes,
     }
 
 
@@ -707,16 +1500,20 @@ def mark_payment_paid(
         raise HTTPException(status_code=400, detail="Invalid billing_month; use YYYY-MM")
 
     batch = db.query(Batch).filter(Batch.id == data.batch_id).first()
-    if not batch or batch.coach_id != admin.id:
+    if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+
+    student = db.query(User).filter(User.id == data.student_id, User.role == UserRole.student).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
 
     sb = db.query(StudentBatch).filter(
         StudentBatch.student_id == data.student_id,
         StudentBatch.batch_id == data.batch_id,
         StudentBatch.is_active == True,
     ).first()
-    if not sb:
-        raise HTTPException(status_code=404, detail="Student not in this batch")
+    # Allow marking paid even without active enrollment (historical arrears),
+    # but prefer creating/updating enrollment payment_status when present.
 
     existing = db.query(Payment).filter(
         Payment.student_id == data.student_id,
@@ -727,11 +1524,36 @@ def mark_payment_paid(
     if existing:
         raise HTTPException(status_code=400, detail="Already marked as paid")
 
+    adj = (
+        db.query(PaymentBillingAdjustment)
+        .filter(
+            PaymentBillingAdjustment.student_id == data.student_id,
+            PaymentBillingAdjustment.batch_id == data.batch_id,
+            PaymentBillingAdjustment.billing_month == data.billing_month,
+        )
+        .first()
+    )
+    month_start, month_end = _billing_month_range(data.billing_month)
+    planned = _resolve_payment_expected_classes(adj)
+    scheduled = _count_regular_batch_sessions(db, data.batch_id, month_start, month_end)
+    monthly_fee = float(batch.monthly_fee or 0)
+    if data.amount is not None:
+        amount = float(data.amount)
+    elif adj and adj.amount_override is not None:
+        amount = float(adj.amount_override)
+    else:
+        billable = (
+            int(adj.billable_class_count)
+            if adj and adj.billable_class_count is not None
+            else scheduled
+        )
+        amount = _fee_for_classes(monthly_fee, billable, planned)
+
     payment = Payment(
         parent_id=admin.id,
         student_id=data.student_id,
         batch_id=data.batch_id,
-        amount=batch.monthly_fee,
+        amount=amount,
         currency="inr",
         billing_month=data.billing_month,
         status="completed",
@@ -749,14 +1571,14 @@ def mark_payment_paid(
             "batch_id": data.batch_id,
             "billing_month": data.billing_month,
             "notes": data.notes,
-            "amount": float(batch.monthly_fee or 0),
+            "amount": amount,
         },
     )
-    sb.payment_status = "paid"
+    if sb:
+        sb.payment_status = "paid"
     db.commit()
     db.refresh(payment)
 
-    student = db.query(User).filter(User.id == data.student_id).first()
     return PaymentResponse(
         id=payment.id,
         parent_id=payment.parent_id,
@@ -784,7 +1606,7 @@ def unmark_payment_paid(
         raise HTTPException(status_code=404, detail="Payment not found")
 
     batch = db.query(Batch).filter(Batch.id == payment.batch_id).first()
-    if not batch or batch.coach_id != admin.id:
+    if not batch:
         raise HTTPException(status_code=404, detail="Payment not found")
 
     if payment.status != "completed":
@@ -1042,7 +1864,7 @@ def get_admin_operational_metrics(
     last_24h = now - timedelta(hours=24)
 
     active_coaches = db.query(User).filter(
-        User.role == UserRole.coach,
+        User.role.in_([UserRole.coach, UserRole.admin]),
         User.is_active == True,
     ).count()
     unassigned_students = db.query(User).filter(

@@ -111,7 +111,7 @@ export default function LoginPage() {
           <div className="flex items-center justify-center gap-2 mb-4">
             <Sparkles className="w-10 h-10 text-amber-400" />
             <h1 className="font-heading text-4xl font-bold bg-gradient-to-r from-emerald-600 to-green-500 bg-clip-text text-transparent">
-              Prodigy Pawns
+              Torus Chess
             </h1>
             <Sparkles className="w-10 h-10 text-amber-400" />
           </div>

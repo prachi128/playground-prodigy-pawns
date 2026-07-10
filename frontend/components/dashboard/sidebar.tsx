@@ -222,7 +222,7 @@ export function Sidebar({ isOpen, onClose, collapsed: externalCollapsed, onColla
             </button>
           ) : (
             <h1 className="font-heading text-2xl font-bold text-sidebar-foreground">
-              Prodigy Pawns
+              Torus Chess
             </h1>
           )}
         </div>

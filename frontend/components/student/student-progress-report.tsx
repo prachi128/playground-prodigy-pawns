@@ -37,7 +37,7 @@ interface StudentProgressReportProps {
 export function StudentProgressReport({
   student,
   batchName,
-  reportLabel = 'Prodigy Pawns — Progress report',
+  reportLabel = 'Torus Chess — Progress report',
   generatedAt = new Date(),
 }: StudentProgressReportProps) {
   const fmtDate = (iso: string) => {

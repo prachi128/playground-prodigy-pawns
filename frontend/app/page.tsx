@@ -101,7 +101,7 @@ export default function Home() {
             Ready to play?
           </p>
           <p className="mt-2 text-lg text-gray-600 dark:text-gray-300">
-            Join Prodigy Pawns — it&apos;s free.
+            Join Torus Chess — it&apos;s free.
           </p>
           <Link
             href="/signup"

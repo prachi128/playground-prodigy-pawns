@@ -189,7 +189,7 @@ export default function StudentReportPage() {
 
         <header className="mb-8 border-b border-border pb-6">
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Prodigy Pawns — Coach report
+            Torus Chess — Coach report
           </p>
           {student.is_active === false && (
             <p className="mt-3 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm text-foreground print:border-foreground/20">

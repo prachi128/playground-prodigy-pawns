@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
@@ -132,6 +132,7 @@ export default function AssignmentsPage() {
   const [puzzleQuery, setPuzzleQuery] = useState('');
   const [puzzleResults, setPuzzleResults] = useState<Puzzle[]>([]);
   const [puzzleSearching, setPuzzleSearching] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   // ── Auth guard ──────────────────────────────────────────────
   useEffect(() => {
@@ -142,7 +143,9 @@ export default function AssignmentsPage() {
 
   // ── Load data ───────────────────────────────────────────────
   useEffect(() => {
-    loadAll();
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    void loadAll();
   }, []);
 
   const loadAll = async () => {

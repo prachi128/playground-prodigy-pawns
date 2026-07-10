@@ -57,7 +57,7 @@ export default function Navbar() {
           <Link href={logoHref} className="flex items-center gap-2 group">
             <Sparkles className="w-8 h-8 text-yellow-300 group-hover:animate-spin" />
             <span className="font-heading text-2xl font-bold text-white">
-              Prodigy Pawns
+              Torus Chess
             </span>
           </Link>
 

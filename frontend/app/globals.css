@@ -4,7 +4,7 @@
  * Shared palette + default tokens (auth / marketing pages).
  * Portal UIs override tokens inside their own shell:
  *   [data-student-shell]  — student dashboard
- *   [data-coach-shell]    — coach console
+ *   [data-coach-shell]    — coach + admin staff console (shared tokens & typography)
  *   [data-parent-shell]   — parent portal
  */
 :root {
@@ -234,7 +234,7 @@
   letter-spacing: -0.015em;
 }
 
-/* Coach shell: light theme — override Tailwind @theme color tokens (they resolve at :root otherwise) */
+/* Coach / admin staff shell — shared portal tokens (admin layout also sets data-coach-shell) */
 [data-coach-shell] {
   color-scheme: light;
   color: hsl(220 9% 26%);
@@ -275,8 +275,9 @@
   background-color: var(--color-background);
 }
 
-/* Coach sidebar — local tokens (never shares student/parent sidebar attributes) */
-[data-coach-shell] [data-coach-sidebar].coach-sidebar-panel {
+/* Coach + admin sidebar — local tokens on dark panel */
+[data-coach-shell] [data-coach-sidebar].coach-sidebar-panel,
+[data-coach-shell] [data-admin-sidebar].coach-sidebar-panel {
   --sidebar-foreground: 210 25% 93%;
   --sidebar-border: 224 20% 20%;
   --color-sidebar-foreground: hsl(210 25% 93%);
@@ -394,7 +395,8 @@
   background-color: hsl(215 28% 7%);
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar].coach-sidebar-panel {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar].coach-sidebar-panel,
+[data-coach-shell][data-coach-theme='dark'] [data-admin-sidebar].coach-sidebar-panel {
   --sidebar-foreground: 210 35% 93%;
   --sidebar-border: 212 12% 21%;
   --color-sidebar-foreground: hsl(210 35% 93%);
@@ -581,15 +583,18 @@
   color: hsl(212 92% 68%);
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'],
+[data-coach-shell][data-coach-theme='dark'] [data-admin-sidebar] a[aria-current='page'] {
   color: hsl(212 92% 68%) !important;
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] svg {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] a[aria-current='page'] svg,
+[data-coach-shell][data-coach-theme='dark'] [data-admin-sidebar] a[aria-current='page'] svg {
   color: hsl(212 92% 68%) !important;
 }
 
-[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] .coach-nav-indicator {
+[data-coach-shell][data-coach-theme='dark'] [data-coach-sidebar] .coach-nav-indicator,
+[data-coach-shell][data-coach-theme='dark'] [data-admin-sidebar] .coach-nav-indicator {
   background-color: hsl(212 92% 58%) !important;
 }
 

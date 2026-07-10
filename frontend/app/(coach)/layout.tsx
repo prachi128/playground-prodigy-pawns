@@ -1,4 +1,4 @@
-// app/(coach)/layout.tsx - Coach App Layout (auth + coach/admin only)
+// app/(coach)/layout.tsx - Staff auth (coach + admin roles)
 
 'use client';
 
@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { CoachLayout as CoachShell } from '@/components/coach/coach-layout';
 import axios from 'axios';
 import { coachAPI } from '@/lib/api';
 import { CoachStatsContext, type CoachStatsData } from '@/contexts/coach-stats-context';
@@ -21,7 +20,7 @@ const coachFont = Plus_Jakarta_Sans({
   weight: ['400', '500', '600'],
 });
 
-export default function CoachLayout({
+export default function StaffLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -55,7 +54,7 @@ export default function CoachLayout({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -66,7 +65,6 @@ export default function CoachLayout({
     if (user && user.role !== 'coach' && user.role !== 'admin') {
       toast.error('Access denied. Coach privileges required.');
       router.push('/dashboard');
-      return;
     }
   }, [isAuthenticated, authLoading, user, router]);
 
@@ -91,9 +89,7 @@ export default function CoachLayout({
   return (
     <CoachStatsContext.Provider value={{ stats: coachStats, statsLoading: coachStatsLoading }}>
       <CoachThemeProvider>
-        <div className={`${coachFont.variable} coach-fonts antialiased`}>
-          <CoachShell>{children}</CoachShell>
-        </div>
+        <div className={`${coachFont.variable} coach-fonts antialiased`}>{children}</div>
       </CoachThemeProvider>
     </CoachStatsContext.Provider>
   );

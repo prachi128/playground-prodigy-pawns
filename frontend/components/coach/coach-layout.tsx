@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCoachTheme } from "@/contexts/coach-theme-context";
 import { cn } from "@/lib/utils";
 import { CoachSidebar } from "./coach-sidebar";
+import { CoachHeader } from "./coach-header";
 
 const COACH_SIDEBAR_COLLAPSED_KEY = "coach-sidebar-collapsed";
 
@@ -36,7 +37,7 @@ export function CoachLayout({ children }: CoachLayoutProps) {
     });
   }, []);
 
-  const mainPadLg = sidebarCollapsed ? "lg:pl-[3.25rem]" : "lg:pl-[11.5rem]";
+  const mainPadMd = sidebarCollapsed ? "md:pl-[3.25rem]" : "md:pl-[11.5rem]";
 
   return (
     <div
@@ -55,9 +56,10 @@ export function CoachLayout({ children }: CoachLayoutProps) {
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-col bg-background transition-[padding] duration-200 ease-out",
-          mainPadLg,
+          mainPadMd,
         )}
       >
+        <CoachHeader onMenuClick={() => setMobileSidebarOpen(true)} />
         <div className="coach-main min-h-0 flex-1 overflow-y-auto bg-background">
           <div
             key={pathname}

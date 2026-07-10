@@ -24,7 +24,7 @@ test.describe("coach panel", () => {
     await expect(page.getByRole("heading", { name: "Puzzles" })).toBeVisible({ timeout: 15000 });
 
     await page.goto("/coach/students");
-    await expect(page.getByRole("heading", { name: "Student management" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "My students" })).toBeVisible({ timeout: 15000 });
 
     await apiContext.dispose();
   });

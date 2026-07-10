@@ -119,7 +119,7 @@ export default function ParentChildProfilePage() {
       <StudentProgressReport
         student={profile.report}
         batchName={profile.batch_name}
-        reportLabel="Prodigy Pawns — Parent report"
+        reportLabel="Torus Chess — Parent report"
       />
     </div>
   );

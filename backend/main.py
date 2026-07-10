@@ -102,7 +102,7 @@ from coach_endpoints import router as coach_router
 from student_management_backend import router as student_router, admin_router as admin_students_router
 from parent_endpoints import router as parent_router
 from batch_endpoints import router as batch_router, admin_router
-from assignment_endpoints import router as assignment_router
+from assignment_endpoints import router as assignment_router, admin_router as admin_assignment_router
 from attendance_endpoints import router as attendance_router
 from bot_admin_endpoints import router as bot_admin_router
 from lesson_endpoints import coach_router as coach_lessons_router, student_router as lesson_router
@@ -574,7 +574,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Prodigy Pawns Student Portal API",
+    title="Torus Chess Student Portal API",
     description="Chess Academy Portal for Students - Play, Learn, and Grow!",
     version="1.0.0",
     lifespan=lifespan,
@@ -605,6 +605,7 @@ app.include_router(parent_router)
 app.include_router(batch_router)
 app.include_router(admin_router)
 app.include_router(assignment_router)
+app.include_router(admin_assignment_router)
 app.include_router(attendance_router)
 app.include_router(bot_admin_router)
 app.include_router(coach_lessons_router)
@@ -629,7 +630,7 @@ def _cookie_attrs():
 @app.get("/")
 def read_root():
     return {
-        "message": "Welcome to Prodigy Pawns Student Portal API! 🎮♟️",
+        "message": "Welcome to Torus Chess Student Portal API! 🎮♟️",
         "version": "1.0.0",
         "status": "running",
         "docs": "/docs"

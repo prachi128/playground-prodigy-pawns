@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case, or_
 from typing import List, Optional
 from pydantic import BaseModel, field_serializer
-from models import Puzzle, User, DifficultyLevel, PuzzleFormat, UserRole, Assignment, PuzzleAttempt, Game, Batch, ClassSession
+from models import Puzzle, User, DifficultyLevel, PuzzleFormat, UserRole, Assignment, PuzzleAttempt, Game, Batch, ClassSession, StudentBatch
 from schemas import UserResponse
 from auth import get_current_user
 from database import get_db
@@ -353,7 +353,7 @@ def revalidate_puzzle(
         }
 
 
-def _compute_coach_stats(db: Session) -> dict:
+def _compute_coach_stats(db: Session, user: User) -> dict:
     """Aggregated puzzle stats (two SQL queries)."""
     totals = db.query(
         func.count(Puzzle.id),
@@ -381,6 +381,33 @@ def _compute_coach_stats(db: Session) -> dict:
 
     success_rate = (total_success / total_attempts * 100) if total_attempts > 0 else 0
 
+    active_batch_student_ids = {
+        sid
+        for (sid,) in db.query(StudentBatch.student_id)
+        .filter(StudentBatch.is_active == True)
+        .distinct()
+        .all()
+    }
+
+    if _is_admin(user):
+        student_rows = (
+            db.query(User.id, User.primary_coach_id)
+            .filter(User.role == UserRole.student, User.is_active == True)
+            .all()
+        )
+        unassigned_coach_count = sum(1 for row in student_rows if row.primary_coach_id is None)
+        assigned_without_batch_count = sum(
+            1
+            for row in student_rows
+            if row.primary_coach_id is not None and row.id not in active_batch_student_ids
+        )
+        roster_without_batch_count = assigned_without_batch_count
+    else:
+        roster_ids = _coach_roster_student_ids(user, db) or set()
+        roster_without_batch_count = sum(1 for sid in roster_ids if sid not in active_batch_student_ids)
+        unassigned_coach_count = 0
+        assigned_without_batch_count = 0
+
     return {
         "total_puzzles": total_puzzles,
         "active_puzzles": active_puzzles,
@@ -389,6 +416,9 @@ def _compute_coach_stats(db: Session) -> dict:
         "total_attempts": total_attempts,
         "total_success": total_success,
         "overall_success_rate": round(success_rate, 2),
+        "roster_students_without_batch": roster_without_batch_count,
+        "students_without_coach": unassigned_coach_count,
+        "students_with_coach_without_batch": assigned_without_batch_count,
     }
 
 
@@ -408,7 +438,7 @@ def coach_bootstrap(
     db.refresh(user)
     user_payload = UserResponse.model_validate(user).model_dump(mode="json")
     user_payload["level_category"] = get_level_category(user.level)
-    stats = _compute_coach_stats(db)
+    stats = _compute_coach_stats(db, user)
     return {"user": user_payload, "stats": stats}
 
 
@@ -418,7 +448,7 @@ def get_coach_stats(
     db: Session = Depends(get_db)
 ):
     """Get statistics for coach dashboard (aggregated in two queries)."""
-    return _compute_coach_stats(db)
+    return _compute_coach_stats(db, user)
 
 
 @router.get("/priorities")
