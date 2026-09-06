@@ -46,10 +46,13 @@ export default function StudentLayout({
   if (!isAuthenticated) return null;
 
   const hideHeader = pathname !== '/dashboard';
+  const isGreatChessAdventure = pathname?.startsWith('/adventure/great-chess-adventure');
 
   return (
     <div data-student-shell className={`${fredoka.variable} ${nunito.variable} dashboard-fonts`}>
-      <DashboardLayout hideHeader={hideHeader}>{children}</DashboardLayout>
+      <DashboardLayout hideHeader={hideHeader} fullBleedMain={isGreatChessAdventure}>
+        {children}
+      </DashboardLayout>
     </div>
   );
 }

@@ -106,6 +106,7 @@ from assignment_endpoints import router as assignment_router, admin_router as ad
 from attendance_endpoints import router as attendance_router
 from bot_admin_endpoints import router as bot_admin_router
 from lesson_endpoints import coach_router as coach_lessons_router, student_router as lesson_router
+from security_config import get_cookie_attrs, get_cors_origins
 # Level from rating (max level 15; level is no longer from XP)
 LEVEL_MIN = 1
 LEVEL_MAX = 15
@@ -580,15 +581,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware (include both localhost and 127.0.0.1 so it works either way)
+# CORS: localhost defaults in development; CORS_ORIGINS / FRONTEND_URL in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -620,11 +616,7 @@ def get_server_time():
 
 # Cookie settings for auth (Cookie-Based Session Auth)
 def _cookie_attrs():
-    return {
-        "httponly": True,
-        "samesite": "lax",
-        "path": "/",
-    }
+    return get_cookie_attrs()
 
 # Health check endpoints
 @app.get("/")
@@ -1070,10 +1062,6 @@ def login(
     user_payload["level_category"] = get_level_category(user.level)
     response = JSONResponse(content={"user": user_payload})
     
-    # Debug: log origin
-    origin = request.headers.get("origin", "unknown")
-    print(f"🔐 Login successful for user {user.id}. Origin: {origin}")
-    
     cookie_attrs = _cookie_attrs()
     response.set_cookie(
         key=COOKIE_ACCESS_TOKEN,
@@ -1087,8 +1075,6 @@ def login(
         max_age=7 * 24 * 3600,
         **cookie_attrs,
     )
-    print(f"🍪 Cookies set: access_token={bool(access_token)}, refresh_token={bool(refresh_token)}")
-    print(f"🍪 Cookie attrs: {cookie_attrs}")
     return response
 
 @app.post("/api/auth/refresh")
@@ -1131,8 +1117,20 @@ def refresh_token(request: Request, db: Session = Depends(get_db)):
 def logout():
     """Clear auth cookies (access + refresh)."""
     response = JSONResponse(content={"message": "Logged out"})
-    response.delete_cookie(key=COOKIE_ACCESS_TOKEN, path="/")
-    response.delete_cookie(key=COOKIE_REFRESH_TOKEN, path="/")
+    cookie_attrs = _cookie_attrs()
+    # Match path / Secure / SameSite used when setting cookies so browsers clear them.
+    response.delete_cookie(
+        key=COOKIE_ACCESS_TOKEN,
+        path=cookie_attrs.get("path", "/"),
+        secure=cookie_attrs.get("secure", False),
+        samesite=cookie_attrs.get("samesite", "lax"),
+    )
+    response.delete_cookie(
+        key=COOKIE_REFRESH_TOKEN,
+        path=cookie_attrs.get("path", "/"),
+        secure=cookie_attrs.get("secure", False),
+        samesite=cookie_attrs.get("samesite", "lax"),
+    )
     return response
 
 

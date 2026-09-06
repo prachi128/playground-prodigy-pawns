@@ -1,0 +1,819 @@
+{
+  "title": "The Great Chess Adventure",
+  "guide": {
+    "name": "Wizzy the Owl Wizard",
+    "intro": "Once upon a time, a wise old owl named Wizzy the Owl Wizard found a magical chessboard glowing under the stars. “Whoever plays across all six worlds,” he hooted, “will become a true Chess Champion!” He looked around… and his big golden eyes landed on YOU. “Ready, little champion? Our adventure begins in the Beginner Forest!”",
+    "finale": "Confetti rains from the sky as all 50 friends gather to cheer your name. “You did it, champion,” says Wizzy. “But remember — the real magic was never the board. It was YOU, growing stronger with every single game!”"
+  },
+  "worlds": [
+    {
+      "id": "beginner-forest",
+      "order": 1,
+      "name": "The Beginner Forest",
+      "emoji": "🌳",
+      "themeColor": "#2E7D32",
+      "ratingRange": [
+        100,
+        250
+      ],
+      "narration": {
+        "intro": "Wizzy flutters down from a giant oak tree. “Welcome, little champion! Everyone here is still learning — just like you!”",
+        "outro": "Grandpa Oak waves a leafy branch goodbye. The air starts to smell like chocolate and strawberries… “Next stop — the Candy Kingdom!”"
+      },
+      "bots": [
+        {
+          "id": "benny-sleepy-bunny",
+          "level": 1,
+          "name": "Benny the Sleepy Bunny",
+          "rating": 100,
+          "avatar": "bunny",
+          "personality": "Yawns after every move and dreams about carrots mid-game.",
+          "playStyle": "Forgets his pieces everywhere — even his queen takes naps in danger!",
+          "dialogue": {
+            "greeting": "Yawwwn… oh! A new friend! Let's play before nap time!",
+            "playerWins": "You won! That deserves… zzz… a victory carrot!",
+            "playerLoses": "Yaaawn… you played wonderfully! Win or lose, you get a carrot high-five. Wanna play again after my nap?"
+          }
+        },
+        {
+          "id": "mushroom-mel",
+          "level": 2,
+          "name": "Mushroom Mel",
+          "rating": 120,
+          "avatar": "mushroom",
+          "personality": "A giggly mushroom who bounces at anything exciting — which is everything.",
+          "playStyle": "Moves pawns in silly directions and giggles even when his own pieces get captured.",
+          "dialogue": {
+            "greeting": "Hee hee! Hi hi! Let's play play play!",
+            "playerWins": "You won! *bounces uncontrollably* Best game EVER!",
+            "playerLoses": "Hee hee! Every game makes you grow taller, just like me. You're already sprouting into a star!"
+          }
+        },
+        {
+          "id": "tilly-turtle",
+          "level": 3,
+          "name": "Tilly the Turtle",
+          "rating": 140,
+          "avatar": "turtle",
+          "personality": "The slowest, sweetest turtle in the forest. Brings snacks to every game.",
+          "playStyle": "Plays verrry slowly and gives away pieces like birthday presents.",
+          "dialogue": {
+            "greeting": "Hello, friend. I brought snacks. Shall we begin… slowly?",
+            "playerWins": "You won! Have a celebration lettuce leaf!",
+            "playerLoses": "Slow and steady, friend! You're getting better every single move. I can see it from inside my shell!"
+          }
+        },
+        {
+          "id": "pip-squirrel",
+          "level": 4,
+          "name": "Pip the Squirrel",
+          "rating": 160,
+          "avatar": "squirrel",
+          "personality": "Can never focus because — ACORN! Where was he? Oh right, chess.",
+          "playStyle": "Gets distracted mid-game and forgets his plan. Grabs pawns like acorns.",
+          "dialogue": {
+            "greeting": "Hi! I'm Pip! I love chess and — ACORN!",
+            "playerWins": "You won! You must have squirrel-level focus!",
+            "playerLoses": "Wow, you're so focused! I wish I could pay attention like you. You're nuts-level amazing!"
+          }
+        },
+        {
+          "id": "fern-fawn",
+          "level": 5,
+          "name": "Fern the Fawn",
+          "rating": 180,
+          "avatar": "deer",
+          "personality": "A shy little deer who hides behind trees between moves.",
+          "playStyle": "Only feels brave enough to move pawns and knights. Everything else is too scary!",
+          "dialogue": {
+            "greeting": "Oh! H-hello… will you play gently with me?",
+            "playerWins": "You won… and you made it fun. Thank you!",
+            "playerLoses": "You make chess feel less scary… thank you for playing with me. You're braver every game!"
+          }
+        },
+        {
+          "id": "buzzby-bee",
+          "level": 6,
+          "name": "Buzzby the Bee",
+          "rating": 200,
+          "avatar": "bee",
+          "personality": "Zigzags around humming happy songs. Thinks knights are bees because they jump.",
+          "playStyle": "Loves moving knights in zigzags — forward, backward, sometimes in circles!",
+          "dialogue": {
+            "greeting": "Buzz buzz! Ready to zigzag, honey?",
+            "playerWins": "Sweet victory! You're un-bee-lievable!",
+            "playerLoses": "Buzz buzz! You're the bee's knees! Every game makes your chess honey sweeter!"
+          }
+        },
+        {
+          "id": "ollie-owlet",
+          "level": 7,
+          "name": "Ollie the Owlet",
+          "rating": 225,
+          "avatar": "owl",
+          "personality": "Wizzy's little nephew, studying to be a wizard owl. Wears tiny reading glasses.",
+          "playStyle": "Tries little checks on your king and hoots proudly when they work — but misses lots!",
+          "dialogue": {
+            "greeting": "Hoot! I've been studying all week. Let's test my homework!",
+            "playerWins": "Hoot hoot! You beat a wizard-in-training! Impressive!",
+            "playerLoses": "Hoot hoot! Uncle Wizzy says losing is just learning in disguise. We're both getting wiser!"
+          }
+        },
+        {
+          "id": "grandpa-oak",
+          "level": 8,
+          "name": "Grandpa Oak",
+          "rating": 250,
+          "isBoss": true,
+          "avatar": "tree",
+          "personality": "The oldest, kindest tree in the forest. Tells stories about games from 100 years ago.",
+          "playStyle": "FOREST BOSS! Guards his king behind pawn branches, but forgets the corners of the board.",
+          "dialogue": {
+            "greeting": "Ah, a young sapling! Sit in my shade and let's play.",
+            "playerWins": "Splendid! You've out-grown this old tree. Onward, champion!",
+            "playerLoses": "Well played, little sapling! Trees grow slowly, ring by ring — and so do champions. I'm proud of you."
+          }
+        }
+      ]
+    },
+    {
+      "id": "candy-kingdom",
+      "order": 2,
+      "name": "The Candy Kingdom",
+      "emoji": "🍭",
+      "themeColor": "#C2185B",
+      "ratingRange": [
+        280,
+        500
+      ],
+      "narration": {
+        "intro": "You cross a river of lemonade onto a road of chocolate bricks. “Careful,” Wizzy whispers, “the players here are sweet… but a little trickier!”",
+        "outro": "King Kandy hands you a lollipop medal. In the distance, waves crash and a parrot squawks… “Arrr! The Pirate Cove is calling!”"
+      },
+      "bots": [
+        {
+          "id": "gummy-gus",
+          "level": 9,
+          "name": "Gummy Gus",
+          "rating": 280,
+          "avatar": "gummy-bear",
+          "personality": "A bouncy gummy bear who cannot sit still — boings after every move.",
+          "playStyle": "Grabs every piece he can, like candy in a candy shop — even when it's trouble!",
+          "dialogue": {
+            "greeting": "Boing! Boing! A challenger! Boing!",
+            "playerWins": "You won! I'm bouncing with joy for you!",
+            "playerLoses": "Boing boing! Sweet game! Every match makes you chewier… I mean, stronger! Let's bounce back!"
+          }
+        },
+        {
+          "id": "lolly-lila",
+          "level": 10,
+          "name": "Lolly Lila",
+          "rating": 310,
+          "avatar": "lollipop",
+          "personality": "A swirly lollipop who twirls everywhere. Calls her bishops her 'candy canes.'",
+          "playStyle": "Slides bishops in long swirly lines but forgets about everything else.",
+          "dialogue": {
+            "greeting": "Twirl on in, sugar! Let's make this game swirly!",
+            "playerWins": "A swirl-liant victory! You dazzle, darling!",
+            "playerLoses": "What a swirl-tastic game! You're twirling your way to the top, sugar star!"
+          }
+        },
+        {
+          "id": "marsh-mellow",
+          "level": 11,
+          "name": "Marsh Mellow",
+          "rating": 340,
+          "avatar": "marshmallow",
+          "personality": "The softest, most relaxed marshmallow ever. Nothing worries Marsh.",
+          "playStyle": "Never attacks! Builds soft, fluffy pawn walls and hides behind them.",
+          "dialogue": {
+            "greeting": "Heyyy. No rush. Comfy? Okay. Chess time.",
+            "playerWins": "You won. Cool cool cool. Softest congratulations ever.",
+            "playerLoses": "Stay soft, stay happy, friend. You played smooth as marshmallow cream. Toast-ally awesome!"
+          }
+        },
+        {
+          "id": "sir-choco-chip",
+          "level": 12,
+          "name": "Sir Choco Chip",
+          "rating": 370,
+          "avatar": "cookie-knight",
+          "personality": "A brave chocolate-chip knight in a cookie helmet. Shouts 'CHAAARGE!' a lot.",
+          "playStyle": "Charges his knights out super early and attacks before he's ready!",
+          "dialogue": {
+            "greeting": "A worthy opponent! CHAAARGE… I mean, after you.",
+            "playerWins": "Victory is yours! I salute you, brave knight!",
+            "playerLoses": "CHAAARGE… into your next game! A true knight never gives up, and neither do you!"
+          }
+        },
+        {
+          "id": "bubble-gum-bella",
+          "level": 13,
+          "name": "Bubble-Gum Bella",
+          "rating": 400,
+          "avatar": "bubblegum",
+          "personality": "Blows a giant bubble every turn. When it pops, she forgets her plan!",
+          "playStyle": "Plays fast, fast, fast! Speedy moves mean she misses things — pop!",
+          "dialogue": {
+            "greeting": "Hi-hi-hi! Fast game? Fast game! *pop*",
+            "playerWins": "You won! POP! That's my happy bubble!",
+            "playerLoses": "Pop! You're bubbling with talent! Quick or slow, you always show up — that's what champions do!"
+          }
+        },
+        {
+          "id": "jelly-bean-gene",
+          "level": 14,
+          "name": "Jelly-Bean Gene",
+          "rating": 430,
+          "avatar": "jellybean",
+          "personality": "Nobody knows what Gene will do next — not even Gene!",
+          "playStyle": "Makes wild, surprising moves. Some are silly, some are secretly clever!",
+          "dialogue": {
+            "greeting": "Guess what move I'll make first? …Me neither!",
+            "playerWins": "You won! What a delicious surprise!",
+            "playerLoses": "Surprise! The best flavor of all is trying again. You've got that flavor for sure!"
+          }
+        },
+        {
+          "id": "caramel-cara",
+          "level": 15,
+          "name": "Caramel Cara",
+          "rating": 465,
+          "avatar": "caramel",
+          "personality": "Sweet, slow, and sticky. Stretches like warm caramel and never rushes.",
+          "playStyle": "Plays sticky defense — her pieces hold on tight and are hard to shake loose!",
+          "dialogue": {
+            "greeting": "Welcome, sweetie. Settle in… this might take a while.",
+            "playerWins": "You unstuck my defense! Smooth work, sugar.",
+            "playerLoses": "Mmm, what a smooth game! Stick with chess, sweetie — you're getting stronger, drip by drip!"
+          }
+        },
+        {
+          "id": "king-kandy",
+          "level": 16,
+          "name": "King Kandy",
+          "rating": 500,
+          "isBoss": true,
+          "avatar": "candy-king",
+          "personality": "The jolly ruler with a sour-gummy crown. Laughs so hard his throne shakes.",
+          "playStyle": "CANDY BOSS! Marches his king out for adventures way too early — royal, but risky!",
+          "dialogue": {
+            "greeting": "HO HO! Welcome to my sugary court, brave one!",
+            "playerWins": "You've defeated a king! The whole kingdom cheers!",
+            "playerLoses": "Ho ho! Marvelous match! In my kingdom, every player who tries their best wears a crown. That's you!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pirate-cove",
+      "order": 3,
+      "name": "The Pirate Cove",
+      "emoji": "🏴‍☠️",
+      "themeColor": "#1565C0",
+      "ratingRange": [
+        530,
+        750
+      ],
+      "narration": {
+        "intro": "Your candy boat drifts into a foggy cove of treasure maps and giggling seagulls. “The pirates love sneaky traps,” warns Wizzy. “Eyes wide open, matey!”",
+        "outro": "Captain Goldbeard salutes with his golden hook. Across the water, a city of blinking lights hums… “Beep beep! Robot City is expecting us!”"
+      },
+      "bots": [
+        {
+          "id": "salty-sam",
+          "level": 17,
+          "name": "Salty Sam the Cabin Kid",
+          "rating": 530,
+          "avatar": "cabin-kid",
+          "personality": "The youngest pirate aboard, dreaming of treasure. Calls everyone 'matey.'",
+          "playStyle": "Just learned his first sneaky trap and tries it every. single. game.",
+          "dialogue": {
+            "greeting": "Ahoy, matey! Watch out for me trap! …Oops, forget I said that.",
+            "playerWins": "Ye beat me fair and square! What a sailor!",
+            "playerLoses": "Arrr, matey! Ye sailed a fine game! Every voyage makes ye a saltier sailor. Anchors up, try again!"
+          }
+        },
+        {
+          "id": "polly-parrot",
+          "level": 18,
+          "name": "Polly the Parrot",
+          "rating": 560,
+          "avatar": "parrot",
+          "personality": "SQUAWK! Repeats everything you say. Everything you say.",
+          "playStyle": "Copies your moves like a mirror! But copying can't save her forever…",
+          "dialogue": {
+            "greeting": "SQUAWK! New player! New player!",
+            "playerWins": "You win! You win! Polly impressed! SQUAWK!",
+            "playerLoses": "SQUAWK! Great game! Great game! Polly thinks you're clever! Clever! Play again! Again!"
+          }
+        },
+        {
+          "id": "squid-lips-lou",
+          "level": 19,
+          "name": "Squid Lips Lou",
+          "rating": 590,
+          "avatar": "squid",
+          "personality": "A friendly squid with eight arms and eight opinions. Hugs the board when excited.",
+          "playStyle": "Grabby grabby! Reaches for captures with all eight arms, even when he shouldn't.",
+          "dialogue": {
+            "greeting": "Eight arms ready! Which one moves first? Hmm…",
+            "playerWins": "You out-swam a squid! Ink-credible!",
+            "playerLoses": "Eight arms, one big hug for you! Win or lose, you're ink-credible, kiddo!"
+          }
+        },
+        {
+          "id": "peg-leg-penny",
+          "level": 20,
+          "name": "Peg-Leg Penny",
+          "rating": 620,
+          "avatar": "pirate-penny",
+          "personality": "Taps her wooden leg when plotting something sneaky — tap, tap, tap.",
+          "playStyle": "Queen of one-move traps! Hides tricks around the board like buried treasure.",
+          "dialogue": {
+            "greeting": "Tap, tap, tap… come closer, dearie. Let's play.",
+            "playerWins": "Ye spotted every trick! Sharpest eyes in the cove!",
+            "playerLoses": "Tap tap! Ye dodged some o' me traps — sharp eyes, sailor! Sharp eyes find treasure every time!"
+          }
+        },
+        {
+          "id": "barnacle-bob",
+          "level": 21,
+          "name": "Barnacle Bob",
+          "rating": 650,
+          "avatar": "barnacle",
+          "personality": "Stuck to the same rock for 40 years and sees no reason to hurry now.",
+          "playStyle": "Sticks to defense like a barnacle, then suddenly — SURPRISE! — attacks!",
+          "dialogue": {
+            "greeting": "I haven't moved in 40 years. Today's yer lucky day.",
+            "playerWins": "Ye pried me off me rock! Mighty impressive!",
+            "playerLoses": "Stick with it, matey! Barnacles never let go, and neither should you. Ye're growin' tougher!"
+          }
+        },
+        {
+          "id": "first-mate-fifi",
+          "level": 22,
+          "name": "First Mate Fifi",
+          "rating": 685,
+          "avatar": "fox-pirate",
+          "personality": "A clever fox in a captain's coat. Why steal one treasure when you can grab two?",
+          "playStyle": "Loves attacking two things at once! Watch when her pieces point in two directions.",
+          "dialogue": {
+            "greeting": "Ooh, a shiny new opponent! Two eyes on you, always.",
+            "playerWins": "You guarded your treasures well! Foxy playing!",
+            "playerLoses": "Two treasures are nice, but the real gold is a player who keeps trying — and that's you, shiny!"
+          }
+        },
+        {
+          "id": "cannonball-carl",
+          "level": 23,
+          "name": "Cannonball Carl",
+          "rating": 720,
+          "avatar": "cannon",
+          "personality": "BOOM! Talks in a booming voice. Thinks everything is more fun with cannons.",
+          "playStyle": "Fires his rooks down open lines like cannonballs! KABOOM!",
+          "dialogue": {
+            "greeting": "LOAD THE ROOKS! I mean… hello! BOOM!",
+            "playerWins": "BOOM! You out-blasted me! Cannon-tastic!",
+            "playerLoses": "BOOM! What a blast of a game! Ye've got cannon-sized courage, little buccaneer!"
+          }
+        },
+        {
+          "id": "captain-goldbeard",
+          "level": 24,
+          "name": "Captain Goldbeard",
+          "rating": 750,
+          "isBoss": true,
+          "avatar": "gold-pirate",
+          "personality": "Legendary captain with a beard of actual gold. Secretly a softie who loves kittens.",
+          "playStyle": "COVE BOSS! A master of sneaky traps — tricks inside tricks inside tricks!",
+          "dialogue": {
+            "greeting": "So… ye've reached the captain. Let's see yer courage, sailor.",
+            "playerWins": "Ye've bested Goldbeard himself! Legends will sing of ye!",
+            "playerLoses": "Arrr, ye've got the heart of a true captain! X marks the spot — and the treasure was yer courage all along!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "robot-city",
+      "order": 4,
+      "name": "Robot City",
+      "emoji": "🤖",
+      "themeColor": "#455A64",
+      "ratingRange": [
+        780,
+        1000
+      ],
+      "narration": {
+        "intro": "You ride a bubble submarine into a shiny city of friendly robots. “The robots play very tidy chess,” says Wizzy. “Time to sharpen those circuits!”",
+        "outro": "Mayor Motherboard gives you a golden gear badge. Above the city, stars twinkle… “Hold on tight — we're blasting off to the Star Galaxy!”"
+      },
+      "bots": [
+        {
+          "id": "bleep",
+          "level": 25,
+          "name": "Bleep",
+          "rating": 780,
+          "avatar": "robot-small",
+          "personality": "A teacup-sized robot who says 'bleep!' when happy — which is always.",
+          "playStyle": "Makes small, careful moves and double-checks everything twice.",
+          "dialogue": {
+            "greeting": "Bleep! New opponent detected. Friendship mode: ON.",
+            "playerWins": "Bleep! You win! Happiness levels: overflowing!",
+            "playerLoses": "Bleep! Game analyzed: YOU ARE AWESOME. Error not found. Playing again is recommended!"
+          }
+        },
+        {
+          "id": "boop",
+          "level": 26,
+          "name": "Boop",
+          "rating": 805,
+          "avatar": "robot-small-2",
+          "personality": "Bleep's twin! Says 'boop!' instead — they argue about which sounds cooler.",
+          "playStyle": "Loves trading pieces — you take mine, I take yours! Trades are like high-fives.",
+          "dialogue": {
+            "greeting": "Boop! Ready to trade some pieces and some smiles?",
+            "playerWins": "Boop! Defeat accepted. Respect delivered!",
+            "playerLoses": "Boop! Trade complete: your effort for my respect. Best trade ever! Boop boop!"
+          }
+        },
+        {
+          "id": "gizmo-gears",
+          "level": 27,
+          "name": "Gizmo Gears",
+          "rating": 830,
+          "avatar": "clockwork",
+          "personality": "A clockwork robot on tick-tock time. Everything happens in perfect order.",
+          "playStyle": "Brings out pieces one by one like clockwork — knights, bishops, castle the king.",
+          "dialogue": {
+            "greeting": "Tick tock! Right on schedule. Let us begin.",
+            "playerWins": "Precisely excellent! You beat the clockwork!",
+            "playerLoses": "Tick tock! Every game winds you up stronger. Your gears are turning beautifully, friend!"
+          }
+        },
+        {
+          "id": "sparky",
+          "level": 28,
+          "name": "Sparky",
+          "rating": 860,
+          "avatar": "robot-lightning",
+          "personality": "A zippy robot with lightning stickers. Gets SO excited smoke puffs from her ears.",
+          "playStyle": "Launches fast, zappy attacks! But rushing means — bzzzt! — short circuit!",
+          "dialogue": {
+            "greeting": "ZZZAP! Hi! Let's play FAST! Or slow! Mostly fast!",
+            "playerWins": "You won! *happy sparks everywhere* AMAZING!",
+            "playerLoses": "Bzzzt! You're electric! Even my lightning can't keep up with how fast you're improving!"
+          }
+        },
+        {
+          "id": "roomba-rex",
+          "level": 29,
+          "name": "Roomba Rex",
+          "rating": 890,
+          "avatar": "roomba",
+          "personality": "A round robot who cannot STAND a messy board. Dreams of boards clean as mirrors.",
+          "playStyle": "Vacuums pieces off with trades until only kings and pawns remain. So tidy!",
+          "dialogue": {
+            "greeting": "Welcome! Please wipe your feet. Clean game ahead!",
+            "playerWins": "You cleaned up! Spotless victory!",
+            "playerLoses": "Board cleaned! Dust detected: zero. Talent detected: MAXIMUM. You're sparkling, champ!"
+          }
+        },
+        {
+          "id": "mega-mags",
+          "level": 30,
+          "name": "Mega Mags",
+          "rating": 920,
+          "avatar": "magnet-bot",
+          "personality": "A robot with giant magnet arms. Spoons follow her around the city.",
+          "playStyle": "Pins your pieces down with magnet powers — once she sticks, they can't move!",
+          "dialogue": {
+            "greeting": "Come closer… no wait, that's the magnets. Hello!",
+            "playerWins": "I'm drawn to your talent! Magnificent win!",
+            "playerLoses": "You're attractive — magnetically speaking! I'm pulled toward one conclusion: you're getting GOOD."
+          }
+        },
+        {
+          "id": "circuit-cindy",
+          "level": 31,
+          "name": "Circuit Cindy",
+          "rating": 950,
+          "avatar": "robot-kid",
+          "personality": "The smartest kid-robot in school, with a backpack of spare batteries 'just in case.'",
+          "playStyle": "Thinks two moves ahead! If you move here, she already knows what she'll do there.",
+          "dialogue": {
+            "greeting": "Probability of a fun game: 100%. Let's begin!",
+            "playerWins": "Recalculating… yep, you're brilliant. Well won!",
+            "playerLoses": "Calculation complete: you + practice = unstoppable. My circuits never lie!"
+          }
+        },
+        {
+          "id": "drone-dave",
+          "level": 32,
+          "name": "Drone Dave",
+          "rating": 975,
+          "avatar": "drone",
+          "personality": "A chill flying robot who films slow-motion replays of cool moves.",
+          "playStyle": "Hovers over the board spotting weak squares — then lands pieces right on them!",
+          "dialogue": {
+            "greeting": "Hovering in! I've got a great view of the board.",
+            "playerWins": "Victory confirmed from above! Sky-high skills!",
+            "playerLoses": "From up here, I can see it clearly: you're on the path to greatness. Replay saved forever!"
+          }
+        },
+        {
+          "id": "mayor-motherboard",
+          "level": 33,
+          "name": "Mayor Motherboard",
+          "rating": 1000,
+          "isBoss": true,
+          "avatar": "mayor-bot",
+          "personality": "The wise, kind mayor. Her crown is a keyboard; her speeches end with 'Enter!'",
+          "playStyle": "ROBOT BOSS! Solid, sensible chess with no silly mistakes. Beat her to level up!",
+          "dialogue": {
+            "greeting": "Welcome to City Hall, citizen. Show me your best. Enter!",
+            "playerWins": "You've beaten the Mayor! Robot City salutes you! Enter!",
+            "playerLoses": "Citizen, you have upgraded magnificently! Robot City believes in you. Press play to continue. Enter!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "star-galaxy",
+      "order": 5,
+      "name": "The Star Galaxy",
+      "emoji": "🚀",
+      "themeColor": "#6A1B9A",
+      "ratingRange": [
+        1030,
+        1300
+      ],
+      "narration": {
+        "intro": "WHOOSH! Your rocket zooms past comets and giggling moons. “Deep breath, space cadet,” says Wizzy, floating upside-down. “You're ready for this.”",
+        "outro": "Captain Cosmo pins a star medal on your spacesuit. Far below, mountains glow orange with dragon fire… “The final world awaits!”"
+      },
+      "bots": [
+        {
+          "id": "astro-andy",
+          "level": 34,
+          "name": "Astro Andy",
+          "rating": 1030,
+          "avatar": "astronaut",
+          "personality": "A cheerful cadet who read the Space Chess Manual twice. Salutes before every game.",
+          "playStyle": "Plays openings straight from the manual — pieces out, king safe, by the book!",
+          "dialogue": {
+            "greeting": "Cadet reporting! Pre-game checklist complete. Salute!",
+            "playerWins": "Mission accomplished — by YOU! Outstanding, cadet!",
+            "playerLoses": "Cadet, your mission report says: IMPROVING FAST. The manual has one rule above all: never give up!"
+          }
+        },
+        {
+          "id": "luna-moon-cat",
+          "level": 35,
+          "name": "Luna the Moon Cat",
+          "rating": 1060,
+          "avatar": "moon-cat",
+          "personality": "A silvery cat who naps in moon craters. Quiet… so quiet… until she POUNCES.",
+          "playStyle": "Plays calm, sleepy moves… then suddenly pounces with a surprise attack!",
+          "dialogue": {
+            "greeting": "Purrr… come sit in the moonlight. Let's play… quietly.",
+            "playerWins": "You caught a moon cat. Purrfectly played.",
+            "playerLoses": "Purrrr… you play like moonlight, getting brighter every night. See you next orbit, star player."
+          }
+        },
+        {
+          "id": "comet-kid",
+          "level": 36,
+          "name": "Comet Kid",
+          "rating": 1090,
+          "avatar": "comet",
+          "personality": "The fastest kid in the galaxy, with a sparkly stardust tail. Always early!",
+          "playStyle": "Zooms into speedy attacks before you can blink! Fast pieces everywhere!",
+          "dialogue": {
+            "greeting": "First one to the board wins! …Oh wait, that's not the rules.",
+            "playerWins": "You beat a comet! That's officially super-sonic!",
+            "playerLoses": "Zooooom! You kept up with a comet — that's incredible! Your skills are moving at light speed!"
+          }
+        },
+        {
+          "id": "rocket-rhonda",
+          "level": 37,
+          "name": "Rocket Rhonda",
+          "rating": 1125,
+          "avatar": "rocket",
+          "personality": "A rocket engineer who counts down before her favorite moves: 'Three… two… one…'",
+          "playStyle": "Launches big attacks at your king's castle! When she counts down, hold your helmet!",
+          "dialogue": {
+            "greeting": "Three… two… one… GAME ON!",
+            "playerWins": "You launched past me! T-minus zero doubts: you're great!",
+            "playerLoses": "LIFT-OFF! Whatever happens on the board, your progress chart only goes UP. That's rocket science!"
+          }
+        },
+        {
+          "id": "zorp",
+          "level": 38,
+          "name": "Zorp the Friendly Alien",
+          "rating": 1160,
+          "avatar": "alien",
+          "personality": "Three eyes, four arms, one giant heart. On Zorp's planet, pieces are made of jelly.",
+          "playStyle": "Makes weird, wonky moves that turn out to be secretly super clever!",
+          "dialogue": {
+            "greeting": "Greetings, Earthling! Zorp brings jelly and friendship!",
+            "playerWins": "Zib-zab-WOW! You defeated Zorp! Galactic high-four!",
+            "playerLoses": "Greetings, Earth genius! On my planet, we say: 'Zib-zab-zoob!' It means 'losing is learning.' Zib-zab-zoob!"
+          }
+        },
+        {
+          "id": "nebula-nia",
+          "level": 39,
+          "name": "Nebula Nia",
+          "rating": 1195,
+          "avatar": "nebula",
+          "personality": "A dreamy stargazer who paints with stardust — and plans games the same way.",
+          "playStyle": "Builds big, patient plans piece by piece. By the time you notice, it's glowing!",
+          "dialogue": {
+            "greeting": "Welcome, little star. Let's paint a beautiful game together.",
+            "playerWins": "Your plan shone brighter than mine. Simply stellar.",
+            "playerLoses": "Beautiful game, little star. Great things take time to shine — and you are already glowing."
+          }
+        },
+        {
+          "id": "saturn-sue",
+          "level": 40,
+          "name": "Saturn Sue",
+          "rating": 1230,
+          "avatar": "saturn",
+          "personality": "Hula-hoops with her own rings while playing. Never dropped one. Not once.",
+          "playStyle": "Controls the open lines and circles the board — her rooks spin around you like rings!",
+          "dialogue": {
+            "greeting": "Step into the ring — well, rings! Let's spin!",
+            "playerWins": "You ran rings around me! Spin-sational!",
+            "playerLoses": "Ring-a-ding, what a game! You're circling closer and closer to greatness — I can feel it in my rings!"
+          }
+        },
+        {
+          "id": "meteor-max",
+          "level": 41,
+          "name": "Meteor Max",
+          "rating": 1265,
+          "avatar": "meteor",
+          "personality": "Crashes into everything but always jumps up shouting 'I'M OKAY!'",
+          "playStyle": "Smashes into your position with crashing sacrifices and mega attacks. INCOMING!",
+          "dialogue": {
+            "greeting": "INCOMING! Oh, that's just me. Hi! Let's crash some pieces!",
+            "playerWins": "You survived the meteor AND won?! I'M OKAY! You're AMAZING!",
+            "playerLoses": "CRASH! What a battle! Falling down is my specialty — and getting back up is YOURS. I'M OKAY, and so are you!"
+          }
+        },
+        {
+          "id": "captain-cosmo",
+          "level": 42,
+          "name": "Captain Cosmo",
+          "rating": 1300,
+          "isBoss": true,
+          "avatar": "space-captain",
+          "personality": "The legendary star commander with a night-sky cape. Cooler than the far side of the moon.",
+          "playStyle": "GALAXY BOSS! Attacks when it's time to attack, defends when it's time to defend.",
+          "dialogue": {
+            "greeting": "Welcome aboard, cadet. Show me what the galaxy taught you.",
+            "playerWins": "A commander's victory. The stars shine for you tonight.",
+            "playerLoses": "Stellar work, cadet. Champions aren't born among the stars — they're built, game by game. Like you."
+          }
+        }
+      ]
+    },
+    {
+      "id": "dragon-mountains",
+      "order": 6,
+      "name": "The Dragon Mountains",
+      "emoji": "🐉",
+      "themeColor": "#C62828",
+      "ratingRange": [
+        1340,
+        1600
+      ],
+      "narration": {
+        "intro": "Your rocket lands on a peak where friendly dragons sip hot cocoa around a campfire. “These are the strongest players in all the lands,” whispers Wizzy. “And look how far YOU'VE come.”",
+        "outro": ""
+      },
+      "bots": [
+        {
+          "id": "ember",
+          "level": 43,
+          "name": "Ember the Baby Dragon",
+          "rating": 1340,
+          "avatar": "baby-dragon",
+          "personality": "The tiniest dragon, with hiccups that shoot sparkles. Practices her roar: 'squeak!'",
+          "playStyle": "Small but fiery! Breathes little flame attacks all over the board!",
+          "dialogue": {
+            "greeting": "SQUEAK! I mean ROAR! Prepare for tiny fire!",
+            "playerWins": "You beat my best fire! *sparkly hiccup* You're blazing!",
+            "playerLoses": "Squeak— I mean, ROAR! You survived my fire! Little dragons grow into legends. So do little chess players!"
+          }
+        },
+        {
+          "id": "frosty-fang",
+          "level": 44,
+          "name": "Frosty Fang",
+          "rating": 1380,
+          "avatar": "ice-dragon",
+          "personality": "An ice dragon who breathes snowflakes. His sneezes cause tiny blizzards.",
+          "playStyle": "Freezes your pieces in place! Blocks and blockades until your position turns to ice.",
+          "dialogue": {
+            "greeting": "Welcome to the freezer, friend. Bring a scarf.",
+            "playerWins": "You melted my ice wall! Snow way! Amazing!",
+            "playerLoses": "Brrr-illiant game! Even when things freeze up, cool players like you never melt down!"
+          }
+        },
+        {
+          "id": "rocky-ridge",
+          "level": 45,
+          "name": "Rocky Ridge the Troll",
+          "rating": 1420,
+          "avatar": "troll",
+          "personality": "A gentle giant made of mountain stone. Moves once a minute; grows moss while thinking.",
+          "playStyle": "Builds an unbreakable wall of pawns and stone — beating Rocky takes clever ideas!",
+          "dialogue": {
+            "greeting": "Hmm. Rocky says hello. Rocky also says: good luck.",
+            "playerWins": "You… moved… a mountain. Rocky is amazed.",
+            "playerLoses": "Hmm. Good game. Rocky thinks… you are strong like mountain. Mountains grow slow. Mountains grow FOREVER."
+          }
+        },
+        {
+          "id": "stormy-skye",
+          "level": 46,
+          "name": "Stormy Skye",
+          "rating": 1460,
+          "avatar": "storm-dragon",
+          "personality": "A storm dragon with lightning wings. Laughs like thunder — the mountain giggles too.",
+          "playStyle": "Strikes with lightning-fast tactics! One flash — ZAP! — two pieces in trouble.",
+          "dialogue": {
+            "greeting": "KRAKA-BOOM! A challenger walks into my storm! Wonderful!",
+            "playerWins": "You rode the lightning and WON! Thunder-ful!",
+            "playerLoses": "KRAKA-BOOM! What a storm of a game! You've got thunder in your heart, little cloud. Keep rumbling!"
+          }
+        },
+        {
+          "id": "sir-blaze",
+          "level": 47,
+          "name": "Sir Blaze of the Peak",
+          "rating": 1500,
+          "avatar": "flame-knight",
+          "personality": "A knight who rides a dragon to work. His helmet flame never goes out.",
+          "playStyle": "The bravest attacker on the mountain! Charges at your king with everything!",
+          "dialogue": {
+            "greeting": "Draw your pieces, noble one! May our battle be glorious!",
+            "playerWins": "A glorious victory! Kneel — I dub thee Knight of the Board!",
+            "playerLoses": "By my flame, you fought with honor! A knight's true strength is rising after every fall. Rise, brave one!"
+          }
+        },
+        {
+          "id": "mystic-mira",
+          "level": 48,
+          "name": "Mystic Mira the Dragon Sage",
+          "rating": 1540,
+          "avatar": "sage-dragon",
+          "personality": "A thousand-year-old dragon in star-covered robes. Speaks in riddles; makes perfect tea.",
+          "playStyle": "A wizard of the endgame! When few pieces remain, her ancient magic is strongest.",
+          "dialogue": {
+            "greeting": "I foresaw your arrival, dear one. Tea first, or chess?",
+            "playerWins": "The prophecy was true: you are extraordinary.",
+            "playerLoses": "Here is a riddle: what grows every time it stumbles? …A champion's heart. And yours, dear one, is enormous."
+          }
+        },
+        {
+          "id": "thunderwing",
+          "level": 49,
+          "name": "Thunderwing",
+          "rating": 1570,
+          "avatar": "guard-dragon",
+          "personality": "The Grand Dragon's loyal guard, with wings like drums. Secretly loves butterflies.",
+          "playStyle": "Strong everywhere! Attacks, defends, traps, and plans. The last test before the final boss!",
+          "dialogue": {
+            "greeting": "BOOM-boom-BOOM. Few make it this far. Impress me.",
+            "playerWins": "You defeated the Grand Guard! The final gate opens for you!",
+            "playerLoses": "BOOM-boom-BOOM! You made my wings flutter like butterflies! The Grand Dragon awaits — you've earned it!"
+          }
+        },
+        {
+          "id": "goldscale",
+          "level": 50,
+          "name": "Goldscale the Grand Dragon",
+          "rating": 1600,
+          "isBoss": true,
+          "isFinalBoss": true,
+          "avatar": "gold-dragon",
+          "personality": "The oldest, wisest, kindest dragon of all. His scales shine with a thousand games.",
+          "playStyle": "THE FINAL BOSS! Beautiful, brilliant chess — the greatest challenge of the whole adventure!",
+          "dialogue": {
+            "greeting": "So, young champion… your whole journey led to this board. Shall we?",
+            "playerWins": "You have done it… Champion of all six worlds! The golden crown is yours!",
+            "playerLoses": "Young champion… whether you win or lose today, you have already done something amazing: you never stopped trying. That is the true gold. Now — shall we play again?"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -881,3 +881,51 @@
   background-size: 40px 100%;
   animation: race-road-scroll 1.2s linear infinite;
 }
+
+/* === The Great Chess Adventure — scoped dark quest-map theme === */
+[data-gca-theme] {
+  --gca-bg: oklch(0.15 0.02 260);
+  --gca-fg: oklch(0.95 0.01 85);
+  --gca-card: oklch(0.2 0.025 260);
+  --gca-muted: oklch(0.7 0.02 260);
+  --gca-border: oklch(0.3 0.03 260);
+  background-color: var(--gca-bg);
+  color: var(--gca-fg);
+}
+
+[data-gca-theme] .gca-text {
+  color: var(--gca-fg);
+}
+
+[data-gca-theme] .gca-muted {
+  color: var(--gca-muted);
+}
+
+[data-gca-theme] .gca-card {
+  background-color: color-mix(in oklch, var(--gca-card) 90%, transparent);
+  border-color: var(--gca-border);
+  color: var(--gca-fg);
+}
+
+[data-gca-theme] .gca-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  [data-gca-theme] .gca-container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-gca-theme] .gca-container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+    max-width: 1280px;
+  }
+}

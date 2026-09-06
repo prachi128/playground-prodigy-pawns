@@ -9,6 +9,7 @@ import { CoachGuidance, useCoachPrompts } from "@/components/onboarding/coach-gu
 interface DashboardLayoutProps {
   children: React.ReactNode
   hideHeader?: boolean
+  fullBleedMain?: boolean
 }
 
 const MemoizedSidebar = memo(Sidebar)
@@ -25,7 +26,7 @@ function getInitialSidebarCollapsed(): boolean {
   return window.innerWidth < 1024
 }
 
-export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) {
+export function DashboardLayout({ children, hideHeader, fullBleedMain }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => getInitialSidebarCollapsed())
   const [theme, setTheme] = useState<"light" | "dark">("light")
@@ -86,7 +87,13 @@ export function DashboardLayout({ children, hideHeader }: DashboardLayoutProps) 
           />
         )}
 
-        <main className="content-green min-w-0 flex-1 overflow-y-auto p-4 lg:p-6">
+        <main
+          className={
+            fullBleedMain
+              ? "min-w-0 flex-1 overflow-y-auto p-0"
+              : "content-green min-w-0 flex-1 overflow-y-auto p-4 lg:p-6"
+          }
+        >
           {children}
         </main>
       </div>

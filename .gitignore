@@ -2,3 +2,6 @@
 backend/stockfish/
 lichess_puzzles
 .claude
+
+# Nested Manus scaffold (has its own .git; keep local only)
+/chess-adventure-quest-map/

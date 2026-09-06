@@ -16,7 +16,7 @@ print("TOKEN DEBUG")
 print("=" * 60)
 print(f"Token: {TOKEN[:50]}...")
 print(f"SECRET_KEY loaded: {bool(SECRET_KEY)}")
-print(f"SECRET_KEY: {SECRET_KEY[:20]}..." if SECRET_KEY else "NOT SET")
+print(f"SECRET_KEY length: {len(SECRET_KEY) if SECRET_KEY else 0}")
 print()
 
 # Try to decode without verification first

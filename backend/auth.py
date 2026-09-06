@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-import os
 
 # Load environment variables FIRST before anything else
 load_dotenv()
@@ -14,9 +13,10 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from models import User
 from database import get_db
+from security_config import get_secret_key
 
-# Security configurations
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production-make-it-long-and-random")
+# Security configurations — SECRET_KEY must come from the environment
+SECRET_KEY = get_secret_key()
 ALGORITHM = "HS256"
 # Short-lived access token (Cookie-Based Session Auth)
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
@@ -24,11 +24,6 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 COOKIE_ACCESS_TOKEN = "access_token"
 COOKIE_REFRESH_TOKEN = "refresh_token"
-
-# Debug: Print SECRET_KEY info on import
-print(f"🔑 AUTH.PY - SECRET_KEY loaded: {bool(SECRET_KEY)}")
-print(f"🔑 AUTH.PY - SECRET_KEY length: {len(SECRET_KEY)}")
-print(f"🔑 AUTH.PY - SECRET_KEY preview: {SECRET_KEY[:20]}...")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -132,9 +127,6 @@ def get_current_user(
     if not token:
         token = token_from_bearer
     if not token:
-        # Debug: log available cookies
-        print(f"🔍 No token found. Cookies: {list(request.cookies.keys())}")
-        print(f"🔍 Bearer token present: {bool(token_from_bearer)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
